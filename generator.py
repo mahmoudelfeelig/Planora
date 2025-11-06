@@ -1,12 +1,12 @@
 import random
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from domain import (
     Instance, Program, Group, Course, Staff, Room, Activity,
     Day, WeekIndex,
 )
 
 
-def _base_calendar():
+def _base_calendar() -> Tuple[List[Day], int, List[WeekIndex]]:
     days: List[Day] = ["SAT", "MON", "TUE", "WED", "THU", "FRI"]
     slots_per_day = 5
     weeks: List[WeekIndex] = list(range(1, 13))
@@ -17,7 +17,7 @@ def _make_basic_rooms() -> Dict[int, Room]:
     rooms: Dict[int, Room] = {}
     rid = 1
 
-    # A few lecture/tutorial rooms with different capacities
+    # lecture/tutorial rooms of varying sizes
     for cap in [40, 60, 80, 120]:
         rooms[rid] = Room(
             id=rid,
@@ -27,7 +27,7 @@ def _make_basic_rooms() -> Dict[int, Room]:
         )
         rid += 1
 
-    # Computer labs
+    # computer labs
     for _ in range(3):
         rooms[rid] = Room(
             id=rid,
@@ -37,7 +37,7 @@ def _make_basic_rooms() -> Dict[int, Room]:
         )
         rid += 1
 
-    # Specialized labs
+    # specialized labs
     for tag in ["PHYSICS_LAB", "CHEM_LAB"]:
         rooms[rid] = Room(
             id=rid,
@@ -57,21 +57,19 @@ def _make_staff(num_profs: int, num_tas: int, courses: Dict[int, Course]) -> Dic
     course_ids = list(courses.keys())
 
     def random_course_subset(k: int):
-        return set(random.sample(course_ids, min(k, len(course_ids)))) if course_ids else set()
+        if not course_ids:
+            return set()
+        return set(random.sample(course_ids, min(k, len(course_ids))))
 
-    # Professors
+    # professors
     for _ in range(num_profs):
         is_block = random.random() < 0.3
-        available_days = {"SAT", "MON", "TUE", "WED", "THU", "FRI"}
+        all_days = {"SAT", "MON", "TUE", "WED", "THU", "FRI"}
         block_days = set()
+        available_days = all_days.copy()
         if is_block:
-            # Many block profs teach only Fri/Sat or SAT alone
-            options = [
-                {"SAT"},
-                {"FRI"},
-                {"SAT", "FRI"},
-            ]
-            block_days = random.choice(options)
+            # for now assume block profs only come on SAT (could extend to FRI/SAT)
+            block_days = {"SAT"}
             available_days = block_days.copy()
 
         staff[sid] = Staff(
@@ -87,7 +85,7 @@ def _make_staff(num_profs: int, num_tas: int, courses: Dict[int, Course]) -> Dic
         )
         sid += 1
 
-    # TAs – usually available all days except Sunday + one free day
+    # TAs
     for _ in range(num_tas):
         all_days = {"SAT", "MON", "TUE", "WED", "THU", "FRI"}
         free_extra = random.choice(list(all_days))
@@ -111,84 +109,185 @@ def _make_activities(
     groups: Dict[int, Group],
     courses: Dict[int, Course],
     staff: Dict[int, Staff],
-    weeks,
-    block_heavy: bool = False,
-    labs_heavy: bool = False,
+    weeks: List[int],
+    block_heavy: bool,
+    labs_heavy: bool,
 ) -> Dict[int, Activity]:
     """
-    Builds activities per course/group/week with:
-      - lectures only in week 1
-      - tutorials and labs in weeks 2–12
-      - lab duration stored in course.lab_duration
-    Block-only profs will get longer lecture activities (2–3 slots) in a single day.
+    Builds activities per course/group/week.
+
+    Lecture patterns:
+      - 12 lectures: 1 per week
+      - 18 lectures: 1 per week + second lecture in 6 weeks
+      - 24 lectures: 2 per week
+
+    For some courses and block professors:
+      - if lecture_count is 12 or 18 and a block professor is skilled,
+        then lectures are 3-slot blocks on SAT on a subset of weeks:
+          * 12 lectures: 4 visits (every 3 weeks)
+          * 18 lectures: 6 visits (every 2 weeks)
+
+    Week 1 is lectures only; tutorials/labs start from week 2.
     """
     activities: Dict[int, Activity] = {}
     aid = 1
 
-    # Precompute staff candidates per course
+    # precompute staff candidates per course
     staff_candidates_for_course: Dict[int, List[int]] = {c_id: [] for c_id in courses}
     for s_id, s in staff.items():
         for c_id in s.skilled_course_ids:
             if c_id in courses:
                 staff_candidates_for_course[c_id].append(s_id)
 
-    # pattern_id groups replications of the same weekly event across weeks
-    next_pattern_id = 1
+    # we also separate block professors
+    block_profs = {s_id for s_id, s in staff.items() if s.is_block_professor}
 
     for c_id, course in courses.items():
-        # For simplicity, assume 1 lecture per week, 1 tutorial per week, 1 lab per week when present.
-        # That gives 12 each, matching the 12 variant.
-        # You can extend to 18/24 by adding extra weekly lecture activities.
-        lecture_weeks = weeks
-        tutorial_weeks = weeks[1:] if course.tutorial_count > 0 else []
-        lab_weeks = weeks[1:] if course.lab_weeks > 0 else []
+        # groups taking this course
+        groups_in_course = [g for g in groups.values() if c_id in g.course_ids]
+        if not groups_in_course:
+            continue
 
-        # Staff candidates
+        # base staff candidates
         lec_staff = staff_candidates_for_course.get(c_id, [])
-        tut_staff = lec_staff  # many places share pool; customize if you want
-        lab_staff = lec_staff  # or TAs only, etc.
+        tut_staff = lec_staff.copy()
+        lab_staff = lec_staff.copy()
 
-        # If there are no staff candidates for a course, you will get infeasibility,
-        # which is useful for testing error reporting.
+        # fallbacks to keep instance solvable
         if not lec_staff:
-            # assign all professors as fallbacks
             lec_staff = [s.id for s in staff.values() if s.is_professor]
         if not tut_staff:
             tut_staff = [s.id for s in staff.values() if not s.is_professor] or lec_staff
         if not lab_staff:
             lab_staff = [s.id for s in staff.values() if not s.is_professor] or lec_staff
 
-        # Each group in the course gets its own tutorials and labs
-        groups_in_course = [g for g in groups.values() if c_id in g.course_ids]
+        # find block profs skilled for this course
+        block_staff_for_course = [s for s in lec_staff if s in block_profs]
 
-        # Shared lectures across those groups
-        shared_group_ids = [g.id for g in groups_in_course] if course.share_lecture_group_ids else [g.id for g in groups_in_course]
+        # shared lecture groups
+        shared_group_ids = [g.id for g in groups_in_course]
 
-        # Lectures
-        if lecture_weeks:
-            lec_pattern_id = next_pattern_id
-            next_pattern_id += 1
-            for w in lecture_weeks:
-                # If block-heavy, some lectures will be 2-slot activities by construction
-                dur = 2 if block_heavy else 1
+        # ----- lectures -----
+        total_lectures = course.lecture_count
+        lecture_weeks = weeks
+
+        # decide if this is a block-pattern course for a block professor
+        is_block_course = (
+            block_heavy
+            and block_staff_for_course
+            and total_lectures in (12, 18)
+        )
+
+        if is_block_course:
+            # choose a specific block professor for this course
+            block_prof = random.choice(block_staff_for_course)
+            lec_staff = [block_prof]
+
+            num_blocks = total_lectures // 3
+            total_weeks = len(weeks)
+            step = total_weeks // num_blocks  # 12/4=3, 12/6=2
+
+            block_weeks = weeks[0::step][:num_blocks]
+            for w in block_weeks:
                 activities[aid] = Activity(
                     id=aid,
                     course_id=c_id,
                     group_ids=shared_group_ids,
                     kind="LEC",
-                    duration_slots=dur,
+                    duration_slots=3,  # 3-slot block on that day
                     week=w,
                     staff_candidates=lec_staff,
                     requires_specialization=None,
-                    pattern_id=lec_pattern_id,
+                    pattern_id=None,
                 )
                 aid += 1
+        else:
+            # regular lecture patterns
+            if total_lectures == 12:
+                # one lecture per week
+                for w in lecture_weeks:
+                    activities[aid] = Activity(
+                        id=aid,
+                        course_id=c_id,
+                        group_ids=shared_group_ids,
+                        kind="LEC",
+                        duration_slots=1,
+                        week=w,
+                        staff_candidates=lec_staff,
+                        requires_specialization=None,
+                        pattern_id=None,
+                    )
+                    aid += 1
+            elif total_lectures == 18:
+                # one per week + second lecture in 6 selected weeks
+                extra_needed = 6
+                # choose every second week starting from week 2
+                extra_weeks = [w for w in lecture_weeks[1::2]][:extra_needed]
 
-        # Tutorials
-        if tutorial_weeks and course.structure_type in ("LEC_TUT", "LEC_TUT_LAB"):
+                for w in lecture_weeks:
+                    # base lecture
+                    activities[aid] = Activity(
+                        id=aid,
+                        course_id=c_id,
+                        group_ids=shared_group_ids,
+                        kind="LEC",
+                        duration_slots=1,
+                        week=w,
+                        staff_candidates=lec_staff,
+                        requires_specialization=None,
+                        pattern_id=None,
+                    )
+                    aid += 1
+                    # possibly second lecture
+                    if w in extra_weeks:
+                        activities[aid] = Activity(
+                            id=aid,
+                            course_id=c_id,
+                            group_ids=shared_group_ids,
+                            kind="LEC",
+                            duration_slots=1,
+                            week=w,
+                            staff_candidates=lec_staff,
+                            requires_specialization=None,
+                            pattern_id=None,
+                        )
+                        aid += 1
+            elif total_lectures == 24:
+                # two lectures per week
+                for w in lecture_weeks:
+                    for _ in range(2):
+                        activities[aid] = Activity(
+                            id=aid,
+                            course_id=c_id,
+                            group_ids=shared_group_ids,
+                            kind="LEC",
+                            duration_slots=1,
+                            week=w,
+                            staff_candidates=lec_staff,
+                            requires_specialization=None,
+                            pattern_id=None,
+                        )
+                        aid += 1
+            else:
+                # fallback: treat as 1 per week
+                for w in lecture_weeks:
+                    activities[aid] = Activity(
+                        id=aid,
+                        course_id=c_id,
+                        group_ids=shared_group_ids,
+                        kind="LEC",
+                        duration_slots=1,
+                        week=w,
+                        staff_candidates=lec_staff,
+                        requires_specialization=None,
+                        pattern_id=None,
+                    )
+                    aid += 1
+
+        # ----- tutorials -----
+        if course.structure_type in ("LEC_TUT", "LEC_TUT_LAB") and course.tutorial_count > 0:
+            tutorial_weeks = weeks[1:]  # from week 2
             for g in groups_in_course:
-                tut_pattern_id = next_pattern_id
-                next_pattern_id += 1
                 for w in tutorial_weeks:
                     activities[aid] = Activity(
                         id=aid,
@@ -199,31 +298,28 @@ def _make_activities(
                         week=w,
                         staff_candidates=tut_staff,
                         requires_specialization=None,
-                        pattern_id=tut_pattern_id,
+                        pattern_id=None,
                     )
                     aid += 1
 
-        # Labs
-        if lab_weeks and course.structure_type in ("LEC_TUT_LAB", "LAB_ONLY"):
+        # ----- labs -----
+        if course.lab_weeks > 0 and course.structure_type in ("LEC_TUT_LAB", "LAB_ONLY"):
+            lab_weeks = weeks[1:]  # from week 2
             for g in groups_in_course:
-                lab_pattern_id = next_pattern_id
-                next_pattern_id += 1
                 for w in lab_weeks:
-                    dur = course.lab_duration
                     spec = None
                     if labs_heavy:
-                        # use specialization labels to force specific labs
                         spec = random.choice(["PHYSICS_LAB", "CHEM_LAB"])
                     activities[aid] = Activity(
                         id=aid,
                         course_id=c_id,
                         group_ids=[g.id],
                         kind="LAB",
-                        duration_slots=dur,
+                        duration_slots=course.lab_duration,
                         week=w,
                         staff_candidates=lab_staff,
                         requires_specialization=spec,
-                        pattern_id=lab_pattern_id,
+                        pattern_id=None,
                     )
                     aid += 1
 
@@ -231,37 +327,55 @@ def _make_activities(
 
 
 def generate_instance(mode: str = "small_demo") -> Instance:
+    """
+    Modes:
+      - small_demo: tiny instance
+      - block_profs: tests block-only professor patterns
+      - labs_only: stresses labs
+      - mixed_large: closer to target scale
+      - random: fully random within similar size range
+    """
     days, slots_per_day, weeks = _base_calendar()
 
     programs: Dict[int, Program] = {}
     groups: Dict[int, Group] = {}
     courses: Dict[int, Course] = {}
 
-    # Build programs, groups, courses according to the mode
     pid = 1
     gid = 1
     cid = 1
 
     if mode == "small_demo":
-        # Two programs, one group each, three courses total
-        for p in range(2):
+        # two programs, one group each, 2 courses per program
+        for _ in range(2):
             prog_course_ids = []
             prog_group_ids = []
-            for _ in range(2):  # 2 courses per program, share some
+            used_long = False
+            for _ in range(2):
+                if not used_long and random.random() < 0.5:
+                    lecture_count = random.choice([18, 24])
+                    used_long = True
+                else:
+                    lecture_count = 12
+                stype = random.choice(["LEC_ONLY", "LEC_TUT", "LEC_TUT_LAB"])
+                tutorial_count = 12 if stype in ("LEC_TUT", "LEC_TUT_LAB") else 0
+                lab_weeks = 12 if stype in ("LEC_TUT_LAB", "LAB_ONLY") else 0
+
                 course = Course(
                     id=cid,
                     code=f"C{cid}",
                     name=f"Course-{cid}",
-                    structure_type=random.choice(["LEC_ONLY", "LEC_TUT", "LEC_TUT_LAB"]),
-                    lecture_count=12,
-                    tutorial_count=12,
-                    lab_weeks=12 if random.random() < 0.5 else 0,
+                    structure_type=stype,
+                    lecture_count=lecture_count,
+                    tutorial_count=tutorial_count,
+                    lab_weeks=lab_weeks,
                     lab_duration=random.choice([1, 2]),
                     share_lecture_group_ids=[],
                 )
                 courses[cid] = course
                 prog_course_ids.append(cid)
                 cid += 1
+
             group = Group(
                 id=gid,
                 name=f"G{gid}",
@@ -272,6 +386,7 @@ def generate_instance(mode: str = "small_demo") -> Instance:
             )
             groups[gid] = group
             prog_group_ids.append(gid)
+
             programs[pid] = Program(
                 id=pid,
                 name=f"Program-{pid}",
@@ -282,16 +397,23 @@ def generate_instance(mode: str = "small_demo") -> Instance:
             pid += 1
 
     elif mode == "block_profs":
-        # One program, 2 groups, 4 courses, set up for block-only professors
+        # one program, 2 groups, 4 courses; block-heavy
         prog_course_ids = []
         prog_group_ids = []
+        used_long = False
         for _ in range(4):
+            # ensure at most one 18/24 per program
+            if not used_long and random.random() < 0.75:
+                lecture_count = random.choice([18, 12])
+                used_long = lecture_count > 12
+            else:
+                lecture_count = 12
             course = Course(
                 id=cid,
                 code=f"B{cid}",
                 name=f"BlockCourse-{cid}",
                 structure_type="LEC_TUT",
-                lecture_count=12,
+                lecture_count=lecture_count,
                 tutorial_count=12,
                 lab_weeks=0,
                 lab_duration=1,
@@ -301,7 +423,7 @@ def generate_instance(mode: str = "small_demo") -> Instance:
             prog_course_ids.append(cid)
             cid += 1
 
-        for i in range(2):
+        for _ in range(2):
             group = Group(
                 id=gid,
                 name=f"BlockGroup-{gid}",
@@ -322,17 +444,23 @@ def generate_instance(mode: str = "small_demo") -> Instance:
         )
 
     elif mode == "labs_only":
-        # Focus on lab-only and lab-heavy courses
         prog_course_ids = []
         prog_group_ids = []
+        used_long = False
         for _ in range(3):
+            if not used_long and random.random() < 0.5:
+                lecture_count = random.choice([18, 24])
+                used_long = True
+            else:
+                lecture_count = 12
+            stype = random.choice(["LAB_ONLY", "LEC_TUT_LAB"])
             course = Course(
                 id=cid,
                 code=f"L{cid}",
                 name=f"LabCourse-{cid}",
-                structure_type=random.choice(["LAB_ONLY", "LEC_TUT_LAB"]),
-                lecture_count=12,
-                tutorial_count=12,
+                structure_type=stype,
+                lecture_count=lecture_count,
+                tutorial_count=12 if stype == "LEC_TUT_LAB" else 0,
                 lab_weeks=12,
                 lab_duration=random.choice([1, 2]),
                 share_lecture_group_ids=[],
@@ -341,7 +469,7 @@ def generate_instance(mode: str = "small_demo") -> Instance:
             prog_course_ids.append(cid)
             cid += 1
 
-        for i in range(3):
+        for _ in range(3):
             group = Group(
                 id=gid,
                 name=f"LabGroup-{gid}",
@@ -362,23 +490,32 @@ def generate_instance(mode: str = "small_demo") -> Instance:
         )
 
     elif mode in ("mixed_large", "random"):
-        # Something closer to your scale: ~20 programs, 1–2 groups each, 5–6 courses each
         num_programs = 20 if mode == "mixed_large" else random.randint(10, 25)
         for _ in range(num_programs):
             prog_course_ids = []
             prog_group_ids = []
+            used_long = False
 
             num_courses = random.randint(5, 6)
             for _ in range(num_courses):
+                if not used_long and random.random() < 0.6:
+                    lecture_count = random.choice([18, 24])
+                    used_long = True
+                else:
+                    lecture_count = 12
+
                 stype = random.choice(["LEC_ONLY", "LEC_TUT", "LEC_TUT_LAB", "LAB_ONLY"])
+                tutorial_count = 12 if stype in ("LEC_TUT", "LEC_TUT_LAB") else 0
+                lab_weeks = 12 if stype in ("LEC_TUT_LAB", "LAB_ONLY") else 0
+
                 course = Course(
                     id=cid,
                     code=f"R{cid}",
                     name=f"RandCourse-{cid}",
                     structure_type=stype,
-                    lecture_count=12,
-                    tutorial_count=12 if stype in ("LEC_TUT", "LEC_TUT_LAB") else 0,
-                    lab_weeks=12 if stype in ("LEC_TUT_LAB", "LAB_ONLY") else 0,
+                    lecture_count=lecture_count,
+                    tutorial_count=tutorial_count,
+                    lab_weeks=lab_weeks,
                     lab_duration=random.choice([1, 2]),
                     share_lecture_group_ids=[],
                 )
@@ -408,7 +545,6 @@ def generate_instance(mode: str = "small_demo") -> Instance:
             )
             pid += 1
 
-    # Rooms and staff shared across programs
     rooms = _make_basic_rooms()
     staff = _make_staff(
         num_profs=max(3, len(courses) // 4),
@@ -416,7 +552,7 @@ def generate_instance(mode: str = "small_demo") -> Instance:
         courses=courses,
     )
 
-    block_heavy = mode == "block_profs"
+    block_heavy = (mode == "block_profs")
     labs_heavy = mode in ("labs_only", "mixed_large", "random")
 
     activities = _make_activities(
@@ -440,3 +576,4 @@ def generate_instance(mode: str = "small_demo") -> Instance:
         activities=activities,
     )
     return inst
+    

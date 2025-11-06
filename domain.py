@@ -30,7 +30,7 @@ class Course:
     code: str
     name: str
     structure_type: str          # "LEC_ONLY", "LEC_TUT", "LEC_TUT_LAB", "LAB_ONLY"
-    lecture_count: int           # 12, 18, 24 (you can extend handling later)
+    lecture_count: int           # 12, 18, 24
     tutorial_count: int          # 0, 12, 18, 24
     lab_weeks: int               # 0 or 12
     lab_duration: int            # 1 or 2 consecutive slots
@@ -47,7 +47,7 @@ class Staff:
     max_slots_per_day: Optional[int]
     max_slots_per_week: Optional[int]
     skilled_course_ids: Set[int]
-    # For block-only profs, these are usually the only days they teach
+    # for block-only profs, these are usually the only days they teach
     block_allowed_days: Set[Day] = field(default_factory=set)
 
 
@@ -58,7 +58,7 @@ class Room:
     room_type: str               # "LECTURE", "TUTORIAL", "COMPUTER_LAB", "SPECIALIZED_LAB"
     capacity: int
     specialization_tags: Set[str] = field(default_factory=set)
-    # If empty, assume available on all slots; otherwise explicit list
+    # if empty, assume available all slots; otherwise explicit list
     available_day_slots: Set[Tuple[Day, SlotIndex]] = field(default_factory=set)
 
 
@@ -66,30 +66,29 @@ class Room:
 class Activity:
     """
     One concrete teaching event to be placed.
-
     Examples:
-      - 1-slot weekly lecture for course C, group G, week w
-      - 1-slot tutorial for course C, group G, week w
-      - 2-slot lab for course C, group G, week w
-      - 2–3-slot block lecture for a block professor (generator decides duration)
+      - 1-slot weekly lecture for a course and group(s)
+      - 1-slot tutorial per group
+      - 1- or 2-slot lab
+      - 3-slot block lecture for a block professor on selected weeks
     """
     id: int
     course_id: int
     group_ids: List[int]
     kind: str                    # "LEC", "TUT", "LAB"
-    duration_slots: int          # 1 or 2 (or 3 if you extend)
+    duration_slots: int          # 1, 2, or 3 if block lectures
     week: WeekIndex
-    staff_candidates: List[int]  # staff ids that may teach this activity
-    requires_specialization: Optional[str] = None  # e.g. "PHYSICS_LAB_1"
-    # pattern_id groups activities that should share time/room across weeks
+    staff_candidates: List[int]
+    requires_specialization: Optional[str] = None
+    # pattern_id is kept for possible later refinements, not used in solver now
     pattern_id: Optional[int] = None
 
 
 @dataclass
 class Instance:
-    days: List[Day]                         # e.g. ["SAT", "MON", "TUE", "WED", "THU", "FRI"]
+    days: List[Day]                         # ["SAT", "MON", "TUE", "WED", "THU", "FRI"]
     slots_per_day: int                      # 5
-    weeks: List[WeekIndex]                 # [1..12]
+    weeks: List[WeekIndex]                  # [1..12]
 
     programs: Dict[int, Program]
     groups: Dict[int, Group]
