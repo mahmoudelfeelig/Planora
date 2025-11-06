@@ -1,3 +1,5 @@
+# main.py
+
 from ortools.sat.python import cp_model
 from generator import generate_instance
 from solver_cp_sat import TimetableSolver
@@ -18,12 +20,16 @@ def main():
     schedule = solver_model.extract_solution(cp_solver)
     print("CP-SAT objective:", cp_solver.ObjectiveValue())
 
-    ls = LocalSearchImprover(inst, solver_model)
-    approx_penalty = ls.compute_soft_penalty(schedule)
-    print("Approx soft penalty (local evaluator):", approx_penalty)
+    ls = LocalSearchImprover(inst)
+    base_pen = ls.compute_soft_penalty(schedule)
+    print("Soft penalty before local search:", base_pen)
 
-    # dump some of the schedule
-    for a_id, info in sorted(schedule.items())[:200]:
+    improved = ls.improve(schedule, iterations=5, start_temp=5.0, end_temp=0.1)
+    improved_pen = ls.compute_soft_penalty(improved)
+    print("Soft penalty after local search:", improved_pen)
+
+    # dump some rows
+    for a_id, info in sorted(improved.items())[:200]:
         print(
             f"A{a_id}: week {info['week']} {info['day']} "
             f"slot {info['slot']} dur {info['duration']} "
