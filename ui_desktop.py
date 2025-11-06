@@ -1,9 +1,14 @@
 # ui_desktop.py
 
 import sys
+import os
+import uuid
+import pickle
+import tempfile
+import traceback
 from typing import Dict, Any, Tuple, List
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QProcess
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QComboBox, QTableWidget, QTableWidgetItem, QLabel,
@@ -11,16 +16,13 @@ from PyQt6.QtWidgets import (
 )
 
 from generator import generate_instance
-from solver_cp_sat import TimetableSolver
 from metaheuristics import LocalSearchImprover
 from exporter import export_group_schedules_to_docx
-from ortools.sat.python import cp_model
 
+
+# ---------- edit dialog ----------
 
 class EditActivityDialog(QDialog):
-    """
-    Dialog to edit a single activity's day/slot/room/staff.
-    """
     def __init__(self, parent, inst, schedule, act_ids: List[int], week: int, day: str, slot: int):
         super().__init__(parent)
         self.inst = inst
@@ -32,7 +34,6 @@ class EditActivityDialog(QDialog):
         layout = QFormLayout()
         self.setLayout(layout)
 
-        # activity selector
         self.activity_combo = QComboBox()
         for a_id in act_ids:
             info = schedule[a_id]
@@ -41,7 +42,6 @@ class EditActivityDialog(QDialog):
             self.activity_combo.addItem(text, a_id)
         layout.addRow("Activity:", self.activity_combo)
 
-        # day
         self.day_combo = QComboBox()
         for d in inst.days:
             self.day_combo.addItem(d, d)
@@ -50,7 +50,6 @@ class EditActivityDialog(QDialog):
             self.day_combo.setCurrentIndex(idx)
         layout.addRow("Day:", self.day_combo)
 
-        # slot
         self.slot_combo = QComboBox()
         for s in range(inst.slots_per_day):
             self.slot_combo.addItem(str(s + 1), s)
@@ -59,11 +58,9 @@ class EditActivityDialog(QDialog):
             self.slot_combo.setCurrentIndex(idx)
         layout.addRow("Start slot:", self.slot_combo)
 
-        # room
         self.room_combo = QComboBox()
         for r_id, r in inst.rooms.items():
             self.room_combo.addItem(f"{r.name} (id {r_id})", r_id)
-        # preselect current room
         cur_a_id = self.activity_combo.currentData()
         cur_info = schedule[cur_a_id]
         cur_room = cur_info["room_id"]
@@ -72,7 +69,6 @@ class EditActivityDialog(QDialog):
             self.room_combo.setCurrentIndex(idx)
         layout.addRow("Room:", self.room_combo)
 
-        # staff
         self.staff_combo = QComboBox()
         cur_staff = cur_info["staff_id"]
         for s_id, s in inst.staff.items():
@@ -91,6 +87,8 @@ class EditActivityDialog(QDialog):
         return a_id, day, slot, room_id, staff_id
 
 
+# ---------- main window ----------
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -100,10 +98,15 @@ class MainWindow(QMainWindow):
         self.base_schedule: Dict[int, Dict[str, Any]] = {}
         self.current_schedule: Dict[int, Dict[str, Any]] = {}
 
+        # external solver process
+        self.proc: QProcess | None = None
+        self.tmp_inst_path: str | None = None
+        self.tmp_res_path: str | None = None
+
         self._build_ui()
         self._connect_signals()
 
-    # ---------- UI setup ----------
+    # ----- UI setup -----
 
     def _build_ui(self):
         top_widget = QWidget()
@@ -151,7 +154,6 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.table)
         self.setCentralWidget(central)
 
-        # basic modern-ish style
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #22252b;
@@ -162,6 +164,15 @@ class MainWindow(QMainWindow):
             }
             QComboBox, QPushButton {
                 font-size: 10pt;
+            }
+            QPushButton {
+                color: #ffffff;
+                background-color: #4b2e83;
+                border-radius: 4px;
+                padding: 4px 10px;
+            }
+            QPushButton:disabled {
+                background-color: #555555;
             }
             QTableWidget {
                 background-color: #ffffff;
@@ -185,11 +196,15 @@ class MainWindow(QMainWindow):
         self.week_combo.currentIndexChanged.connect(self.update_table)
         self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
 
-    # ---------- helpers ----------
+    # ----- helpers -----
 
     def set_status(self, text: str):
         self.status_label.setText(text)
         QApplication.processEvents()
+
+    def set_busy(self, busy: bool):
+        for b in [self.generate_button, self.solve_button, self.improve_button, self.export_button]:
+            b.setEnabled(not busy)
 
     def populate_weeks(self):
         self.week_combo.blockSignals(True)
@@ -222,11 +237,20 @@ class MainWindow(QMainWindow):
         self.table.setRowCount(0)
         self.table.setColumnCount(0)
 
-    # ---------- actions ----------
+    # ----- actions -----
 
     def on_generate(self):
+        if self.proc is not None:
+            QMessageBox.warning(self, "Busy", "Wait for solving to finish first.")
+            return
         mode = self.mode_combo.currentText()
-        self.inst = generate_instance(mode=mode)
+        try:
+            self.inst = generate_instance(mode=mode)
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Generate error", str(e))
+            return
+
         self.base_schedule = {}
         self.current_schedule = {}
         self.set_status(f"Instance generated ({mode})")
@@ -238,21 +262,107 @@ class MainWindow(QMainWindow):
         if self.inst is None:
             self.set_status("Generate instance first")
             return
+        if self.proc is not None:
+            QMessageBox.warning(self, "Busy", "Solver already running.")
+            return
 
-        self.set_status("Solving...")
-        solver_model = TimetableSolver(self.inst)
-        cp_solver, status = solver_model.solve(time_limit_seconds=60)
+        # write instance to temp file
+        tmp_dir = tempfile.gettempdir()
+        inst_name = f"tt_inst_{uuid.uuid4().hex}.pkl"
+        res_name = f"tt_res_{uuid.uuid4().hex}.pkl"
+        self.tmp_inst_path = os.path.join(tmp_dir, inst_name)
+        self.tmp_res_path = os.path.join(tmp_dir, res_name)
 
-        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            self.set_status(f"No feasible schedule (status {status})")
+        try:
+            with open(self.tmp_inst_path, "wb") as f:
+                pickle.dump(self.inst, f)
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "File error", f"Cannot write instance: {e}")
+            self.tmp_inst_path = None
+            self.tmp_res_path = None
+            return
+
+        python_exe = sys.executable
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        solver_script = os.path.join(base_dir, "engine_cli.py")
+
+        self.proc = QProcess(self)
+        self.proc.setProgram(python_exe)
+        self.proc.setArguments([solver_script, self.tmp_inst_path, self.tmp_res_path])
+        self.proc.finished.connect(self.on_solver_finished)
+        self.proc.errorOccurred.connect(self.on_solver_error)
+        self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+
+        self.set_busy(True)
+        self.set_status("Solving in external process...")
+        self.proc.start()
+
+    def on_solver_error(self, error):
+        self.set_busy(False)
+        msg = self.proc.readAll().data().decode("utf-8", errors="ignore") if self.proc else ""
+        QMessageBox.critical(self, "Solver error", msg or f"QProcess error: {error}")
+        self.proc = None
+        self.set_status("Solve error")
+
+    def on_solver_finished(self, exit_code: int, exit_status):
+        self.set_busy(False)
+
+        output = ""
+        if self.proc is not None:
+            output = self.proc.readAll().data().decode("utf-8", errors="ignore")
+        if exit_code != 0:
+            QMessageBox.critical(
+                self,
+                "Solver crashed",
+                output or f"Solver exited with code {exit_code}",
+            )
+            self.proc = None
+            self.set_status(f"Solver failed (code {exit_code})")
+            return
+
+        self.proc = None
+
+        if not self.tmp_res_path or not os.path.exists(self.tmp_res_path):
+            QMessageBox.critical(self, "Result error", "Result file not found.")
+            self.set_status("Solve error")
+            return
+
+        try:
+            with open(self.tmp_res_path, "rb") as f:
+                res = pickle.load(f)
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Result error", f"Cannot read result: {e}")
+            self.set_status("Solve error")
+            return
+        finally:
+            # clean up temp files
+            if self.tmp_inst_path and os.path.exists(self.tmp_inst_path):
+                try:
+                    os.remove(self.tmp_inst_path)
+                except OSError:
+                    pass
+            if self.tmp_res_path and os.path.exists(self.tmp_res_path):
+                try:
+                    os.remove(self.tmp_res_path)
+                except OSError:
+                    pass
+            self.tmp_inst_path = None
+            self.tmp_res_path = None
+
+        status = res.get("status", -1)
+        if status not in (0, 4):  # FEASIBLE=0, OPTIMAL=4
             self.base_schedule = {}
             self.current_schedule = {}
             self.clear_table()
+            self.set_status(f"No feasible schedule (status {status})")
             return
 
-        self.base_schedule = solver_model.extract_solution(cp_solver)
+        self.base_schedule = res.get("schedule", {})
         self.current_schedule = {a_id: info.copy() for a_id, info in self.base_schedule.items()}
-        self.set_status(f"Solved, objective={cp_solver.ObjectiveValue():.0f}")
+        obj = res.get("objective", 0.0)
+        self.set_status(f"Solved, objective={obj:.0f}")
         self.update_entities()
         self.update_table()
 
@@ -260,12 +370,21 @@ class MainWindow(QMainWindow):
         if not self.current_schedule or self.inst is None:
             self.set_status("No schedule to improve")
             return
+
         self.set_status("Improving...")
-        ls = LocalSearchImprover(self.inst)
-        before = ls.compute_soft_penalty(self.current_schedule)
-        improved = ls.improve(self.current_schedule, iterations=300)
-        after = ls.compute_soft_penalty(improved)
-        self.current_schedule = improved
+        QApplication.processEvents()
+        try:
+            ls = LocalSearchImprover(self.inst)
+            before = ls.compute_soft_penalty(self.current_schedule)
+            improved = ls.improve(self.current_schedule, iterations=300)
+            after = ls.compute_soft_penalty(improved)
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Improve error", str(e))
+            self.set_status("Improve error")
+            return
+
+        self.current_schedule = {a_id: info.copy() for a_id, info in improved.items()}
         self.set_status(f"Improved penalty {before} -> {after}")
         self.update_table()
 
@@ -273,6 +392,7 @@ class MainWindow(QMainWindow):
         if not self.current_schedule or self.inst is None:
             self.set_status("No schedule to export")
             return
+
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Export group schedules",
@@ -281,11 +401,19 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
-        self.set_status("Exporting...")
-        export_group_schedules_to_docx(self.inst, self.current_schedule, path)
+
+        try:
+            self.set_status("Exporting...")
+            export_group_schedules_to_docx(self.inst, self.current_schedule, path)
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Export error", str(e))
+            self.set_status("Export error")
+            return
+
         self.set_status(f"Exported to {path}")
 
-    # ---------- table rendering ----------
+    # ----- table rendering -----
 
     def update_table(self):
         if self.inst is None or not self.current_schedule:
@@ -349,7 +477,7 @@ class MainWindow(QMainWindow):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(row, col, item)
 
-    # ---------- manual edit ----------
+    # ----- manual edit -----
 
     def on_cell_double_clicked(self, row: int, col: int):
         if self.inst is None or not self.current_schedule:
@@ -369,9 +497,7 @@ class MainWindow(QMainWindow):
 
         day = self.inst.days[row]
         slot = col
-        slots_per_day = self.inst.slots_per_day
 
-        # find activities in this cell under current view
         act_ids = []
         for a_id, info in self.current_schedule.items():
             if info["week"] != week:
@@ -406,7 +532,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Invalid move", reason)
             return
 
-        # apply move
         info = self.current_schedule[a_id]
         info["day"] = new_day
         info["slot"] = new_slot
@@ -417,9 +542,6 @@ class MainWindow(QMainWindow):
 
     def check_move(self, a_id: int, new_day: str, new_slot: int,
                    new_room_id: int, new_staff_id: int) -> Tuple[bool, str]:
-        """
-        Hard constraint check for a single edited activity.
-        """
         inst = self.inst
         schedule = self.current_schedule
         act = inst.activities[a_id]
@@ -428,14 +550,12 @@ class MainWindow(QMainWindow):
         dur = info["duration"]
         groups = info["group_ids"]
 
-        # slot range
         if new_slot < 0 or new_slot + dur > inst.slots_per_day:
             return False, "Activity would overflow the day."
 
-        # staff availability and load
         staff = inst.staff[new_staff_id]
         if new_day not in staff.available_days:
-            return False, "Staff is not available on that day."
+            return False, "Staff unavailable on that day."
 
         day_load = 0
         week_load = 0
@@ -450,13 +570,11 @@ class MainWindow(QMainWindow):
                     day_load += b["duration"]
         day_load += dur
         week_load += dur
-
         if staff.max_slots_per_day is not None and day_load > staff.max_slots_per_day:
             return False, "Staff daily load limit exceeded."
         if staff.max_slots_per_week is not None and week_load > staff.max_slots_per_week:
             return False, "Staff weekly load limit exceeded."
 
-        # room type/capacity
         room = inst.rooms[new_room_id]
         total_students = sum(inst.groups[g].size for g in groups)
         if room.capacity < total_students:
@@ -469,9 +587,8 @@ class MainWindow(QMainWindow):
                 return False, "Wrong specialized lab."
         else:
             if room.room_type not in ("LECTURE", "TUTORIAL"):
-                return False, "Lecture/Tutorial must use a lecture/tutorial room."
+                return False, "Lecture/Tutorial must use lecture/tutorial room."
 
-        # conflicts with other activities at same time
         new_slots = set(range(new_slot, new_slot + dur))
         for b_id, b in schedule.items():
             if b_id == a_id:
@@ -481,18 +598,12 @@ class MainWindow(QMainWindow):
             other_slots = set(range(b["slot"], b["slot"] + b["duration"]))
             if not (new_slots & other_slots):
                 continue
-
-            # staff conflict
             if b["staff_id"] == new_staff_id:
-                return False, f"Staff conflict with activity A{b_id}."
-
-            # room conflict
+                return False, f"Staff conflict with A{b_id}."
             if b["room_id"] == new_room_id:
-                return False, f"Room conflict with activity A{b_id}."
-
-            # group conflict
+                return False, f"Room conflict with A{b_id}."
             if set(groups) & set(b["group_ids"]):
-                return False, f"Group conflict with activity A{b_id}."
+                return False, f"Group conflict with A{b_id}."
 
         return True, ""
 
