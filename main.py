@@ -1,5 +1,3 @@
-# main.py
-
 from ortools.sat.python import cp_model
 from generator import generate_instance
 from solver_cp_sat import TimetableSolver
@@ -8,7 +6,7 @@ from metaheuristics import LocalSearchImprover
 
 def main():
     # modes: "small_demo", "block_profs", "labs_only", "mixed_large", "random"
-    inst = generate_instance(mode="mixed_large")
+    inst = generate_instance(mode="small_demo")
 
     solver_model = TimetableSolver(inst)
     cp_solver, status = solver_model.solve(time_limit_seconds=120)
@@ -24,7 +22,7 @@ def main():
     base_pen = ls.compute_soft_penalty(schedule)
     print("Soft penalty before local search:", base_pen)
 
-    improved = ls.improve(schedule, iterations=5, start_temp=5.0, end_temp=0.1)
+    improved = ls.improve(schedule, iterations=1000, start_temp=5.0, end_temp=0.1)
     improved_pen = ls.compute_soft_penalty(improved)
     print("Soft penalty after local search:", improved_pen)
 

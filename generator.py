@@ -376,11 +376,21 @@ def generate_instance(mode: str = "small_demo") -> Instance:
                 prog_course_ids.append(cid)
                 cid += 1
 
+            # decide group size based on whether this program has labs
+            has_lab = any(
+                courses[cid_].lab_weeks > 0 and courses[cid_].structure_type in ("LEC_TUT_LAB", "LAB_ONLY")
+                for cid_ in prog_course_ids
+            )
+            if has_lab:
+                size = random.randint(20, 24)  # fit into specialized labs (capacity 24)
+            else:
+                size = random.randint(20, 80)
+
             group = Group(
                 id=gid,
                 name=f"G{gid}",
                 program_id=pid,
-                size=random.randint(20, 80),
+                size=size,
                 course_ids=prog_course_ids,
                 preferred_free_days=2,
             )
@@ -402,7 +412,6 @@ def generate_instance(mode: str = "small_demo") -> Instance:
         prog_group_ids = []
         used_long = False
         for _ in range(4):
-            # ensure at most one 18/24 per program
             if not used_long and random.random() < 0.75:
                 lecture_count = random.choice([18, 12])
                 used_long = lecture_count > 12
@@ -428,7 +437,7 @@ def generate_instance(mode: str = "small_demo") -> Instance:
                 id=gid,
                 name=f"BlockGroup-{gid}",
                 program_id=pid,
-                size=50,
+                size=50,  # no labs, can be larger
                 course_ids=prog_course_ids,
                 preferred_free_days=2,
             )
@@ -470,11 +479,12 @@ def generate_instance(mode: str = "small_demo") -> Instance:
             cid += 1
 
         for _ in range(3):
+            # all programs here have labs; keep size small
             group = Group(
                 id=gid,
                 name=f"LabGroup-{gid}",
                 program_id=pid,
-                size=random.randint(20, 35),
+                size=random.randint(15, 24),
                 course_ids=prog_course_ids,
                 preferred_free_days=2,
             )
@@ -523,13 +533,22 @@ def generate_instance(mode: str = "small_demo") -> Instance:
                 prog_course_ids.append(cid)
                 cid += 1
 
+            # decide group sizes based on labs
+            has_lab = any(
+                courses[cid_].lab_weeks > 0 and courses[cid_].structure_type in ("LEC_TUT_LAB", "LAB_ONLY")
+                for cid_ in prog_course_ids
+            )
             num_groups = random.randint(1, 2)
             for _ in range(num_groups):
+                if has_lab:
+                    size = random.randint(15, 24)
+                else:
+                    size = random.randint(25, 90)
                 group = Group(
                     id=gid,
                     name=f"RGroup-{gid}",
                     program_id=pid,
-                    size=random.randint(25, 90),
+                    size=size,
                     course_ids=prog_course_ids.copy(),
                     preferred_free_days=2,
                 )
@@ -576,4 +595,3 @@ def generate_instance(mode: str = "small_demo") -> Instance:
         activities=activities,
     )
     return inst
-    

@@ -1,0 +1,224 @@
+import sys
+from typing import Dict, Any
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QComboBox, QTableWidget, QTableWidgetItem, QLabel
+)
+from PyQt6.QtCore import Qt
+
+from generator import generate_instance
+from solver_cp_sat import TimetableSolver
+from metaheuristics import LocalSearchImprover
+from ortools.sat.python import cp_model
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("University Timetable")
+
+        self.inst = None
+        self.schedule: Dict[int, Dict[str, Any]] = {}
+        self.improved_schedule: Dict[int, Dict[str, Any]] = {}
+
+        # top controls
+        top_widget = QWidget()
+        top_layout = QHBoxLayout()
+        top_widget.setLayout(top_layout)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["small_demo", "block_profs", "labs_only", "mixed_large", "random"])
+
+        self.generate_button = QPushButton("Generate instance")
+        self.solve_button = QPushButton("Solve")
+        self.improve_button = QPushButton("Improve")
+
+        self.view_type_combo = QComboBox()
+        self.view_type_combo.addItems(["Group", "Staff", "Room"])
+        self.entity_combo = QComboBox()
+        self.week_combo = QComboBox()
+
+        self.status_label = QLabel("Ready")
+
+        top_layout.addWidget(QLabel("Mode:"))
+        top_layout.addWidget(self.mode_combo)
+        top_layout.addWidget(self.generate_button)
+        top_layout.addWidget(self.solve_button)
+        top_layout.addWidget(self.improve_button)
+        top_layout.addWidget(QLabel("View:"))
+        top_layout.addWidget(self.view_type_combo)
+        top_layout.addWidget(self.entity_combo)
+        top_layout.addWidget(QLabel("Week:"))
+        top_layout.addWidget(self.week_combo)
+        top_layout.addWidget(self.status_label)
+
+        # timetable grid
+        self.table = QTableWidget()
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+
+        central = QWidget()
+        main_layout = QVBoxLayout()
+        central.setLayout(main_layout)
+        main_layout.addWidget(top_widget)
+        main_layout.addWidget(self.table)
+        self.setCentralWidget(central)
+
+        # connections
+        self.generate_button.clicked.connect(self.on_generate)
+        self.solve_button.clicked.connect(self.on_solve)
+        self.improve_button.clicked.connect(self.on_improve)
+        self.view_type_combo.currentIndexChanged.connect(self.update_entities)
+        self.entity_combo.currentIndexChanged.connect(self.update_table)
+        self.week_combo.currentIndexChanged.connect(self.update_table)
+
+    def on_generate(self):
+        mode = self.mode_combo.currentText()
+        self.inst = generate_instance(mode=mode)
+        self.schedule = {}
+        self.improved_schedule = {}
+        self.status_label.setText(f"Instance generated ({mode})")
+        self.populate_weeks()
+        self.update_entities()
+        self.clear_table()
+
+    def on_solve(self):
+        if self.inst is None:
+            self.status_label.setText("Generate instance first")
+            return
+
+        self.status_label.setText("Solving...")
+        QApplication.processEvents()
+
+        solver_model = TimetableSolver(self.inst)
+        cp_solver, status = solver_model.solve(time_limit_seconds=60)
+
+        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            self.status_label.setText(f"No feasible schedule (status {status})")
+            self.schedule = {}
+            self.improved_schedule = {}
+            self.clear_table()
+            return
+
+        self.schedule = solver_model.extract_solution(cp_solver)
+        self.improved_schedule = self.schedule
+        self.status_label.setText(f"Solved, objective={cp_solver.ObjectiveValue():.0f}")
+
+        self.update_entities()
+        self.update_table()
+
+    def on_improve(self):
+        if not self.schedule:
+            self.status_label.setText("No schedule to improve")
+            return
+        if self.inst is None:
+            return
+
+        self.status_label.setText("Improving...")
+        QApplication.processEvents()
+
+        ls = LocalSearchImprover(self.inst)
+        before = ls.compute_soft_penalty(self.improved_schedule)
+        improved = ls.improve(self.improved_schedule, iterations=300)
+        after = ls.compute_soft_penalty(improved)
+        self.improved_schedule = improved
+        self.status_label.setText(f"Improved penalty {before} -> {after}")
+        self.update_table()
+
+    def populate_weeks(self):
+        self.week_combo.blockSignals(True)
+        self.week_combo.clear()
+        if self.inst is not None:
+            for w in self.inst.weeks:
+                self.week_combo.addItem(str(w), w)
+        self.week_combo.blockSignals(False)
+
+    def update_entities(self):
+        if self.inst is None:
+            return
+        view_type = self.view_type_combo.currentText()
+        self.entity_combo.blockSignals(True)
+        self.entity_combo.clear()
+        if view_type == "Group":
+            for g_id, g in self.inst.groups.items():
+                self.entity_combo.addItem(f"{g.name} (id {g_id})", ("group", g_id))
+        elif view_type == "Staff":
+            for s_id, s in self.inst.staff.items():
+                self.entity_combo.addItem(f"{s.name} (id {s_id})", ("staff", s_id))
+        else:  # Room
+            for r_id, r in self.inst.rooms.items():
+                self.entity_combo.addItem(f"{r.name} (id {r_id})", ("room", r_id))
+        self.entity_combo.blockSignals(False)
+        self.update_table()
+
+    def clear_table(self):
+        self.table.clear()
+        self.table.setRowCount(0)
+        self.table.setColumnCount(0)
+
+    def update_table(self):
+        if self.inst is None or not self.improved_schedule:
+            self.clear_table()
+            return
+        if self.entity_combo.count() == 0 or self.week_combo.count() == 0:
+            self.clear_table()
+            return
+
+        view_type, entity_id = self.entity_combo.currentData()
+        week = int(self.week_combo.currentText())
+
+        days = self.inst.days
+        slots = self.inst.slots_per_day
+
+        self.table.setRowCount(len(days))
+        self.table.setColumnCount(slots)
+        self.table.setVerticalHeaderLabels(days)
+        self.table.setHorizontalHeaderLabels([f"S{idx+1}" for idx in range(slots)])
+
+        # build cell text map
+        cell_content = {
+            (d, s): [] for d in days for s in range(slots)
+        }
+
+        for a_id, info in self.improved_schedule.items():
+            if info["week"] != week:
+                continue
+            d = info["day"]
+            s0 = info["slot"]
+            dur = info["duration"]
+            if view_type == "Group":
+                if entity_id not in info["group_ids"]:
+                    continue
+            elif view_type == "Staff":
+                if entity_id != info["staff_id"]:
+                    continue
+            else:  # Room
+                if entity_id != info["room_id"]:
+                    continue
+
+            course_id = info["course_id"]
+            kind = info["kind"]
+            txt = f"A{a_id} C{course_id} {kind}"
+            for ds in range(dur):
+                s = s0 + ds
+                if 0 <= s < slots:
+                    cell_content[d, s].append(txt)
+
+        for row, d in enumerate(days):
+            for col in range(slots):
+                items = cell_content[d, col]
+                text = "\n".join(items)
+                item = QTableWidgetItem(text)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(row, col, item)
+
+
+def main():
+    app = QApplication(sys.argv)
+    win = MainWindow()
+    win.resize(1100, 600)
+    win.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
