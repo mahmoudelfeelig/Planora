@@ -1,4 +1,4 @@
-# ui_desktop.py
+from __future__ import annotations
 
 import sys
 import os
@@ -9,21 +9,46 @@ import traceback
 from typing import Dict, Any, Tuple, List
 
 from PyQt6.QtCore import Qt, QProcess
+from PyQt6.QtGui import QBrush, QColor, QIcon
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QComboBox, QTableWidget, QTableWidgetItem, QLabel,
-    QMessageBox, QFileDialog, QDialog, QFormLayout
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QComboBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QLabel,
+    QMessageBox,
+    QFileDialog,
+    QDialog,
+    QFormLayout,
+    QDialogButtonBox,
+    QSpinBox,
+    QAbstractSpinBox,
 )
 
 from generator import generate_instance
 from metaheuristics import LocalSearchImprover
 from exporter import export_group_schedules_to_docx
+from domain import Instance
 
 
-# ---------- edit dialog ----------
+# ---------- Edit dialog ----------
 
 class EditActivityDialog(QDialog):
-    def __init__(self, parent, inst, schedule, act_ids: List[int], week: int, day: str, slot: int):
+    def __init__(
+        self,
+        parent,
+        inst: Instance,
+        schedule: Dict[int, Dict[str, Any]],
+        act_ids: List[int],
+        week: int,
+        day: str,
+        slot: int,
+    ):
         super().__init__(parent)
         self.inst = inst
         self.schedule = schedule
@@ -31,15 +56,17 @@ class EditActivityDialog(QDialog):
         self.week = week
 
         self.setWindowTitle("Edit activity")
-        layout = QFormLayout()
-        self.setLayout(layout)
+        layout = QFormLayout(self)
 
         self.activity_combo = QComboBox()
         for a_id in act_ids:
             info = schedule[a_id]
             course = inst.courses.get(info["course_id"])
-            text = f"A{a_id} {course.code if course else ''} {info['kind']}"
-            self.activity_combo.addItem(text, a_id)
+            label = f"A{a_id}"
+            if course:
+                label += f" {course.code} {course.name}"
+            label += f" ({info['kind']})"
+            self.activity_combo.addItem(label, a_id)
         layout.addRow("Activity:", self.activity_combo)
 
         self.day_combo = QComboBox()
@@ -78,6 +105,14 @@ class EditActivityDialog(QDialog):
             self.staff_combo.setCurrentIndex(idx)
         layout.addRow("Staff:", self.staff_combo)
 
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
     def get_values(self) -> Tuple[int, str, int, int, int]:
         a_id = self.activity_combo.currentData()
         day = self.day_combo.currentData()
@@ -87,18 +122,20 @@ class EditActivityDialog(QDialog):
         return a_id, day, slot, room_id, staff_id
 
 
-# ---------- main window ----------
+# ---------- Main window ----------
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("University Timetabling")
+        icon_path = os.path.join(os.path.dirname(__file__), "app_icon.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
 
-        self.inst = None
+        self.inst: Instance | None = None
         self.base_schedule: Dict[int, Dict[str, Any]] = {}
         self.current_schedule: Dict[int, Dict[str, Any]] = {}
 
-        # external solver process
         self.proc: QProcess | None = None
         self.tmp_inst_path: str | None = None
         self.tmp_res_path: str | None = None
@@ -110,15 +147,33 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self):
         top_widget = QWidget()
-        top_layout = QHBoxLayout()
-        top_widget.setLayout(top_layout)
+        top_layout = QHBoxLayout(top_widget)
 
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["small_demo", "block_profs", "labs_only", "mixed_large", "random"])
+        self.mode_combo.addItems(
+            [
+                "small_demo",
+                "block_profs",
+                "labs_only",
+                "mixed_large",
+                "random",
+                "target_case",
+            ]
+        )
 
         self.generate_button = QPushButton("Generate")
         self.solve_button = QPushButton("Solve")
         self.improve_button = QPushButton("Improve")
+
+        self.improve_runs_spin = QSpinBox()
+        self.improve_runs_spin.setRange(10, 100000)
+        self.improve_runs_spin.setSingleStep(10)
+        self.improve_runs_spin.setValue(1000)
+        self.improve_runs_spin.setButtonSymbols(
+            QAbstractSpinBox.ButtonSymbols.UpDownArrows
+        )
+        self.improve_runs_spin.setMinimumWidth(90)
+
         self.export_button = QPushButton("Export DOCX")
 
         self.view_type_combo = QComboBox()
@@ -127,12 +182,16 @@ class MainWindow(QMainWindow):
         self.week_combo = QComboBox()
 
         self.status_label = QLabel("Ready")
+        self.quality_label = QLabel("")
+        self.quality_label.setWordWrap(True)
 
         top_layout.addWidget(QLabel("Mode:"))
         top_layout.addWidget(self.mode_combo)
         top_layout.addWidget(self.generate_button)
         top_layout.addWidget(self.solve_button)
         top_layout.addWidget(self.improve_button)
+        top_layout.addWidget(QLabel("Iterations:"))
+        top_layout.addWidget(self.improve_runs_spin)
         top_layout.addWidget(self.export_button)
         top_layout.addWidget(QLabel("View:"))
         top_layout.addWidget(self.view_type_combo)
@@ -143,48 +202,88 @@ class MainWindow(QMainWindow):
 
         self.table = QTableWidget()
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.setAlternatingRowColors(True)
+        self.table.setAlternatingRowColors(False)
         self.table.verticalHeader().setVisible(True)
         self.table.horizontalHeader().setVisible(True)
+        self.table.setWordWrap(True)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setDefaultSectionSize(160)
+        self.table.verticalHeader().setDefaultSectionSize(34)
 
         central = QWidget()
-        main_layout = QVBoxLayout()
-        central.setLayout(main_layout)
+        main_layout = QVBoxLayout(central)
         main_layout.addWidget(top_widget)
         main_layout.addWidget(self.table)
+        main_layout.addWidget(self.quality_label)
         self.setCentralWidget(central)
 
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             QMainWindow {
-                background-color: #22252b;
+                background-color: #121212;
             }
             QLabel {
-                color: #f0f0f0;
+                color: #f5f5f5;
                 font-size: 10pt;
             }
-            QComboBox, QPushButton {
+            QComboBox, QPushButton, QSpinBox {
                 font-size: 10pt;
             }
+            QComboBox, QSpinBox {
+                background-color: #1f1f23;
+                color: #f5f5f5;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                padding: 2px 6px;
+            }
+            QComboBox:hover, QSpinBox:hover {
+                background-color: #26262b;
+            }
+
+            QSpinBox::up-button, QSpinBox::down-button {
+                background-color: #4b2e83;
+                border: none;
+                width: 18px;
+            }
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                background-color: #6a44c2;
+            }
+            QSpinBox::up-button:pressed, QSpinBox::down-button:pressed {
+                background-color: #38215c;
+            }
+
             QPushButton {
                 color: #ffffff;
                 background-color: #4b2e83;
                 border-radius: 4px;
                 padding: 4px 10px;
             }
+            QPushButton:hover {
+                background-color: #6a44c2;
+            }
+            QPushButton:pressed {
+                background-color: #38215c;
+            }
             QPushButton:disabled {
                 background-color: #555555;
             }
             QTableWidget {
-                background-color: #ffffff;
-                gridline-color: #c0c0c0;
+                background-color: #18181c;
+                color: #f5f5f5;
+                gridline-color: #3c3f41;
                 font-size: 9pt;
             }
+            QTableWidget::item:selected {
+                background-color: #3c78d8;
+                color: #ffffff;
+            }
             QHeaderView::section {
-                background-color: #4b2e83;
-                color: white;
+                background-color: #26262b;
+                color: #f5f5f5;
                 font-weight: bold;
             }
-        """)
+            """
+        )
 
     def _connect_signals(self):
         self.generate_button.clicked.connect(self.on_generate)
@@ -203,8 +302,15 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()
 
     def set_busy(self, busy: bool):
-        for b in [self.generate_button, self.solve_button, self.improve_button, self.export_button]:
-            b.setEnabled(not busy)
+        enable = not busy
+        for btn in [
+            self.generate_button,
+            self.solve_button,
+            self.improve_button,
+            self.export_button,
+        ]:
+            btn.setEnabled(enable)
+        self.improve_runs_spin.setEnabled(enable)
 
     def populate_weeks(self):
         self.week_combo.blockSignals(True)
@@ -218,24 +324,29 @@ class MainWindow(QMainWindow):
         if self.inst is None:
             self.entity_combo.clear()
             return
+
         view_type = self.view_type_combo.currentText()
         self.entity_combo.blockSignals(True)
         self.entity_combo.clear()
+
         if view_type == "Group":
             for g_id, g in self.inst.groups.items():
-                self.entity_combo.addItem(f"{g.name} (id {g_id})", ("group", g_id))
+                self.entity_combo.addItem(f"{g.name} (id {g_id})", g_id)
         elif view_type == "Staff":
             for s_id, s in self.inst.staff.items():
-                self.entity_combo.addItem(f"{s.name} (id {s_id})", ("staff", s_id))
-        else:
+                self.entity_combo.addItem(f"{s.name} (id {s_id})", s_id)
+        else:  # Room
             for r_id, r in self.inst.rooms.items():
-                self.entity_combo.addItem(f"{r.name} (id {r_id})", ("room", r_id))
+                self.entity_combo.addItem(f"{r.name} (id {r_id})", r_id)
+
         self.entity_combo.blockSignals(False)
+        self.update_table()
 
     def clear_table(self):
         self.table.clear()
         self.table.setRowCount(0)
         self.table.setColumnCount(0)
+        self.quality_label.setText("")
 
     # ----- actions -----
 
@@ -243,6 +354,7 @@ class MainWindow(QMainWindow):
         if self.proc is not None:
             QMessageBox.warning(self, "Busy", "Wait for solving to finish first.")
             return
+
         mode = self.mode_combo.currentText()
         try:
             self.inst = generate_instance(mode=mode)
@@ -266,7 +378,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Busy", "Solver already running.")
             return
 
-        # write instance to temp file
         tmp_dir = tempfile.gettempdir()
         inst_name = f"tt_inst_{uuid.uuid4().hex}.pkl"
         res_name = f"tt_res_{uuid.uuid4().hex}.pkl"
@@ -290,9 +401,9 @@ class MainWindow(QMainWindow):
         self.proc = QProcess(self)
         self.proc.setProgram(python_exe)
         self.proc.setArguments([solver_script, self.tmp_inst_path, self.tmp_res_path])
+        self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self.proc.finished.connect(self.on_solver_finished)
         self.proc.errorOccurred.connect(self.on_solver_error)
-        self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
 
         self.set_busy(True)
         self.set_status("Solving in external process...")
@@ -300,8 +411,17 @@ class MainWindow(QMainWindow):
 
     def on_solver_error(self, error):
         self.set_busy(False)
-        msg = self.proc.readAll().data().decode("utf-8", errors="ignore") if self.proc else ""
-        QMessageBox.critical(self, "Solver error", msg or f"QProcess error: {error}")
+        output = ""
+        if self.proc is not None:
+            try:
+                output = (
+                    self.proc.readAll().data().decode("utf-8", errors="ignore")
+                )
+            except Exception:
+                output = ""
+        QMessageBox.critical(
+            self, "Solver error", output or f"QProcess error: {error}"
+        )
         self.proc = None
         self.set_status("Solve error")
 
@@ -310,18 +430,22 @@ class MainWindow(QMainWindow):
 
         output = ""
         if self.proc is not None:
-            output = self.proc.readAll().data().decode("utf-8", errors="ignore")
+            try:
+                output = (
+                    self.proc.readAll().data().decode("utf-8", errors="ignore")
+                )
+            except Exception:
+                output = ""
+        self.proc = None
+
         if exit_code != 0:
             QMessageBox.critical(
                 self,
                 "Solver crashed",
                 output or f"Solver exited with code {exit_code}",
             )
-            self.proc = None
             self.set_status(f"Solver failed (code {exit_code})")
             return
-
-        self.proc = None
 
         if not self.tmp_res_path or not os.path.exists(self.tmp_res_path):
             QMessageBox.critical(self, "Result error", "Result file not found.")
@@ -337,7 +461,6 @@ class MainWindow(QMainWindow):
             self.set_status("Solve error")
             return
         finally:
-            # clean up temp files
             if self.tmp_inst_path and os.path.exists(self.tmp_inst_path):
                 try:
                     os.remove(self.tmp_inst_path)
@@ -352,7 +475,7 @@ class MainWindow(QMainWindow):
             self.tmp_res_path = None
 
         status = res.get("status", -1)
-        if status not in (0, 4):  # FEASIBLE=0, OPTIMAL=4
+        if status not in (0, 4):  # 0=FEASIBLE, 4=OPTIMAL
             self.base_schedule = {}
             self.current_schedule = {}
             self.clear_table()
@@ -360,33 +483,65 @@ class MainWindow(QMainWindow):
             return
 
         self.base_schedule = res.get("schedule", {})
-        self.current_schedule = {a_id: info.copy() for a_id, info in self.base_schedule.items()}
-        obj = res.get("objective", 0.0)
-        self.set_status(f"Solved, objective={obj:.0f}")
+        self.current_schedule = {
+            a_id: info.copy() for a_id, info in self.base_schedule.items()
+        }
+
+        try:
+            if self.inst is not None and self.current_schedule:
+                ls = LocalSearchImprover(self.inst)
+                before = ls.compute_soft_penalty(self.current_schedule)
+                improved = ls.improve(self.current_schedule, iterations=1000)
+                after = ls.compute_soft_penalty(improved)
+                self.current_schedule = {
+                    a_id: info.copy() for a_id, info in improved.items()
+                }
+                self.set_status(
+                    f"Solved (status {status}), soft penalty {before} -> {after}"
+                )
+        except Exception:
+            traceback.print_exc()
+            self.set_status(f"Solved (status {status}), local search skipped")
+
+        self.populate_weeks()
         self.update_entities()
         self.update_table()
+        self.update_quality_summary()
 
     def on_improve(self):
         if not self.current_schedule or self.inst is None:
             self.set_status("No schedule to improve")
             return
 
-        self.set_status("Improving...")
-        QApplication.processEvents()
+        total_iters = self.improve_runs_spin.value()
+
         try:
             ls = LocalSearchImprover(self.inst)
-            before = ls.compute_soft_penalty(self.current_schedule)
-            improved = ls.improve(self.current_schedule, iterations=300)
-            after = ls.compute_soft_penalty(improved)
+            base_schedule = {
+                a_id: info.copy() for a_id, info in self.current_schedule.items()
+            }
+            base_pen = ls.compute_soft_penalty(base_schedule)
+
+            self.set_status(f"Improving ({total_iters} iterations)...")
+            QApplication.processEvents()
+
+            improved = ls.improve(base_schedule, iterations=total_iters)
+            best_pen = ls.compute_soft_penalty(improved)
+
+            self.current_schedule = {
+                a_id: info.copy() for a_id, info in improved.items()
+            }
+            self.set_status(
+                f"Improved global penalty {base_pen} -> {best_pen} "
+                f"in {total_iters} iterations"
+            )
+            self.update_table()
+            self.update_quality_summary()
+
         except Exception as e:
             traceback.print_exc()
             QMessageBox.critical(self, "Improve error", str(e))
             self.set_status("Improve error")
-            return
-
-        self.current_schedule = {a_id: info.copy() for a_id, info in improved.items()}
-        self.set_status(f"Improved penalty {before} -> {after}")
-        self.update_table()
 
     def on_export(self):
         if not self.current_schedule or self.inst is None:
@@ -427,7 +582,8 @@ class MainWindow(QMainWindow):
         if data is None:
             self.clear_table()
             return
-        view_type, entity_id = data
+        entity_id = int(data)
+        view_type = self.view_type_combo.currentText()
 
         week_data = self.week_combo.currentData()
         if week_data is None:
@@ -436,20 +592,22 @@ class MainWindow(QMainWindow):
         week = int(week_data)
 
         days = self.inst.days
-        slots = self.inst.slots_per_day
+        S = self.inst.slots_per_day
 
         self.table.setRowCount(len(days))
-        self.table.setColumnCount(slots)
+        self.table.setColumnCount(S)
         self.table.setVerticalHeaderLabels(days)
-        self.table.setHorizontalHeaderLabels([f"S{idx+1}" for idx in range(slots)])
+        self.table.setHorizontalHeaderLabels([f"S{idx + 1}" for idx in range(S)])
 
-        cell_content = {(d, s): [] for d in days for s in range(slots)}
+        cell_content: Dict[Tuple[str, int], List[str]] = {
+            (d, s): [] for d in days for s in range(S)
+        }
 
         for a_id, info in self.current_schedule.items():
             if info["week"] != week:
                 continue
             day = info["day"]
-            start = info["slot"]
+            s0 = info["slot"]
             dur = info["duration"]
 
             if view_type == "Group":
@@ -458,24 +616,177 @@ class MainWindow(QMainWindow):
             elif view_type == "Staff":
                 if entity_id != info["staff_id"]:
                     continue
-            else:
+            else:  # Room
                 if entity_id != info["room_id"]:
                     continue
 
             course = self.inst.courses.get(info["course_id"])
-            label = f"A{a_id} {course.code if course else ''} {info['kind']}"
+            room = self.inst.rooms.get(info["room_id"])
+            staff = self.inst.staff.get(info["staff_id"])
+
+            parts: List[str] = []
+            if course:
+                parts.append(course.code)
+                parts.append(course.name)
+            parts.append(info["kind"])
+            if room:
+                parts.append(f"Room: {room.name}")
+            if staff:
+                parts.append(f"Staff: {staff.name}")
+
+            label = "\n".join(parts)
+
             for ds in range(dur):
-                s = start + ds
-                if 0 <= s < slots:
-                    cell_content[day, s].append(label)
+                s = s0 + ds
+                if 0 <= s < S:
+                    cell_content[(day, s)].append(label)
 
         for row, day in enumerate(days):
-            for col in range(slots):
-                items = cell_content[day, col]
-                text = "\n".join(items)
+            for col in range(S):
+                items = cell_content[(day, col)]
+                text = "\n\n".join(items)
                 item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
+                )
+                item.setForeground(QBrush(QColor("#f5f5f5")))
                 self.table.setItem(row, col, item)
+
+        self.table.resizeColumnsToContents()
+        self.table.resizeRowsToContents()
+
+        for c in range(self.table.columnCount()):
+            if self.table.columnWidth(c) < 120:
+                self.table.setColumnWidth(c, 120)
+        for r in range(self.table.rowCount()):
+            if self.table.rowHeight(r) < 34:
+                self.table.setRowHeight(r, 34)
+
+    # ----- per-group quality -----
+
+    def compute_group_penalties(self, schedule: Dict[int, Dict[str, Any]]) -> Dict[int, int]:
+        inst = self.inst
+        if inst is None:
+            return {}
+
+        days = inst.days
+        weeks = inst.weeks
+        S = inst.slots_per_day
+
+        W_STUD_FREE_DAYS = 10
+        W_STUD_FREE_MF = 5
+        W_STUD_GAPS = 5
+        W_ACTIVE_DAYS = 3
+        W_EARLY_START = 2
+        W_BALANCE = 2
+        W_STABILITY = 1
+
+        group_occ: Dict[Tuple[int, int, str, int], int] = {}
+        for g_id in inst.groups.keys():
+            for w in weeks:
+                for d in days:
+                    for s in range(S):
+                        group_occ[g_id, w, d, s] = 0
+
+        for a_id, info in schedule.items():
+            w = info["week"]
+            d = info["day"]
+            s0 = info["slot"]
+            dur = info["duration"]
+            for ds in range(dur):
+                s = s0 + ds
+                if s < 0 or s >= S:
+                    continue
+                for g_id in info["group_ids"]:
+                    group_occ[g_id, w, d, s] = 1
+
+        day_active: Dict[Tuple[int, int, str], int] = {}
+        for g_id in inst.groups.keys():
+            for w in weeks:
+                for d in days:
+                    occs = [group_occ[g_id, w, d, s] for s in range(S)]
+                    day_active[g_id, w, d] = 1 if any(occs) else 0
+
+        penalties: Dict[int, int] = {g_id: 0 for g_id in inst.groups.keys()}
+
+        workdays = [d for d in days if d in {"MON", "TUE", "WED", "THU", "FRI"}]
+
+        for g_id, g in inst.groups.items():
+            pen = 0
+
+            for w in weeks:
+                free_days = sum(1 - day_active[g_id, w, d] for d in days)
+                if free_days < g.preferred_free_days:
+                    pen += W_STUD_FREE_DAYS * (g.preferred_free_days - free_days)
+
+                free_mf = sum(1 - day_active[g_id, w, d] for d in workdays)
+                if free_mf < g.preferred_free_days:
+                    pen += W_STUD_FREE_MF * (g.preferred_free_days - free_mf)
+
+                for d in days:
+                    occ = [group_occ[g_id, w, d, s] for s in range(S)]
+                    blocks = 0
+                    prev = 0
+                    load = 0
+                    for v in occ:
+                        if v == 1 and prev == 0:
+                            blocks += 1
+                        if v == 1:
+                            load += 1
+                        prev = v
+                    if blocks > 1:
+                        pen += W_STUD_GAPS * (blocks - 1)
+                    if load > 3:
+                        pen += W_BALANCE * (load - 3)
+
+                active_days = sum(day_active[g_id, w, d] for d in days)
+                if active_days > 3:
+                    pen += W_ACTIVE_DAYS * (active_days - 3)
+
+                for d in days:
+                    occ = [group_occ[g_id, w, d, s] for s in range(S)]
+                    if occ[0] == 1 and any(occ[s] == 1 for s in range(1, S)):
+                        pen += W_EARLY_START
+
+            for wi in range(1, len(weeks)):
+                w_prev = weeks[wi - 1]
+                w_curr = weeks[wi]
+                for d in days:
+                    if day_active[g_id, w_prev, d] != day_active[g_id, w_curr, d]:
+                        pen += W_STABILITY
+
+            penalties[g_id] = pen
+
+        return penalties
+
+    def classify_group_quality(self, pen: int) -> str:
+        if pen <= 150:
+            return "optimal"
+        if pen <= 400:
+            return "near-optimal"
+        if pen <= 800:
+            return "decent"
+        return "bad"
+
+    def update_quality_summary(self):
+        if self.inst is None or not self.current_schedule:
+            self.quality_label.setText("")
+            return
+
+        penalties = self.compute_group_penalties(self.current_schedule)
+        if not penalties:
+            self.quality_label.setText("")
+            return
+
+        parts: List[str] = []
+        for g_id in sorted(self.inst.groups.keys()):
+            pen = penalties.get(g_id, 0)
+            g = self.inst.groups[g_id]
+            status = self.classify_group_quality(pen)
+            parts.append(f"{g.name}: {pen} ({status})")
+
+        text = "Group quality:\n" + " | ".join(parts)
+        self.quality_label.setText(text)
 
     # ----- manual edit -----
 
@@ -488,7 +799,8 @@ class MainWindow(QMainWindow):
         data = self.entity_combo.currentData()
         if data is None:
             return
-        view_type, entity_id = data
+        entity_id = int(data)
+        view_type = self.view_type_combo.currentText()
 
         week_data = self.week_combo.currentData()
         if week_data is None:
@@ -498,23 +810,24 @@ class MainWindow(QMainWindow):
         day = self.inst.days[row]
         slot = col
 
-        act_ids = []
+        act_ids: List[int] = []
         for a_id, info in self.current_schedule.items():
             if info["week"] != week:
                 continue
             if info["day"] != day:
                 continue
-            start = info["slot"]
+            s0 = info["slot"]
             dur = info["duration"]
-            if slot < start or slot >= start + dur:
+            if slot < s0 or slot >= s0 + dur:
                 continue
+
             if view_type == "Group":
                 if entity_id not in info["group_ids"]:
                     continue
             elif view_type == "Staff":
                 if entity_id != info["staff_id"]:
                     continue
-            else:
+            else:  # Room
                 if entity_id != info["room_id"]:
                     continue
             act_ids.append(a_id)
@@ -537,11 +850,19 @@ class MainWindow(QMainWindow):
         info["slot"] = new_slot
         info["room_id"] = new_room
         info["staff_id"] = new_staff
+
         self.update_table()
+        self.update_quality_summary()
         self.set_status(f"Edited A{a_id}")
 
-    def check_move(self, a_id: int, new_day: str, new_slot: int,
-                   new_room_id: int, new_staff_id: int) -> Tuple[bool, str]:
+    def check_move(
+        self,
+        a_id: int,
+        new_day: str,
+        new_slot: int,
+        new_room_id: int,
+        new_staff_id: int,
+    ) -> Tuple[bool, str]:
         inst = self.inst
         schedule = self.current_schedule
         act = inst.activities[a_id]
@@ -570,6 +891,7 @@ class MainWindow(QMainWindow):
                     day_load += b["duration"]
         day_load += dur
         week_load += dur
+
         if staff.max_slots_per_day is not None and day_load > staff.max_slots_per_day:
             return False, "Staff daily load limit exceeded."
         if staff.max_slots_per_week is not None and week_load > staff.max_slots_per_week:
@@ -610,8 +932,11 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    icon_path = os.path.join(os.path.dirname(__file__), "app_icon.png")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
     win = MainWindow()
-    win.resize(1200, 650)
+    win.resize(1300, 720)
     win.show()
     sys.exit(app.exec())
 

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import sys
 import pickle
 from pathlib import Path
@@ -36,7 +37,7 @@ def main() -> int:
     }
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        result["objective"] = float(cp_solver.ObjectiveValue())
+        result["objective"] = float(0.0)  # no objective in model
         result["schedule"] = solver_model.extract_solution(cp_solver)
 
     with out_path.open("wb") as f:

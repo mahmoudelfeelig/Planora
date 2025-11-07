@@ -1,499 +1,272 @@
-from typing import Dict, Tuple, Optional, List
+from __future__ import annotations
+
+from typing import Dict, List, Tuple, Optional
+
 from ortools.sat.python import cp_model
-from domain import Instance, WeekIndex, Day, SlotIndex
+
+from domain import Instance
 
 
 class TimetableSolver:
     """
-    CP-SAT model with:
+    CP-SAT feasibility model:
 
-    Hard:
-      - no staff/group/room overlaps
-      - room capacity/type/specialization
-      - staff availability and load limits
-      - week-1 rule (lectures only)
-      - correct durations (1/2/3 slots) on a single day
-      - labs and tuts only from week 2
-      - group cannot be in two places at once
-
-    Soft:
-      - student free days (>=2), prefer Mon–Fri free days
-      - student gaps (blocks per day)
-      - daily load balance (avoid heavy days)
-      - staff free days (>=1)
-      - minimize active days for students
-      - avoid early starts when possible
-      - week-to-week stability of active days
-      - room consistency across weeks for the same course/group/kind
+    - Variables: start time (day+slot within week) for each activity.
+    - Hard constraints:
+        * staff availability by day
+        * no group overlaps
+        * no staff overlaps
+        * staff weekly load limit when max_slots_per_week is set (block profs)
+        * aggregate lecture / big-lecture / lab capacity per slot
+        * per-specialisation capacity for specialised labs
+    - Rooms are assigned afterwards by a greedy heuristic.
     """
 
     def __init__(self, inst: Instance):
         self.inst = inst
         self.model = cp_model.CpModel()
-        self._build_indexing()
+
+        self._precompute()
         self._build_variables()
-        self._add_hard_constraints()
-        self._add_soft_constraints_and_objective()
+        self._add_constraints()
 
-    # ---------- indexing ----------
+    # ---------- precomputation ----------
 
-    def _build_indexing(self):
+    def _precompute(self) -> None:
         inst = self.inst
-        self.room_ids = list(inst.rooms.keys())
-        self.staff_ids = list(inst.staff.keys())
-        self.activity_ids = list(inst.activities.keys())
-        self.weeks = inst.weeks
-        self.days = inst.days
-        self.num_slots = inst.slots_per_day
 
-        # flatten (week, day, slot) into a single time index
-        self.time_triples: List[Tuple[WeekIndex, Day, SlotIndex]] = []
-        self.time_index: Dict[Tuple[WeekIndex, Day, SlotIndex], int] = {}
+        self.days: List[str] = inst.days
+        self.weeks: List[int] = inst.weeks
+        self.slots_per_day: int = inst.slots_per_day
+        self.num_days: int = len(self.days)
+        self.times_per_week: int = self.num_days * self.slots_per_day
 
-        t = 0
-        for w in self.weeks:
-            for d in self.days:
-                for s in range(self.num_slots):
-                    self.time_triples.append((w, d, s))
-                    self.time_index[(w, d, s)] = t
-                    t += 1
-        self.num_times = t
+        # activities per week
+        self.activities_by_week: Dict[int, List[int]] = {w: [] for w in self.weeks}
+        for a_id, act in inst.activities.items():
+            self.activities_by_week[act.week].append(a_id)
+
+        # which staff member runs each activity
+        self.activity_staff: Dict[int, int] = {}
+        for a_id, act in inst.activities.items():
+            if act.kind == "LEC":
+                self.activity_staff[a_id] = act.prof_id
+            else:
+                # tutorials and labs treated as TA-led
+                self.activity_staff[a_id] = act.ta_id
+
+        # room categorisation
+        self.lecture_room_ids: List[int] = []
+        self.big_lecture_room_ids: List[int] = []
+        self.lab_room_ids: List[int] = []
+        self.special_lab_rooms_by_tag: Dict[str, List[int]] = {}
+
+        for r_id, room in inst.rooms.items():
+            if room.room_type == "LECTURE":
+                self.lecture_room_ids.append(r_id)
+                if room.capacity >= 200:
+                    self.big_lecture_room_ids.append(r_id)
+            elif room.room_type in ("SPECIALIZED_LAB", "COMPUTER_LAB"):
+                self.lab_room_ids.append(r_id)
+                if room.room_type == "SPECIALIZED_LAB":
+                    for tag in room.specialization_tags:
+                        self.special_lab_rooms_by_tag.setdefault(tag, []).append(r_id)
+
+        self.num_lec_rooms = len(self.lecture_room_ids)
+        self.num_big_lec_rooms = len(self.big_lecture_room_ids)
+        self.num_lab_rooms = len(self.lab_room_ids)
+
+        # room class for capacity constraints
+        self.room_class: Dict[int, str] = {}
+        for a_id, act in inst.activities.items():
+            if act.kind == "LAB":
+                self.room_class[a_id] = "LAB"
+            else:
+                total_students = sum(inst.groups[g].size for g in act.group_ids)
+                if total_students > 80:
+                    self.room_class[a_id] = "BIG_LEC"
+                else:
+                    self.room_class[a_id] = "LEC"
+
+        # activities per group/week and per staff/week
+        self.acts_by_group_week: Dict[Tuple[int, int], List[int]] = {}
+        for a_id, act in inst.activities.items():
+            for g_id in act.group_ids:
+                key = (g_id, act.week)
+                self.acts_by_group_week.setdefault(key, []).append(a_id)
+
+        self.acts_by_staff_week: Dict[Tuple[int, int], List[int]] = {}
+        for a_id, act in inst.activities.items():
+            s_id = self.activity_staff[a_id]
+            key = (s_id, act.week)
+            self.acts_by_staff_week.setdefault(key, []).append(a_id)
+
+        # allowed start times per activity (respect staff availability and duration)
+        self.allowed_starts: Dict[int, List[int]] = {}
+        for a_id, act in inst.activities.items():
+            staff_id = self.activity_staff[a_id]
+            staff = inst.staff[staff_id]
+            allowed: List[int] = []
+
+            max_start_slot = self.slots_per_day - act.duration
+            if max_start_slot < 0:
+                raise ValueError(
+                    f"Activity {a_id} duration {act.duration} "
+                    f"exceeds day slots {self.slots_per_day}"
+                )
+
+            for day_index, day in enumerate(self.days):
+                if day not in staff.available_days:
+                    continue
+                for slot in range(max_start_slot + 1):
+                    t = day_index * self.slots_per_day + slot
+                    allowed.append(t)
+
+            if not allowed:
+                raise ValueError(f"No allowed start times for activity {a_id}")
+
+            self.allowed_starts[a_id] = allowed
 
     # ---------- variables ----------
 
-    def _build_variables(self):
+    def _build_variables(self) -> None:
         m = self.model
-        A = self.activity_ids
-        T = range(self.num_times)
-        R = self.room_ids
-        S = self.staff_ids
 
-        # one start time per activity
-        self.x_time: Dict[Tuple[int, int], cp_model.IntVar] = {}
-        for a in A:
-            for t in T:
-                self.x_time[a, t] = m.NewBoolVar(f"x_time_a{a}_t{t}")
+        self.start: Dict[int, cp_model.IntVar] = {}
+        self.x: Dict[Tuple[int, int], cp_model.BoolVar] = {}
 
-        # one room per activity
-        self.x_room: Dict[Tuple[int, int], cp_model.IntVar] = {}
-        for a in A:
-            for r in R:
-                self.x_room[a, r] = m.NewBoolVar(f"x_room_a{a}_r{r}")
+        T_week = self.times_per_week
 
-        # one staff per activity
-        self.x_staff: Dict[Tuple[int, int], cp_model.IntVar] = {}
-        for a in A:
-            for s in S:
-                self.x_staff[a, s] = m.NewBoolVar(f"x_staff_a{a}_s{s}")
+        for a_id, act in self.inst.activities.items():
+            allowed = self.allowed_starts[a_id]
 
-        # coverage of activity across time indices
-        self.covers: Dict[Tuple[int, int], cp_model.IntVar] = {}
-        for a in A:
-            for t in T:
-                self.covers[a, t] = m.NewBoolVar(f"covers_a{a}_t{t}")
+            start_var = m.NewIntVar(0, T_week - 1, f"start_a{a_id}")
+            self.start[a_id] = start_var
 
-        # staff-time usage: y[a,s,t]
-        self.y_staff_time: Dict[Tuple[int, int, int], cp_model.IntVar] = {}
-        for a in A:
-            for s in S:
-                for t in T:
-                    self.y_staff_time[a, s, t] = m.NewBoolVar(f"y_a{a}_s{s}_t{t}")
+            bools: List[cp_model.BoolVar] = []
+            for t in allowed:
+                b = m.NewBoolVar(f"x_a{a_id}_t{t}")
+                self.x[a_id, t] = b
+                bools.append(b)
 
-        # room-time usage: z[a,r,t]
-        self.z_room_time: Dict[Tuple[int, int, int], cp_model.IntVar] = {}
-        for a in A:
-            for r in R:
-                for t in T:
-                    self.z_room_time[a, r, t] = m.NewBoolVar(f"z_a{a}_r{r}_t{t}")
+            # each activity chooses exactly one start time
+            m.Add(sum(bools) == 1)
+            # link integer start to chosen t
+            m.Add(start_var == sum(t * self.x[a_id, t] for t in allowed))
 
-        # group occupancy by week, day, slot
-        self.group_occ: Dict[Tuple[int, WeekIndex, Day, SlotIndex], cp_model.IntVar] = {}
-        for g_id in self.inst.groups.keys():
-            for w in self.weeks:
-                for d in self.days:
-                    for s in range(self.num_slots):
-                        self.group_occ[g_id, w, d, s] = m.NewBoolVar(f"group_occ_g{g_id}_w{w}_{d}_s{s}")
+    # ---------- constraints ----------
 
-        # day-active flags
-        self.group_day_active: Dict[Tuple[int, WeekIndex, Day], cp_model.IntVar] = {}
-        for g_id in self.inst.groups.keys():
-            for w in self.weeks:
-                for d in self.days:
-                    self.group_day_active[g_id, w, d] = m.NewBoolVar(f"group_active_g{g_id}_w{w}_{d}")
-
-        self.staff_day_active: Dict[Tuple[int, WeekIndex, Day], cp_model.IntVar] = {}
-        for s_id in self.staff_ids:
-            for w in self.weeks:
-                for d in self.days:
-                    self.staff_day_active[s_id, w, d] = m.NewBoolVar(f"staff_active_s{s_id}_w{w}_{d}")
-
-        # number of contiguous blocks per group/day/week and block-start flags
-        self.group_day_blocks: Dict[Tuple[int, WeekIndex, Day], cp_model.IntVar] = {}
-        self.group_start_block: Dict[Tuple[int, WeekIndex, Day, SlotIndex], cp_model.IntVar] = {}
-        for g_id in self.inst.groups.keys():
-            for w in self.weeks:
-                for d in self.days:
-                    self.group_day_blocks[g_id, w, d] = m.NewIntVar(0, self.num_slots, f"blocks_g{g_id}_w{w}_{d}")
-                    for s in range(self.num_slots):
-                        self.group_start_block[g_id, w, d, s] = m.NewBoolVar(f"start_block_g{g_id}_w{w}_{d}_s{s}")
-
-    # ---------- hard constraints ----------
-
-    def _add_hard_constraints(self):
+    def _add_constraints(self) -> None:
         m = self.model
         inst = self.inst
-        A = self.activity_ids
-        T = range(self.num_times)
-        R = self.room_ids
-        S = self.staff_ids
+        T_week = self.times_per_week
 
-        # exactly one start time, one room, one staff per activity
-        for a in A:
-            m.Add(sum(self.x_time[a, t] for t in T) == 1)
-            m.Add(sum(self.x_room[a, r] for r in R) == 1)
-            m.Add(sum(self.x_staff[a, s] for s in S) == 1)
-
-        # staff eligibility per activity
-        for a in A:
-            act = inst.activities[a]
-            allowed = set(act.staff_candidates)
-            for s in S:
-                if s not in allowed:
-                    m.Add(self.x_staff[a, s] == 0)
-
-        # room capacity/type/specialization
-        for a in A:
-            act = inst.activities[a]
-            groups = [inst.groups[g_id] for g_id in act.group_ids]
-            total_students = sum(g.size for g in groups)
-
-            for r_id in R:
-                room = inst.rooms[r_id]
-                if room.capacity < total_students:
-                    m.Add(self.x_room[a, r_id] == 0)
-
-                if act.kind == "LAB":
-                    if room.room_type not in ("COMPUTER_LAB", "SPECIALIZED_LAB"):
-                        m.Add(self.x_room[a, r_id] == 0)
-                    if act.requires_specialization:
-                        if act.requires_specialization not in room.specialization_tags:
-                            m.Add(self.x_room[a, r_id] == 0)
-                else:
-                    if room.room_type not in ("LECTURE", "TUTORIAL"):
-                        m.Add(self.x_room[a, r_id] == 0)
-
-        # week-1 rule: only lectures
-        for a in A:
-            act = inst.activities[a]
-            if act.kind in ("TUT", "LAB"):
-                for t_idx, (w, d, s) in enumerate(self.time_triples):
-                    if w == 1:
-                        m.Add(self.x_time[a, t_idx] == 0)
-
-        # duration: activity must not overflow the day
-        for a in A:
-            act = inst.activities[a]
-            if act.duration_slots > 1:
-                for t_idx, (w, d, s) in enumerate(self.time_triples):
-                    if s > self.num_slots - act.duration_slots:
-                        m.Add(self.x_time[a, t_idx] == 0)
-
-        # coverage: covers[a,t] based on chosen start time and duration
-        for a in A:
-            act = inst.activities[a]
-            duration = act.duration_slots
-            m.Add(sum(self.covers[a, t] for t in T) == duration)
-
-            for t_idx, (w, d, s) in enumerate(self.time_triples):
-                possible_starts = []
-                for s_idx, (ww2, d2, s2) in enumerate(self.time_triples):
-                    if ww2 != w or d2 != d:
-                        continue
-                    if s2 <= s < s2 + duration:
-                        possible_starts.append(s_idx)
-                if possible_starts:
-                    m.Add(self.covers[a, t_idx] <= sum(self.x_time[a, s_idx] for s_idx in possible_starts))
-                else:
-                    m.Add(self.covers[a, t_idx] == 0)
-
-        # link staff-time occupancy
-        for a in A:
-            for s in S:
-                for t_idx in T:
-                    y = self.y_staff_time[a, s, t_idx]
-                    m.Add(y <= self.covers[a, t_idx])
-                    m.Add(y <= self.x_staff[a, s])
-
-        # staff availability and no staff overlap
-        for s in S:
-            staff = inst.staff[s]
-            for t_idx, (w, day, slot) in enumerate(self.time_triples):
-                if day not in staff.available_days:
-                    for a in A:
-                        m.Add(self.y_staff_time[a, s, t_idx] == 0)
-                m.Add(sum(self.y_staff_time[a, s, t_idx] for a in A) <= 1)
-
-            # daily load
-            if staff.max_slots_per_day is not None:
-                for day in inst.days:
-                    indices = [idx for idx, (w, d, sl) in enumerate(self.time_triples) if d == day]
-                    m.Add(
-                        sum(self.y_staff_time[a, s, t] for a in A for t in indices)
-                        <= staff.max_slots_per_day
-                    )
-            # weekly load
-            if staff.max_slots_per_week is not None:
-                for w in inst.weeks:
-                    indices = [idx for idx, (ww, d, sl) in enumerate(self.time_triples) if ww == w]
-                    m.Add(
-                        sum(self.y_staff_time[a, s, t] for a in A for t in indices)
-                        <= staff.max_slots_per_week
-                    )
-
-        # link room-time occupancy and room overlap
-        for a in A:
-            for r in R:
-                for t_idx in T:
-                    z = self.z_room_time[a, r, t_idx]
-                    m.Add(z <= self.covers[a, t_idx])
-                    m.Add(z <= self.x_room[a, r])
-
-        for r in R:
-            room = inst.rooms[r]
-            for t_idx, (w, day, slot) in enumerate(self.time_triples):
-                if room.available_day_slots and (day, slot) not in room.available_day_slots:
-                    for a in A:
-                        m.Add(self.z_room_time[a, r, t_idx] == 0)
-                m.Add(sum(self.z_room_time[a, r, t_idx] for a in A) <= 1)
-
-        # no group overlap
+        # 1) no group overlaps
         for g_id in inst.groups.keys():
-            for t_idx in T:
-                m.Add(
-                    sum(
-                        self.covers[a, t_idx]
-                        for a in A
-                        if g_id in inst.activities[a].group_ids
-                    ) <= 1
-                )
+            for w in self.weeks:
+                acts = self.acts_by_group_week.get((g_id, w))
+                if not acts:
+                    continue
+                for tau in range(T_week):
+                    terms: List[cp_model.BoolVar] = []
+                    for a_id in acts:
+                        act = inst.activities[a_id]
+                        dur = act.duration
+                        for t in self.allowed_starts[a_id]:
+                            if t <= tau < t + dur:
+                                terms.append(self.x[a_id, t])
+                    if terms:
+                        m.Add(sum(terms) <= 1)
 
-        # group_occ = OR of covers for that group at (w,d,s)
-        for g_id in inst.groups.keys():
-            for t_idx, (w, d, s) in enumerate(self.time_triples):
-                occ = self.group_occ[g_id, w, d, s]
-                related = [a for a in A if g_id in inst.activities[a].group_ids]
-                if not related:
-                    m.Add(occ == 0)
-                else:
-                    for a in related:
-                        m.Add(occ >= self.covers[a, t_idx])
-                    m.Add(occ <= sum(self.covers[a, t_idx] for a in related))
-
-    # ---------- soft constraints and objective ----------
-
-    def _add_soft_constraints_and_objective(self):
-        m = self.model
-        inst = self.inst
-
-        # weights; tune as needed
-        W_STUD_FREE_DAYS = 10
-        W_STUD_FREE_MF = 5
-        W_STUD_GAPS = 5
-        W_STAFF_FREE_DAYS = 6
-        W_ACTIVE_DAYS = 3
-        W_EARLY_START = 2
-        W_BALANCE = 2
-        W_STABILITY = 1
-        W_ROOM_CONSISTENCY = 1
-
-        penalties = []
-
-        # group_day_active based on group_occ
-        for g_id in inst.groups.keys():
-            for w in inst.weeks:
-                for d in inst.days:
-                    var = self.group_day_active[g_id, w, d]
-                    occs = [self.group_occ[g_id, w, d, s] for s in range(self.num_slots)]
-                    for occ in occs:
-                        m.Add(var >= occ)
-                    if occs:
-                        m.Add(var <= sum(occs))
-
-        # staff_day_active based on y_staff_time
+        # 2) no staff overlaps
         for s_id in inst.staff.keys():
-            for w in inst.weeks:
-                for d in inst.days:
-                    var = self.staff_day_active[s_id, w, d]
-                    indices = [idx for idx, (ww, dd, sl) in enumerate(self.time_triples) if ww == w and dd == d]
-                    if not indices:
-                        m.Add(var == 0)
-                        continue
-                    for t_idx in indices:
-                        for a in self.activity_ids:
-                            m.Add(var >= self.y_staff_time[a, s_id, t_idx])
-                    m.Add(
-                        var
-                        <= sum(self.y_staff_time[a, s_id, t_idx] for a in self.activity_ids for t_idx in indices)
-                    )
+            for w in self.weeks:
+                acts = self.acts_by_staff_week.get((s_id, w))
+                if not acts:
+                    continue
+                for tau in range(T_week):
+                    terms: List[cp_model.BoolVar] = []
+                    for a_id in acts:
+                        act = inst.activities[a_id]
+                        dur = act.duration
+                        for t in self.allowed_starts[a_id]:
+                            if t <= tau < t + dur:
+                                terms.append(self.x[a_id, t])
+                    if terms:
+                        m.Add(sum(terms) <= 1)
 
-        # group_day_blocks and gaps (blocks >1 implies gaps)
-        for g_id in inst.groups.keys():
-            for w in inst.weeks:
-                for d in inst.days:
-                    # start-of-block flags
-                    for s in range(self.num_slots):
-                        start_flag = self.group_start_block[g_id, w, d, s]
-                        occ_cur = self.group_occ[g_id, w, d, s]
-                        if s == 0:
-                            m.Add(start_flag <= occ_cur)
-                            m.Add(start_flag >= occ_cur)
-                        else:
-                            occ_prev = self.group_occ[g_id, w, d, s - 1]
-                            m.Add(start_flag <= occ_cur)
-                            m.Add(start_flag <= 1 - occ_prev)
-                            m.Add(start_flag >= occ_cur - occ_prev)
-
-                    blocks_var = self.group_day_blocks[g_id, w, d]
-                    m.Add(blocks_var == sum(self.group_start_block[g_id, w, d, s] for s in range(self.num_slots)))
-
-        # 1) student free days (any days)
-        for g_id, g in inst.groups.items():
-            for w in inst.weeks:
-                free_days = m.NewIntVar(0, len(inst.days), f"free_days_g{g_id}_w{w}")
-                m.Add(
-                    free_days
-                    == sum(1 - self.group_day_active[g_id, w, d] for d in inst.days)
-                )
-                shortfall = m.NewIntVar(0, len(inst.days), f"free_shortfall_g{g_id}_w{w}")
-                m.Add(shortfall >= g.preferred_free_days - free_days)
-                m.Add(shortfall >= 0)
-                penalties.append(W_STUD_FREE_DAYS * shortfall)
-
-        # 2) student free days on Mon–Fri preferred
-        workdays = [d for d in inst.days if d in {"MON", "TUE", "WED", "THU", "FRI"}]
-        for g_id, g in inst.groups.items():
-            for w in inst.weeks:
-                free_mf = m.NewIntVar(0, len(workdays), f"free_mf_g{g_id}_w{w}")
-                m.Add(
-                    free_mf
-                    == sum(1 - self.group_day_active[g_id, w, d] for d in workdays)
-                )
-                shortfall_mf = m.NewIntVar(0, len(workdays), f"free_mf_shortfall_g{g_id}_w{w}")
-                m.Add(shortfall_mf >= g.preferred_free_days - free_mf)
-                m.Add(shortfall_mf >= 0)
-                penalties.append(W_STUD_FREE_MF * shortfall_mf)
-
-        # 3) student gaps (blocks-1 per day)
-        for g_id in inst.groups.keys():
-            for w in inst.weeks:
-                for d in inst.days:
-                    blocks = self.group_day_blocks[g_id, w, d]
-                    gap_pen = m.NewIntVar(0, self.num_slots, f"gap_pen_g{g_id}_w{w}_{d}")
-                    m.Add(gap_pen >= blocks - 1)
-                    m.Add(gap_pen >= 0)
-                    penalties.append(W_STUD_GAPS * gap_pen)
-
-        # 4) staff free days (>=1)
-        for s_id in inst.staff.keys():
-            for w in inst.weeks:
-                free_days = m.NewIntVar(0, len(inst.days), f"staff_free_days_s{s_id}_w{w}")
-                m.Add(
-                    free_days
-                    == sum(1 - self.staff_day_active[s_id, w, d] for d in inst.days)
-                )
-                shortfall = m.NewIntVar(0, len(inst.days), f"staff_free_shortfall_s{s_id}_w{w}")
-                m.Add(shortfall >= 1 - free_days)
-                m.Add(shortfall >= 0)
-                penalties.append(W_STAFF_FREE_DAYS * shortfall)
-
-        # 5) minimize active days per group (compress days)
-        for g_id in inst.groups.keys():
-            for w in inst.weeks:
-                active_days = m.NewIntVar(0, len(inst.days), f"active_days_g{g_id}_w{w}")
-                m.Add(
-                    active_days
-                    == sum(self.group_day_active[g_id, w, d] for d in inst.days)
-                )
-                excess = m.NewIntVar(0, len(inst.days), f"active_excess_g{g_id}_w{w}")
-                m.Add(excess >= active_days - 3)
-                m.Add(excess >= 0)
-                penalties.append(W_ACTIVE_DAYS * excess)
-
-        # 6) early starts (group uses slot 0 when later slots also used)
-        for g_id in inst.groups.keys():
-            for w in inst.weeks:
-                for d in inst.days:
-                    occ0 = self.group_occ[g_id, w, d, 0]
-                    later = m.NewBoolVar(f"later_occ_g{g_id}_w{w}_{d}")
-                    m.Add(
-                        later
-                        <= sum(self.group_occ[g_id, w, d, s] for s in range(1, self.num_slots))
-                    )
-                    for s in range(1, self.num_slots):
-                        m.Add(later >= self.group_occ[g_id, w, d, s])
-
-                    early_pen = m.NewIntVar(0, 1, f"early_pen_g{g_id}_w{w}_{d}")
-                    m.Add(early_pen >= occ0 + later - 1)
-                    m.Add(early_pen <= occ0)
-                    m.Add(early_pen <= later)
-                    penalties.append(W_EARLY_START * early_pen)
-
-        # 7) daily load balance (avoid very heavy days)
-        for g_id in inst.groups.keys():
-            for w in inst.weeks:
-                for d in inst.days:
-                    load = m.NewIntVar(0, self.num_slots, f"load_g{g_id}_w{w}_{d}")
-                    m.Add(
-                        load
-                        == sum(self.group_occ[g_id, w, d, s] for s in range(self.num_slots))
-                    )
-                    overload = m.NewIntVar(0, self.num_slots, f"overload_g{g_id}_w{w}_{d}")
-                    m.Add(overload >= load - 3)   # up to 3 slots per day is fine
-                    m.Add(overload >= 0)
-                    penalties.append(W_BALANCE * overload)
-
-        # 8) week-to-week stability of active days
-        for g_id in inst.groups.keys():
-            for w_index in range(1, len(self.weeks)):
-                w_prev = self.weeks[w_index - 1]
-                w_curr = self.weeks[w_index]
-                for d in inst.days:
-                    a = self.group_day_active[g_id, w_curr, d]
-                    b = self.group_day_active[g_id, w_prev, d]
-                    delta = m.NewIntVar(0, 1, f"stability_delta_g{g_id}_w{w_prev}_{w_curr}_{d}")
-                    m.Add(delta >= a - b)
-                    m.Add(delta >= b - a)
-                    penalties.append(W_STABILITY * delta)
-
-        # 9) room consistency: same course/group/kind should use few rooms
-        key_to_acts: Dict[Tuple[int, int, str], List[int]] = {}
-        for a_id in self.activity_ids:
-            act = inst.activities[a_id]
-            for g_id in act.group_ids:
-                key = (act.course_id, g_id, act.kind)
-                key_to_acts.setdefault(key, []).append(a_id)
-
-        for key, acts in key_to_acts.items():
-            if len(acts) <= 1:
+        # 3) staff weekly load limits (used for block profs)
+        for s_id, staff in inst.staff.items():
+            if staff.max_slots_per_week is None:
                 continue
-            use_room: Dict[int, cp_model.IntVar] = {}
-            for r_id in self.room_ids:
-                var = m.NewBoolVar(f"use_room_c{key[0]}_g{key[1]}_{key[2]}_r{r_id}")
-                use_room[r_id] = var
+            for w in self.weeks:
+                acts = self.acts_by_staff_week.get((s_id, w))
+                if not acts:
+                    continue
+                load_terms: List[cp_model.IntVar] = []
                 for a_id in acts:
-                    m.Add(var >= self.x_room[a_id, r_id])
-                m.Add(var <= sum(self.x_room[a_id, r_id] for a_id in acts))
-            rooms_used = m.NewIntVar(0, len(self.room_ids), f"rooms_used_c{key[0]}_g{key[1]}_{key[2]}")
-            m.Add(rooms_used == sum(use_room[r] for r in self.room_ids))
-            excess_rooms = m.NewIntVar(0, len(self.room_ids), f"excess_rooms_c{key[0]}_g{key[1]}_{key[2]}")
-            m.Add(excess_rooms >= rooms_used - 1)
-            m.Add(excess_rooms >= 0)
-            penalties.append(W_ROOM_CONSISTENCY * excess_rooms)
+                    act = inst.activities[a_id]
+                    for t in self.allowed_starts[a_id]:
+                        load_terms.append(act.duration * self.x[a_id, t])
+                if load_terms:
+                    m.Add(sum(load_terms) <= staff.max_slots_per_week)
 
-        # final objective
-        m.Minimize(sum(penalties))
+        # 4) room capacities per slot, including per-tag specialisation for labs
+        for w in self.weeks:
+            acts_w = self.activities_by_week[w]
+            if not acts_w:
+                continue
 
-    # ---------- solve and extract ----------
+            for tau in range(T_week):
+                lab_terms_all: List[cp_model.BoolVar] = []
+                lec_terms_all: List[cp_model.BoolVar] = []
+                big_lec_terms: List[cp_model.BoolVar] = []
+                tag_terms: Dict[str, List[cp_model.BoolVar]] = {}
+
+                for a_id in acts_w:
+                    act = inst.activities[a_id]
+                    dur = act.duration
+                    allowed = self.allowed_starts[a_id]
+                    for t in allowed:
+                        if not (t <= tau < t + dur):
+                            continue
+
+                        if act.kind == "LAB":
+                            lab_terms_all.append(self.x[a_id, t])
+                            if act.requires_specialization:
+                                tag_terms.setdefault(act.requires_specialization, []).append(
+                                    self.x[a_id, t]
+                                )
+                        else:
+                            cls = self.room_class[a_id]
+                            if cls == "BIG_LEC":
+                                big_lec_terms.append(self.x[a_id, t])
+                                lec_terms_all.append(self.x[a_id, t])
+                            else:
+                                lec_terms_all.append(self.x[a_id, t])
+
+                # total lab capacity (all lab rooms)
+                if lab_terms_all and self.num_lab_rooms > 0:
+                    m.Add(sum(lab_terms_all) <= self.num_lab_rooms)
+
+                # per-tag specialised lab capacity
+                for tag, terms in tag_terms.items():
+                    cap = len(self.special_lab_rooms_by_tag.get(tag, []))
+                    if cap > 0:
+                        m.Add(sum(terms) <= cap)
+
+                # big lecture rooms
+                if big_lec_terms and self.num_big_lec_rooms > 0:
+                    m.Add(sum(big_lec_terms) <= self.num_big_lec_rooms)
+
+                # total lecture rooms (for lec+tut)
+                if lec_terms_all and self.num_lec_rooms > 0:
+                    m.Add(sum(lec_terms_all) <= self.num_lec_rooms)
+
+        # pure feasibility; soft stuff is handled by local search
+        # so no CP objective here
+
+    # ---------- solving and extraction ----------
 
     def solve(self, time_limit_seconds: Optional[float] = None):
         solver = cp_model.CpSolver()
@@ -504,46 +277,207 @@ class TimetableSolver:
         return solver, status
 
     def extract_solution(self, solver: cp_model.CpSolver):
-        """
-        Returns:
-          schedule[a_id] = {
-            "room_id", "staff_id", "week", "day", "slot", "duration",
-            "group_ids", "course_id", "kind"
-          }
-        """
         inst = self.inst
-        schedule = {}
+        schedule: Dict[int, Dict[str, object]] = {}
+
         for a_id, act in inst.activities.items():
-            time_idx = None
-            for t_idx in range(self.num_times):
-                if solver.BooleanValue(self.x_time[a_id, t_idx]):
-                    time_idx = t_idx
-                    break
-            if time_idx is None:
-                continue
-            w, d, s = self.time_triples[time_idx]
-
-            room_id = None
-            for r_id in self.room_ids:
-                if solver.BooleanValue(self.x_room[a_id, r_id]):
-                    room_id = r_id
-                    break
-
-            staff_id = None
-            for s_id in self.staff_ids:
-                if solver.BooleanValue(self.x_staff[a_id, s_id]):
-                    staff_id = s_id
-                    break
+            t = solver.Value(self.start[a_id])
+            day_index = t // self.slots_per_day
+            slot = t % self.slots_per_day
+            day = self.days[day_index]
+            staff_id = self.activity_staff[a_id]
 
             schedule[a_id] = {
-                "room_id": room_id,
+                "room_id": None,  # filled later
                 "staff_id": staff_id,
-                "week": w,
-                "day": d,
-                "slot": s,
-                "duration": act.duration_slots,
-                "group_ids": act.group_ids,
+                "week": act.week,
+                "day": day,
+                "slot": slot,
+                "duration": act.duration,
+                "group_ids": list(act.group_ids),
                 "course_id": act.course_id,
                 "kind": act.kind,
             }
+
+        assign_rooms_greedily(inst, schedule)
         return schedule
+
+
+# ---------- greedy room assignment ----------
+
+
+def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]) -> None:
+    """
+    Assign a concrete room to each activity, slot by slot.
+
+    Rules:
+      - labs go to lab rooms (specialised first, then generic)
+      - big lectures go to big lecture rooms
+      - all other lectures/tutorials go to lecture rooms
+      - obey capacity
+      - if a specialised lab has no specialised room left,
+        fall back to any free lab room with enough capacity
+        before failing.
+    """
+
+    days = inst.days
+    weeks = inst.weeks
+    slots_per_day = inst.slots_per_day
+
+    # room lists
+    lecture_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE"]
+    big_lecture_rooms = [
+        r_id for r_id, r in inst.rooms.items()
+        if r.room_type == "LECTURE" and r.capacity >= 200
+    ]
+    lab_rooms = [
+        r_id for r_id, r in inst.rooms.items()
+        if r.room_type in ("SPECIALIZED_LAB", "COMPUTER_LAB")
+    ]
+    spec_rooms_by_tag: Dict[str, List[int]] = {}
+    for r_id, room in inst.rooms.items():
+        if room.room_type == "SPECIALIZED_LAB":
+            for tag in room.specialization_tags:
+                spec_rooms_by_tag.setdefault(tag, []).append(r_id)
+
+    # map (week, day, slot) -> activities covering that slot
+    slot_acts: Dict[Tuple[int, str, int], List[int]] = {}
+    for a_id, info in schedule.items():
+        week = info["week"]
+        day = info["day"]
+        start_slot = info["slot"]
+        duration = info["duration"]
+        for off in range(duration):
+            s = start_slot + off
+            key = (week, day, s)
+            slot_acts.setdefault(key, []).append(a_id)
+
+    # total students per activity
+    total_students: Dict[int, int] = {}
+    for a_id, info in schedule.items():
+        total_students[a_id] = sum(inst.groups[g].size for g in info["group_ids"])
+
+    # assign per slot
+    for w in weeks:
+        for d in days:
+            for s in range(slots_per_day):
+                key = (w, d, s)
+                acts = slot_acts.get(key)
+                if not acts:
+                    continue
+
+                # rooms already fixed for these activities
+                occupied_rooms = {
+                    schedule[a_id]["room_id"]
+                    for a_id in acts
+                    if schedule[a_id]["room_id"] is not None
+                }
+                occupied_rooms.discard(None)
+
+                unassigned = [a_id for a_id in acts if schedule[a_id]["room_id"] is None]
+                if not unassigned:
+                    continue
+
+                # classify
+                labs_spec_by_tag: Dict[str, List[int]] = {}
+                labs_generic: List[int] = []
+                big_lecs: List[int] = []
+                small_lecs: List[int] = []
+
+                for a_id in unassigned:
+                    act = inst.activities[a_id]
+                    size = total_students[a_id]
+
+                    if act.kind == "LAB":
+                        tag = act.requires_specialization
+                        if tag:
+                            labs_spec_by_tag.setdefault(tag, []).append(a_id)
+                        else:
+                            labs_generic.append(a_id)
+                    else:
+                        if size > 80:
+                            big_lecs.append(a_id)
+                        else:
+                            small_lecs.append(a_id)
+
+                # specialised labs first
+                for tag, acts_tag in labs_spec_by_tag.items():
+                    spec_rooms = spec_rooms_by_tag.get(tag, [])
+                    available_spec = [r for r in spec_rooms if r not in occupied_rooms]
+                    available_labs = [r for r in lab_rooms if r not in occupied_rooms]
+
+                    for a_id in acts_tag:
+                        size = total_students[a_id]
+                        room_id = None
+
+                        # try specialised rooms of that tag
+                        for r in list(available_spec):
+                            if inst.rooms[r].capacity >= size:
+                                room_id = r
+                                available_spec.remove(r)
+                                break
+
+                        # fallback: any lab room
+                        if room_id is None:
+                            for r in list(available_labs):
+                                if inst.rooms[r].capacity >= size:
+                                    room_id = r
+                                    available_labs.remove(r)
+                                    break
+
+                        if room_id is None:
+                            raise ValueError(
+                                f"Failed to assign specialised lab for activity {a_id}"
+                            )
+
+                        schedule[a_id]["room_id"] = room_id
+                        occupied_rooms.add(room_id)
+
+                # remaining generic labs
+                available_labs = [r for r in lab_rooms if r not in occupied_rooms]
+                for a_id in labs_generic:
+                    size = total_students[a_id]
+                    room_id = None
+                    for r in list(available_labs):
+                        if inst.rooms[r].capacity >= size:
+                            room_id = r
+                            available_labs.remove(r)
+                            break
+                    if room_id is None:
+                        raise ValueError(f"Failed to assign lab room for activity {a_id}")
+                    schedule[a_id]["room_id"] = room_id
+                    occupied_rooms.add(room_id)
+
+                # big lectures
+                available_big = [r for r in big_lecture_rooms if r not in occupied_rooms]
+                for a_id in big_lecs:
+                    size = total_students[a_id]
+                    room_id = None
+                    for r in list(available_big):
+                        if inst.rooms[r].capacity >= size:
+                            room_id = r
+                            available_big.remove(r)
+                            break
+                    if room_id is None:
+                        raise ValueError(
+                            f"Failed to assign big lecture room for activity {a_id}"
+                        )
+                    schedule[a_id]["room_id"] = room_id
+                    occupied_rooms.add(room_id)
+
+                # remaining small lectures/tutorials
+                available_lec = [r for r in lecture_rooms if r not in occupied_rooms]
+                for a_id in small_lecs:
+                    size = total_students[a_id]
+                    room_id = None
+                    for r in list(available_lec):
+                        if inst.rooms[r].capacity >= size:
+                            room_id = r
+                            available_lec.remove(r)
+                            break
+                    if room_id is None:
+                        raise ValueError(
+                            f"Failed to assign lecture room for activity {a_id}"
+                        )
+                    schedule[a_id]["room_id"] = room_id
+                    occupied_rooms.add(room_id)
