@@ -63,7 +63,7 @@ def extract_day(inst: Instance, solver: TimetableSolver, cp_solver: cp_model.CpS
 
 
 def test_staff_availability_is_respected() -> None:
-    days = ["MON", "TUE"]
+    days = ["MON", "TUE", "WED"]
     groups = {
         1: Group(id=1, name="G1", program_id=1, size=30, course_ids=[1]),
     }
@@ -72,7 +72,7 @@ def test_staff_availability_is_respected() -> None:
             id=1,
             name="Prof-1",
             is_prof=True,
-            available_days={"TUE"},
+            available_days={"TUE", "WED"},
             max_slots_per_day=None,
             max_slots_per_week=None,
             can_teach_courses={1},
@@ -120,7 +120,7 @@ def test_staff_availability_is_respected() -> None:
     solver = TimetableSolver(inst)
     cp_solver, status = solver.solve()
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
-    assert extract_day(inst, solver, cp_solver, 1) == "TUE"
+    assert extract_day(inst, solver, cp_solver, 1) in {"TUE", "WED"}
 
 
 def test_staff_daily_max_limit_enforced() -> None:
@@ -1146,5 +1146,5 @@ def test_activity_with_no_allowed_start_times_raises() -> None:
         activities=activities,
     )
 
-    with pytest.raises(ValueError, match="No allowed start times"):
+    with pytest.raises(ValueError, match="No allowed starts"):
         TimetableSolver(inst)

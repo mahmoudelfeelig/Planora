@@ -591,6 +591,8 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         room_id = None
                         if spec_rooms:
                             room_id = spec_rooms.pop(0)
+                            if room_id in any_labs:
+                                any_labs.remove(room_id)
                         elif any_labs:
                             room_id = any_labs.pop(0)
                         else:
