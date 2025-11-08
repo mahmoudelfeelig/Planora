@@ -13,6 +13,11 @@ from domain import (
     Room,
     Activity,
 )
+import json
+import pickle
+from dataclasses import is_dataclass
+from pathlib import Path
+from typing import Dict, Any, List
 
 
 DAYS: List[str] = ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
@@ -610,3 +615,67 @@ def _check_group_week_load(inst: Instance) -> None:
                 f"Generator bug: group {g_id} in week {w} uses "
                 f"{used} slots (> {max_slots_allowed})"
             )
+
+
+# ===== JSON I/O + CLI additions =====
+
+def _conv(obj):
+    # dataclasses.asdict-like but convert sets to sorted lists and keep dict keys as strings
+    if is_dataclass(obj):
+        return { k: _conv(getattr(obj, k)) for k in obj.__annotations__.keys() }  # type: ignore
+    if isinstance(obj, dict):
+        return { str(k): _conv(v) for k, v in obj.items() }
+    if isinstance(obj, (list, tuple)):
+        return [ _conv(x) for x in obj ]
+    if isinstance(obj, set):
+        return sorted(_conv(x) for x in obj)
+    return obj
+
+def instance_to_json(inst: Instance) -> Dict[str, Any]:
+    return {
+        "days": inst.days,
+        "slots_per_day": inst.slots_per_day,
+        "weeks": inst.weeks,
+        "programs": _conv(inst.programs),
+        "groups": _conv(inst.groups),
+        "courses": _conv(inst.courses),
+        "staff": _conv(inst.staff),
+        "rooms": _conv(inst.rooms),
+        "activities": _conv(inst.activities),
+    }
+
+def write_instance(inst: Instance, out_path: str | Path) -> None:
+    path = Path(out_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix.lower() == ".json":
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(instance_to_json(inst), f, ensure_ascii=False, indent=2)
+    elif path.suffix.lower() == ".pkl":
+        with path.open("wb") as f:
+            pickle.dump(inst, f)
+    else:
+        raise SystemExit(f"Unsupported output format: {path.suffix}")
+
+def _cli_main(argv: List[str] | None = None) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate a timetable instance.")
+    parser.add_argument("--mode", default="target_case",
+                        choices=["small_demo","mixed_large","block_profs","labs_only","random","target_case"],
+                        help="Scenario to generate")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed override for 'random' mode")
+    parser.add_argument("--out", required=True, help="Output path (.json or .pkl)")
+    args = parser.parse_args(argv)
+
+    # use the existing function defined above
+    inst = generate_instance(args.mode)
+
+    if args.mode == "random" and args.seed is not None:
+        import random as _random
+        _random.seed(args.seed)
+        inst = generate_instance(args.mode)
+
+    write_instance(inst, args.out)
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(_cli_main())
