@@ -43,22 +43,27 @@ def _has_sun(days: list[str]) -> bool:
 
 def normalize_instance_for_spec(inst: Instance) -> None:
     """
-    Make the generated instance compatible with the new hard rules:
-      - Ensure 'SUN' exists in inst.days for the 'Sunday off' rule.
-      - Give every staffer availability on all listed days; the solver
-        will enforce Sunday off + one extra free day (or ≤2 days for block profs).
+    Make the generated instance compatible with the documented hard rules:
+      - Strip Sunday from the working week (teaching is not allowed on Sunday).
+      - Preserve staff availability, normalized to the instance's days; fill with all
+        valid days only when it would otherwise be empty.
       - Quick sanity for specialized lab tags: warn if a LAB requires a tag with no room.
     """
-    # 1) Ensure 'SUN' in days list
-    if not _has_sun(inst.days):
-        inst.days = list(inst.days) + ["SUN"]
+    original_days = list(inst.days)
+    pruned_days = [d for d in original_days if not d.upper().startswith("SUN")]
+    if len(pruned_days) != len(original_days):
+        print("[WARN] Removed Sunday from inst.days; teaching is not allowed on Sunday.")
+    inst.days = pruned_days
 
-    # 2) Set all staff available on all days (solver applies the actual off-days)
-    all_days = list(inst.days)
+    valid_days = set(inst.days)
     for s in inst.staff.values():
-        s.available_days = list(all_days)
+        avail = {d for d in getattr(s, "available_days", []) or [] if d in valid_days}
+        if not avail and valid_days:
+            print(f"[WARN] Staff '{s.name}' has no valid availability; defaulting to all days.")
+            avail = set(valid_days)
+        s.available_days = avail
 
-    # 3) Warn if any specialized lab tag has no room (keeps your strict matching)
+    # Warn if any specialized lab tag has no room (keeps your strict matching)
     tags_present = defaultdict(int)
     for r in inst.rooms.values():
         if getattr(r, "room_type", None) == "SPECIALIZED_LAB":
@@ -110,18 +115,23 @@ def _is_block_prof(staff) -> bool:
 def check_staff_weekly_capacity(inst: Instance) -> None:
     """
     Prints warnings when any staff's required slot load per week exceeds
-    what is schedulable under the hard rules.
+    what is schedulable under availability plus daily/weekly caps.
     """
-    days = inst.days
     S = inst.slots_per_day
-    has_sun = _has_sun(days)
+    valid_days = [d for d in inst.days if not d.upper().startswith("SUN")]
     cap_by_staff: Dict[int, int] = {}
     for sid, s in inst.staff.items():
-        if _is_block_prof(s):
-            cap_by_staff[sid] = 2 * S  # ≤2 days * 5 slots per your model
-        else:
-            work_days = len(days) - (1 if has_sun else 0) - 1  # Sunday + one extra free day
-            cap_by_staff[sid] = work_days * S
+        avail = {d for d in getattr(s, "available_days", []) or [] if d in valid_days}
+        if not avail:
+            avail = set(valid_days)
+
+        usable_days = min(len(avail), 2 if _is_block_prof(s) else len(avail))
+        daily_cap = S if s.max_slots_per_day is None else min(S, int(s.max_slots_per_day))
+        cap = usable_days * daily_cap
+        weekly_cap = getattr(s, "max_slots_per_week", None)
+        if weekly_cap is not None:
+            cap = min(cap, int(weekly_cap))
+        cap_by_staff[sid] = cap
 
     load_by_staff_week: Dict[tuple, int] = defaultdict(int)
     for a in inst.activities.values():

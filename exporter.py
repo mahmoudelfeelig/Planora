@@ -3,7 +3,7 @@ from typing import Dict, Any, Iterable, List, Optional
 import csv
 import re
 from pathlib import Path
-from datetime import date, time, datetime, timedelta
+from datetime import date, time, datetime, timedelta, timezone
 
 # Optional DOCX
 try:
@@ -234,7 +234,9 @@ def _slot_dt(anchor_monday: date, day_name: str, slot_index: int, slot_minutes: 
     return start, end
 
 def _ical_dt(dt: datetime) -> str:
-    return dt.strftime("%Y%m%dT%H%M%S")
+    if dt.tzinfo is None:
+        return dt.strftime("%Y%m%dT%H%M%S")
+    return dt.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 def _ics_header(name: str) -> str:
     return "\n".join([
@@ -251,7 +253,7 @@ def _ics_event(uid: str, summary: str, start: datetime, end: datetime, location:
     lines = [
         "BEGIN:VEVENT",
         f"UID:{uid}",
-        f"DTSTAMP:{_ical_dt(datetime.utcnow())}",
+        f"DTSTAMP:{_ical_dt(datetime.now(timezone.utc))}",
         f"DTSTART:{_ical_dt(start)}",
         f"DTEND:{_ical_dt(end)}",
         f"SUMMARY:{summary}",

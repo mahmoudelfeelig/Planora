@@ -12,6 +12,7 @@ Generates and edits 12-week university timetables (lectures, tutorials, and labs
 - `engine_cli.py`: small worker process used by the UI to run the solver out-of-process.
 - `exporter.py`: exports schedules to DOCX (optional dependency), CSV, and per-entity ICS files.
 - `tests/`: pytest suite that checks key behaviors and constraints.
+- `PROGRAM_SPECS.md` / `SCHEDULE_SPECS.md`: checklist-format specs for quick verification (supersede the DOCX copies).
 
 ## Key concepts
 
@@ -77,4 +78,3 @@ Optional solver time limit (seconds) for the UI worker:
 
 - The built-in generator focuses on `LEC_TUT` and `LAB_ONLY` course patterns; other structure types can be added by extending `generator.py`.
 - Some features commonly found in full timetabling products (data import/edit screens, scenario persistence, PDF export, REST API) are not implemented here.
-

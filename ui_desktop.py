@@ -34,6 +34,12 @@ from generator import generate_instance
 from metaheuristics import LocalSearchImprover
 from exporter import export_group_schedules_to_docx
 from domain import Instance
+from main import normalize_instance_for_spec, check_staff_weekly_capacity, stamp_instance_time
+
+# Default time grid for exports/labels (matches main.py)
+DAY_START = "08:30"
+SLOT_MINUTES = 90
+BREAK_MINUTES = 0
 
 
 # ---------- Edit dialog ----------
@@ -357,7 +363,11 @@ class MainWindow(QMainWindow):
 
         mode = self.mode_combo.currentText()
         try:
-            self.inst = generate_instance(mode=mode)
+            inst = generate_instance(mode=mode)
+            normalize_instance_for_spec(inst)
+            stamp_instance_time(inst, DAY_START, SLOT_MINUTES, BREAK_MINUTES)
+            check_staff_weekly_capacity(inst)  # logs warnings to stdout
+            self.inst = inst
         except Exception as e:
             traceback.print_exc()
             QMessageBox.critical(self, "Generate error", str(e))

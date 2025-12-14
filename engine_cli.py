@@ -13,11 +13,14 @@ def _map_status_to_ui(status: int) -> int:
     """
     The UI expects 0 for FEASIBLE and 4 for OPTIMAL.
     OR-Tools uses enum ints; we translate to the UI's convention.
-    Anything else is passed through unchanged so failures surface clearly.
+    Unknown/other statuses are passed through unchanged so failures surface clearly,
+    but UNKNOWN (0) is remapped to a non-feasible sentinel to avoid looking like FEASIBLE.
     """
     try:
         # Lazy import to avoid hard dependency here
         from ortools.sat.python import cp_model
+        if status == cp_model.UNKNOWN:
+            return -1  # prevent UNKNOWN from being mistaken for FEASIBLE (0)
         if status == cp_model.OPTIMAL:
             return 4
         if status == cp_model.FEASIBLE:
@@ -26,6 +29,8 @@ def _map_status_to_ui(status: int) -> int:
         # If OR-Tools constants aren't available for some reason,
         # keep the raw status so the UI will reject non-(0,4).
         pass
+    if status == 0:
+        return -1  # keep UNKNOWN distinct from UI's FEASIBLE code
     return status
 
 

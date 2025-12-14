@@ -14,8 +14,8 @@ class TimetableSolver:
       - Weekly grid of D*S slots. Each activity picks one start in staff-available days.
       - Interval variables for groups and staff with NoOverlap to prevent conflicts.
       - Sunday, if present, is never scheduled.
-      - Non-block staff: exactly one free day per week chosen by the model.
       - Block staff: at most two distinct teaching days per week.
+      - Optional weekly/daily load caps via staff settings.
       - Optional weekly load caps via staff.max_slots_per_week.
       - Clusters: LEC, TUT, LAB can be clustered; members share the same start in that week.
 
@@ -165,8 +165,7 @@ class TimetableSolver:
         - For any course that has lectures, the total LEC slot count across the semester
             must equal the total TUT slot count per group for that course.
             (Lectures are shared; tutorials are per group.)
-        - Week-1 should be lectures-only. We warn (do not fail) if violated so the
-            model can still run on older instances.
+        - Week-1 must be lectures-only; tutorials/labs in the first week are rejected.
         """
         inst = self.inst
         first_week = inst.weeks[0] if inst.weeks else None
@@ -213,15 +212,18 @@ class TimetableSolver:
                 "Mismatches: " + ", ".join(mismatches)
             )
 
-        # Soft check: week-1 should be lectures only
+        # Enforce: week-1 contains lectures only
         if first_week is not None:
             bad_first = [
-                (a.course_id, a.kind) for a in inst.activities.values()
+                (a.id, a.course_id, a.kind) for a in inst.activities.values()
                 if a.week == first_week and a.kind in ("TUT", "LAB")
             ]
             if bad_first:
-                print(f"[WARN] Week {first_week} contains non-lecture activities; "
-                    f"{len(bad_first)} tutorial/lab entries found. Proceeding anyway.")
+                kinds = sorted({k for _, _, k in bad_first})
+                raise ValueError(
+                    f"Week {first_week} must be lectures only; "
+                    f"found {len(bad_first)} tutorial/lab activities (kinds={kinds})."
+                )
 
 
     def _precompute(self) -> None:
@@ -345,21 +347,23 @@ class TimetableSolver:
             rooms: List[int] = []
             if act.kind == "LAB":
                 req = getattr(act, "requires_specialization", None)
+                lab_candidates = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("SPECIALIZED_LAB", "COMPUTER_LAB")]
                 if req:
-                    for r_id, r in inst.rooms.items():
-                        if r.room_type == "SPECIALIZED_LAB" and req in getattr(r, "specialization_tags", []) or []:
+                    for r_id in lab_candidates:
+                        tags = getattr(inst.rooms[r_id], "specialization_tags", []) or []
+                        if req in tags:
                             rooms.append(r_id)
+                    if not rooms:
+                        raise ValueError(f"Activity {a_id} requires specialized lab '{req}' but no matching room exists")
                 else:
-                    for r_id, r in inst.rooms.items():
-                        if r.room_type in ("SPECIALIZED_LAB", "COMPUTER_LAB"):
-                            rooms.append(r_id)
+                    rooms = lab_candidates
             elif act.kind == "TUT":
                 rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("TUTORIAL", "LECTURE")]
             else:  # LEC
                 rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE"]
 
             if not rooms:
-                rooms = list(inst.rooms.keys())
+                raise ValueError(f"No eligible rooms for activity {a_id} ({act.kind})")
             self.allowed_rooms[a_id] = rooms
 
     def _build_variables(self) -> None:

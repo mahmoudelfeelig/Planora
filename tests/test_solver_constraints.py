@@ -369,7 +369,7 @@ def test_staff_overlaps_are_blocked() -> None:
         1: Activity(
             id=1,
             course_id=1,
-            week=1,
+            week=2,
             kind="TUT",
             duration=1,
             group_ids=[1],
@@ -380,7 +380,7 @@ def test_staff_overlaps_are_blocked() -> None:
         2: Activity(
             id=2,
             course_id=2,
-            week=1,
+            week=2,
             kind="TUT",
             duration=1,
             group_ids=[2],
@@ -392,7 +392,7 @@ def test_staff_overlaps_are_blocked() -> None:
     inst = build_instance(
         days=["MON"],
         slots_per_day=1,
-        weeks=[1],
+        weeks=[1, 2],
         groups=groups,
         staff=staff,
         rooms=rooms,
@@ -717,7 +717,7 @@ def test_lab_room_capacity_limits_parallel_labs() -> None:
         1: Activity(
             id=1,
             course_id=1,
-            week=1,
+            week=2,
             kind="LAB",
             duration=1,
             group_ids=[1],
@@ -728,7 +728,7 @@ def test_lab_room_capacity_limits_parallel_labs() -> None:
         2: Activity(
             id=2,
             course_id=2,
-            week=1,
+            week=2,
             kind="LAB",
             duration=1,
             group_ids=[2],
@@ -740,7 +740,7 @@ def test_lab_room_capacity_limits_parallel_labs() -> None:
     inst = build_instance(
         days=["MON"],
         slots_per_day=1,
-        weeks=[1],
+        weeks=[1, 2],
         groups=groups,
         staff=staff,
         rooms=rooms,
@@ -809,7 +809,7 @@ def test_specialized_lab_capacity_honours_per_tag_limits() -> None:
         1: Activity(
             id=1,
             course_id=1,
-            week=1,
+            week=2,
             kind="LAB",
             duration=1,
             group_ids=[1],
@@ -820,7 +820,7 @@ def test_specialized_lab_capacity_honours_per_tag_limits() -> None:
         2: Activity(
             id=2,
             course_id=2,
-            week=1,
+            week=2,
             kind="LAB",
             duration=1,
             group_ids=[2],
@@ -832,7 +832,7 @@ def test_specialized_lab_capacity_honours_per_tag_limits() -> None:
     inst = build_instance(
         days=["MON"],
         slots_per_day=1,
-        weeks=[1],
+        weeks=[1, 2],
         groups=groups,
         staff=staff,
         rooms=rooms,
@@ -1036,6 +1036,51 @@ def test_disjoint_shared_lecture_availability_causes_infeasible_cluster() -> Non
     )
 
     assert solve_status(inst) == cp_model.INFEASIBLE
+
+
+def test_week1_tutorials_are_rejected_early() -> None:
+    groups = {
+        1: Group(id=1, name="G1", program_id=1, size=30, course_ids=[1]),
+    }
+    staff = {
+        1: StaffMember(
+            id=1,
+            name="Prof-1",
+            is_prof=True,
+            available_days={"MON"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses={1},
+            prefers_block=False,
+            blocks_only=False,
+        ),
+    }
+    rooms = {1: Room(id=1, name="L1", capacity=100, room_type="LECTURE", specialization_tags=set())}
+    activities = {
+        1: Activity(
+            id=1,
+            course_id=1,
+            week=1,
+            kind="TUT",
+            duration=1,
+            group_ids=[1],
+            prof_id=1,
+            ta_id=1,
+            requires_specialization=None,
+        ),
+    }
+    inst = build_instance(
+        days=["MON", "TUE"],
+        slots_per_day=2,
+        weeks=[1],
+        groups=groups,
+        staff=staff,
+        rooms=rooms,
+        activities=activities,
+    )
+
+    with pytest.raises(ValueError, match="Week 1 must be lectures only"):
+        TimetableSolver(inst)
 
 
 def test_activity_longer_than_day_slots_raises() -> None:
