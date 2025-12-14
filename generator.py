@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import random
 random.seed(12345)
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, DefaultDict
+from collections import defaultdict
 
 from domain import (
     Instance,
@@ -21,7 +22,7 @@ from typing import Dict, Any, List
 
 
 DAYS: List[str] = ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
-WEEKS: List[int] = list(range(1, 13))
+WEEKS: List[int] = list(range(1, 12 + 1))  # 12-week semester
 SLOTS_PER_DAY: int = 5
 
 
@@ -102,36 +103,16 @@ def _generate_university(
     courses_per_program: Tuple[int, int],
 ) -> Instance:
     """
-    Generic builder for all modes, matching your domain model.
+    Generic builder for all modes.
 
-    Per program:
-      - 1–2 groups
-      - 4–7 courses
-      - if #courses < max_courses: optionally ONE labs-only course
-        (2-slot weekly lab, 12 weeks, no lectures/tutorials)
-      - among non-lab courses, up to 3 can be block-lecture courses
-        taught by special block professors.
+    Enforced in data:
+      - Week 1 contains only LEC activities.
+      - Per-course totals: LEC = 12 and TUT = 12, achieved by adding one extra tutorial in a later week.
+      - Labs-only courses skip week 1 and compensate with one extra 2-slot lab later to keep 12 labs.
 
-    For each group and course:
-      - non-lab, non-block course:
-          * structure_type = "LEC_TUT"
-          * one 1-slot lecture per week (shared by all groups in program)
-          * one 1-slot tutorial per week per group
-          * lecture_count = 12, tutorial_count = 12
-      - block course:
-          * structure_type = "LEC_TUT"
-          * lectures in 4 blocks of 3 consecutive slots (weeks 1, 4, 7, 10)
-            shared by all groups in program
-          * tutorials weekly per group
-          * lecture_count = 12 (4*3), tutorial_count = 12
-      - labs-only course:
-          * structure_type = "LAB_ONLY"
-          * one 2-slot lab per week shared by all groups
-          * lab_weeks = 12, lab_duration = 2, no lectures/tutorials
-
-    By design and checked by _check_group_week_load, each group uses
-    at most 20 slots/week (5 slots/day * 4 days), so 2 free days are
-    mathematically possible.
+    Model support:
+      - Tutorials can use dedicated TUTORIAL rooms or overflow into LECTURE rooms.
+      - Optional rare cross-major clustering for TUT/LAB via an ad-hoc activity.cluster_key.
     """
 
     rng = random.Random(seed)
@@ -177,7 +158,6 @@ def _generate_university(
     next_course_id = 1
     min_c, max_c = courses_per_program
 
-    # first create bare courses per program
     for p in range(1, num_programs + 1):
         num_courses = rng.randint(min_c, max_c)
         c_ids: List[int] = []
@@ -188,7 +168,6 @@ def _generate_university(
             code = f"C{c_id}"
             name = f"Course-{c_id}"
 
-            # temporary defaults; structure_type etc. will be finalized below
             courses[c_id] = Course(
                 id=c_id,
                 code=code,
@@ -212,25 +191,19 @@ def _generate_university(
 
     labs_only_for_program: Dict[int, int] = {}
     block_courses: set[int] = set()
-    BLOCK_WEEKS = [1, 4, 7, 10]
+    BLOCK_WEEKS = [1, 4, 7, 10]  # includes week 1, which is allowed for LEC
 
     for p in range(1, num_programs + 1):
         c_ids = program_to_course_ids[p]
         num_courses = len(c_ids)
 
-        # optional labs-only if #courses < max_c
         labs_only_id: int | None = None
         if num_courses < max_c and num_courses > 0 and rng.random() < 0.5:
             labs_only_id = rng.choice(c_ids)
             labs_only_for_program[p] = labs_only_id
 
-        # up to 3 block-lecture courses among non-lab courses
         nonlab_candidates = [c for c in c_ids if c != labs_only_id]
-        if nonlab_candidates:
-            n_block = rng.randint(0, min(3, len(nonlab_candidates)))
-        else:
-            n_block = 0
-
+        n_block = rng.randint(0, min(3, len(nonlab_candidates))) if nonlab_candidates else 0
         if n_block > 0:
             chosen = rng.sample(nonlab_candidates, n_block)
             block_courses.update(chosen)
@@ -246,11 +219,11 @@ def _generate_university(
     prof_load = {sid: 0 for sid in prof_ids}
     ta_load = {sid: 0 for sid in ta_ids}
     block_prof_course_count = {sid: 0 for sid in block_prof_ids}
-    max_block_courses_per_prof = 2  # keeps weekly load well under 8 slots
+    max_block_courses_per_prof = 2
 
     # ----- rooms -----
 
-    rooms.update(_build_target_case_rooms())
+    rooms.update(_build_target_case_rooms())  # includes LECTURE + TUTORIAL + LAB rooms
 
     # ----- assign courses to staff and finalise course metadata -----
 
@@ -260,40 +233,29 @@ def _generate_university(
         labs_only_id = labs_only_for_program.get(p)
 
         for c_id in c_ids:
-            # choose TA (lightest course count)
+            # TA choice
             ta_choice = min(ta_ids, key=lambda s: ta_load[s])
             ta_load[ta_choice] += 1
 
-            # choose professor
+            # Professor choice
             is_block_course = c_id in block_courses
             prof_choice: int | None = None
-
             if is_block_course and block_prof_ids:
-                candidates = [
-                    s
-                    for s in block_prof_ids
-                    if block_prof_course_count[s] < max_block_courses_per_prof
-                ]
+                candidates = [s for s in block_prof_ids if block_prof_course_count[s] < max_block_courses_per_prof]
                 if candidates:
                     prof_choice = min(candidates, key=lambda s: prof_load[s])
                     block_prof_course_count[prof_choice] += 1
-
             if prof_choice is None:
                 prof_choice = min(prof_ids, key=lambda s: prof_load[s])
-
             prof_load[prof_choice] += 1
 
-            # finalise course fields
             c = courses[c_id]
             c.share_lecture_group_ids = list(g_ids)
             c.prof_id = prof_choice
             c.ta_id = ta_choice
-
-            # add course to staff can_teach_courses
             staff[prof_choice].can_teach_courses.add(c_id)
             staff[ta_choice].can_teach_courses.add(c_id)
 
-            # structure and counts
             if labs_only_id is not None and c_id == labs_only_id:
                 c.structure_type = "LAB_ONLY"
                 c.lecture_count = 0
@@ -302,7 +264,7 @@ def _generate_university(
                 c.lab_duration = 2
             else:
                 c.structure_type = "LEC_TUT"
-                c.lecture_count = 12  # total lecture slots
+                c.lecture_count = 12
                 c.tutorial_count = 12
                 c.lab_weeks = 0
                 c.lab_duration = 0
@@ -313,10 +275,8 @@ def _generate_university(
     for p in range(1, num_programs + 1):
         c_ids = program_to_course_ids[p]
         g_ids = program_to_group_ids[p]
-
         for g_id in g_ids:
             groups[g_id].course_ids = list(c_ids)
-
         programs[p] = Program(
             id=p,
             name=f"Program-{p}",
@@ -340,75 +300,66 @@ def _generate_university(
             ta_id = c.ta_id
             is_block_course = c_id in block_courses
 
-            if labs_only_id is not None and c_id == labs_only_id:
-                # labs-only: 2-slot lab per week, all groups
-                spec_tag = random.choice(["LAB1", "LAB2", "LAB3"])
-                for week in WEEKS:
-                    act_id = next_act_id
-                    next_act_id += 1
-                    activities[act_id] = Activity(
-                        id=act_id,
-                        course_id=c_id,
-                        week=week,
-                        kind="LAB",
-                        duration=2,
-                        group_ids=list(g_ids),
-                        prof_id=prof_id,
-                        ta_id=ta_id,
-                        requires_specialization=spec_tag,
-                    )
-                continue
-
-            # non-lab course: lectures + tutorials
+            # LECTURES
             if is_block_course:
-                # 4 blocks, each 3 consecutive slots, shared by all groups
-                for week in BLOCK_WEEKS:
-                    act_id = next_act_id
-                    next_act_id += 1
+                # 4 blocks of 3 slots (weeks 1,4,7,10), shared by all groups
+                for week in [1, 4, 7, 10]:
+                    act_id = next_act_id; next_act_id += 1
                     activities[act_id] = Activity(
-                        id=act_id,
-                        course_id=c_id,
-                        week=week,
-                        kind="LEC",
-                        duration=3,
-                        group_ids=list(g_ids),
-                        prof_id=prof_id,
-                        ta_id=ta_id,
-                        requires_specialization=None,
+                        id=act_id, course_id=c_id, week=week,
+                        kind="LEC", duration=3, group_ids=list(g_ids),
+                        prof_id=prof_id, ta_id=ta_id, requires_specialization=None,
                     )
             else:
-                # standard lecture: 1 slot per week, shared by all groups
+                # 1-slot lecture each week 1..12, shared by all groups
                 for week in WEEKS:
-                    act_id = next_act_id
-                    next_act_id += 1
+                    act_id = next_act_id; next_act_id += 1
                     activities[act_id] = Activity(
-                        id=act_id,
-                        course_id=c_id,
-                        week=week,
-                        kind="LEC",
-                        duration=1,
-                        group_ids=list(g_ids),
-                        prof_id=prof_id,
-                        ta_id=ta_id,
-                        requires_specialization=None,
+                        id=act_id, course_id=c_id, week=week,
+                        kind="LEC", duration=1, group_ids=list(g_ids),
+                        prof_id=prof_id, ta_id=ta_id, requires_specialization=None,
                     )
 
-            # tutorials: 1 slot per week, per group
-            for week in WEEKS:
+            # TUTORIALS: no week 1; add one extra tutorial in a later week to reach 12 total
+            makeup_week = 2 + (c_id % 11)  # spreads extras across weeks 2..12
+            for week in range(2, 13):  # weeks 2..12
                 for g_id in g_ids:
-                    act_id = next_act_id
-                    next_act_id += 1
+                    act_id = next_act_id; next_act_id += 1
                     activities[act_id] = Activity(
-                        id=act_id,
-                        course_id=c_id,
-                        week=week,
-                        kind="TUT",
-                        duration=1,
-                        group_ids=[g_id],
-                        prof_id=prof_id,
-                        ta_id=ta_id,
-                        requires_specialization=None,
+                        id=act_id, course_id=c_id, week=week,
+                        kind="TUT", duration=1, group_ids=[g_id],
+                        prof_id=prof_id, ta_id=ta_id, requires_specialization=None,
                     )
+                    # add the extra tutorial when we hit makeup_week
+                    if week == makeup_week:
+                        act_id2 = next_act_id; next_act_id += 1
+                        activities[act_id2] = Activity(
+                            id=act_id2, course_id=c_id, week=week,
+                            kind="TUT", duration=1, group_ids=[g_id],
+                            prof_id=prof_id, ta_id=ta_id, requires_specialization=None,
+                        )
+
+            # LABS-ONLY courses: skip week 1; double one week to keep 12 labs
+            if labs_only_id is not None and c_id == labs_only_id:
+                spec_tag = rng.choice(["LAB1", "LAB2", "LAB3"])
+                lab_makeup_week = 2 + (c_id % 11)
+                for week in range(2, 13):
+                    act_id = next_act_id; next_act_id += 1
+                    activities[act_id] = Activity(
+                        id=act_id, course_id=c_id, week=week,
+                        kind="LAB", duration=2, group_ids=list(g_ids),
+                        prof_id=prof_id, ta_id=ta_id, requires_specialization=spec_tag,
+                    )
+                    if week == lab_makeup_week:
+                        act_id2 = next_act_id; next_act_id += 1
+                        activities[act_id2] = Activity(
+                            id=act_id2, course_id=c_id, week=week,
+                            kind="LAB", duration=2, group_ids=list(g_ids),
+                            prof_id=prof_id, ta_id=ta_id, requires_specialization=spec_tag,
+                        )
+
+    # rare cross-major clusters for TUT and LAB
+    _inject_cross_major_clusters(activities, groups, courses, rng)
 
     inst = Instance(
         days=list(DAYS),
@@ -435,20 +386,7 @@ def _build_staff_pool(
     total_courses: int,
 ) -> tuple[List[int], List[int], List[int]]:
     """
-    Build academics:
-
-      - 0–3 "block professors":
-          * is_prof = True
-          * prefers_block = True, blocks_only = True
-          * available_days = {"SAT"} or {"FRI","SAT"}
-          * max_slots_per_week = 8 (hard cap)
-      - remaining professors:
-          * is_prof = True
-          * available_days = all teaching days
-          * no hard weekly cap
-      - TAs:
-          * is_prof = False
-          * available_days = all teaching days
+    Professors and TAs. No daily caps; optional weekly cap for block professors.
     """
 
     prof_ids: List[int] = []
@@ -456,7 +394,6 @@ def _build_staff_pool(
     block_prof_ids: List[int] = []
 
     num_profs = max(8, total_courses // 3)
-    # 0–3 block professors
     num_block = rng.randint(0, min(3, num_profs))
     num_regular = num_profs - num_block
 
@@ -464,62 +401,39 @@ def _build_staff_pool(
 
     # block professors
     for _ in range(num_block):
-        s_id = next_staff_id
-        next_staff_id += 1
-
-        if rng.random() < 0.5:
-            days = {"SAT"}
-        else:
-            days = {"FRI", "SAT"}
-
+        s_id = next_staff_id; next_staff_id += 1
+        days = {"SAT"} if rng.random() < 0.5 else {"FRI", "SAT"}
         staff[s_id] = StaffMember(
-            id=s_id,
-            name=f"Prof-{s_id}",
-            is_prof=True,
+            id=s_id, name=f"Prof-{s_id}", is_prof=True,
             available_days=days,
-            max_slots_per_day=None,
-            max_slots_per_week=8,
+            max_slots_per_day=None, max_slots_per_week=8,
             can_teach_courses=set(),
-            prefers_block=True,
-            blocks_only=True,
+            prefers_block=True, blocks_only=True,
         )
-        prof_ids.append(s_id)
-        block_prof_ids.append(s_id)
+        prof_ids.append(s_id); block_prof_ids.append(s_id)
 
     # regular professors
     for _ in range(num_regular):
-        s_id = next_staff_id
-        next_staff_id += 1
-
+        s_id = next_staff_id; next_staff_id += 1
         staff[s_id] = StaffMember(
-            id=s_id,
-            name=f"Prof-{s_id}",
-            is_prof=True,
+            id=s_id, name=f"Prof-{s_id}", is_prof=True,
             available_days=set(DAYS),
-            max_slots_per_day=None,
-            max_slots_per_week=None,
+            max_slots_per_day=None, max_slots_per_week=None,
             can_teach_courses=set(),
-            prefers_block=False,
-            blocks_only=False,
+            prefers_block=False, blocks_only=False,
         )
         prof_ids.append(s_id)
 
     # TAs
     num_tas = max(8, total_courses // 4)
     for _ in range(num_tas):
-        s_id = next_staff_id
-        next_staff_id += 1
-
+        s_id = next_staff_id; next_staff_id += 1
         staff[s_id] = StaffMember(
-            id=s_id,
-            name=f"TA-{s_id}",
-            is_prof=False,
+            id=s_id, name=f"TA-{s_id}", is_prof=False,
             available_days=set(DAYS),
-            max_slots_per_day=None,
-            max_slots_per_week=None,
+            max_slots_per_day=None, max_slots_per_week=None,
             can_teach_courses=set(),
-            prefers_block=False,
-            blocks_only=False,
+            prefers_block=False, blocks_only=False,
         )
         ta_ids.append(s_id)
 
@@ -528,82 +442,117 @@ def _build_staff_pool(
 
 def _build_target_case_rooms() -> Dict[int, Room]:
     """
-    25 total rooms:
+    25 rooms total, uniform capacity assumption for LEC/TUT:
 
-      - 15 regular lecture rooms (capacity for any single group)
-      - 5 big lecture rooms (capacity for all groups together)
-      - 3 specialised labs (LAB1–LAB3)
-      - 2 computer labs
+      - 15 LECTURE rooms
+      - 5 TUTORIAL rooms
+      - 3 SPECIALIZED_LAB rooms (LAB1–LAB3)
+      - 2 COMPUTER_LAB rooms
     """
 
     rooms: Dict[int, Room] = {}
     next_room_id = 1
 
-    # regular lecture rooms
+    # uniform capacity for simplicity; solver ignores capacity anyway
+    CAP = 200
+
+    # lecture rooms
     for i in range(15):
-        r_id = next_room_id
-        next_room_id += 1
+        r_id = next_room_id; next_room_id += 1
         rooms[r_id] = Room(
-            id=r_id,
-            name=f"Lec-{i+1}",
-            capacity=80,
-            room_type="LECTURE",
-            specialization_tags=set(),
+            id=r_id, name=f"Lec-{i+1}",
+            capacity=CAP, room_type="LECTURE", specialization_tags=set(),
         )
 
-    # big lecture rooms
+    # tutorial rooms
     for i in range(5):
-        r_id = next_room_id
-        next_room_id += 1
+        r_id = next_room_id; next_room_id += 1
         rooms[r_id] = Room(
-            id=r_id,
-            name=f"BigLec-{i+1}",
-            capacity=400,
-            room_type="LECTURE",
-            specialization_tags=set(),
+            id=r_id, name=f"Tut-{i+1}",
+            capacity=CAP, room_type="TUTORIAL", specialization_tags=set(),
         )
 
-     # specialised labs
-    spec_tags = ["LAB1", "LAB2", "LAB3"]
-    for i, tag in enumerate(spec_tags):
-        r_id = next_room_id
-        next_room_id += 1
+    # specialised labs
+    for tag in ["LAB1", "LAB2", "LAB3"]:
+        r_id = next_room_id; next_room_id += 1
         rooms[r_id] = Room(
-            id=r_id,
-            name=f"SpecLab-{i+1}",
-            capacity=160,          # was 40; now large enough for 2 groups of 80
-            room_type="SPECIALIZED_LAB",
-            specialization_tags={tag},
+            id=r_id, name=f"SpecLab-{tag[-1]}",
+            capacity=CAP, room_type="SPECIALIZED_LAB", specialization_tags={tag},
         )
 
     # computer labs
     for i in range(2):
-        r_id = next_room_id
-        next_room_id += 1
+        r_id = next_room_id; next_room_id += 1
         rooms[r_id] = Room(
-            id=r_id,
-            name=f"CompLab-{i+1}",
-            capacity=40,
-            room_type="COMPUTER_LAB",
-            specialization_tags=set(),
+            id=r_id, name=f"CompLab-{i+1}",
+            capacity=CAP, room_type="COMPUTER_LAB", specialization_tags=set(),
         )
 
     return rooms
 
 
+def _inject_cross_major_clusters(
+    activities: Dict[int, Activity],
+    groups: Dict[int, Group],
+    courses: Dict[int, Course],
+    rng: random.Random,
+) -> None:
+    """
+    Occasionally co-locate tutorials or labs across different programs in the same week.
+    This sets a runtime attribute 'cluster_key' on Activity. JSON export will drop it
+    unless the Activity dataclass is extended to include cluster_key.
+    """
+
+    # build program id per activity
+    act_prog: Dict[int, int] = {}
+    for a_id, a in activities.items():
+        # pick program via first group in the list
+        if a.group_ids:
+            g0 = a.group_ids[0]
+            act_prog[a_id] = groups[g0].program_id
+
+    # candidates by week and kind
+    by_week_kind: DefaultDict[Tuple[int, str], List[int]] = defaultdict(list)
+    for a_id, a in activities.items():
+        if a.kind in ("TUT", "LAB") and a.week != 1:
+            by_week_kind[(a.week, a.kind)].append(a_id)
+
+    # choose a few clusters with low probability
+    cluster_budget = 0
+    for (week, kind), ids in by_week_kind.items():
+        if cluster_budget >= 3:
+            break
+        if rng.random() > 0.08:  # ~8% of weeks
+            continue
+
+        # pick up to 3 activities from distinct programs
+        rng.shuffle(ids)
+        picked: List[int] = []
+        seen_prog: set[int] = set()
+        for a_id in ids:
+            p = act_prog.get(a_id)
+            if p is None or p in seen_prog:
+                continue
+            picked.append(a_id)
+            seen_prog.add(p)
+            if len(picked) == 3:
+                break
+
+        if len(picked) >= 2:
+            key = f"XCLUST-{kind}-W{week}"
+            for a_id in picked:
+                setattr(activities[a_id], "cluster_key", key)
+            cluster_budget += 1
+
+
 def _check_group_week_load(inst: Instance) -> None:
     """
-    Sanity check: for every group and week, ensure total used slots <= 20.
-
-    With 5 slots/day this means each group can in principle be scheduled
-    on at most 4 teaching days, leaving 2 free days.
+    Sanity check: ensure we don't exceed the *physical* weekly capacity.
+    Free days are handled as soft constraints by the improver.
     """
+    max_slots_allowed = inst.slots_per_day * len(inst.days)  # e.g., 5 * 6 = 30
 
-    max_days_with_teaching = 4
-    max_slots_allowed = max_days_with_teaching * inst.slots_per_day  # 20
-
-    load: Dict[Tuple[int, int], int] = {}  # (group_id, week) -> total slots
-
+    load: Dict[tuple[int, int], int] = {}  # (group_id, week) -> total slots
     for act in inst.activities.values():
         for g_id in act.group_ids:
             key = (g_id, act.week)
@@ -615,6 +564,7 @@ def _check_group_week_load(inst: Instance) -> None:
                 f"Generator bug: group {g_id} in week {w} uses "
                 f"{used} slots (> {max_slots_allowed})"
             )
+
 
 
 # ===== JSON I/O + CLI additions =====
@@ -666,7 +616,6 @@ def _cli_main(argv: List[str] | None = None) -> int:
     parser.add_argument("--out", required=True, help="Output path (.json or .pkl)")
     args = parser.parse_args(argv)
 
-    # use the existing function defined above
     inst = generate_instance(args.mode)
 
     if args.mode == "random" and args.seed is not None:

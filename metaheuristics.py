@@ -8,23 +8,18 @@ from domain import Instance
 
 class LocalSearchImprover:
     """
-    Metaheuristic local search on top of a feasible CP-SAT schedule.
+    Local search on a feasible CP-SAT schedule.
 
-    - Keeps hard constraints by explicit conflict checks.
-    - Optimizes a soft penalty function approximating a rich objective:
-        * student free days + Mon–Fri free days
-        * gaps and heavy days
-        * staff free days
-        * minimize active days
-        * avoid early starts
-        * week-to-week stability
-        * room consistency
+    Keeps feasibility by checking resource occupancy when proposing moves.
+    Optimizes a soft penalty capturing free days, gaps, heavy days, early starts,
+    week-to-week stability, and room consistency.
+    Daily load caps are ignored here by specification; weekly caps are enforced in CP.
     """
 
     def __init__(self, inst: Instance):
         self.inst = inst
 
-    # ---------- state building ----------
+    # ---------- state ----------
 
     def _build_state(self, schedule: Dict[int, Dict[str, Any]]):
         inst = self.inst
@@ -53,21 +48,19 @@ class LocalSearchImprover:
 
         for a_id, info in schedule.items():
             act = inst.activities[a_id]
-            w = info["week"]
-            d = info["day"]
-            s0 = info["slot"]
-            dur = info["duration"]
-            r = info["room_id"]
-            st_id = info["staff_id"]
+            w = info["week"]; d = info["day"]
+            s0 = info["slot"]; dur = info["duration"]
+            r = info["room_id"]; st_id = info["staff_id"]
             for ds in range(dur):
                 s = s0 + ds
                 key = (w, d, s)
-                self.room_use[key][r] = a_id
+                if r is not None:
+                    self.room_use[key][r] = a_id
                 self.staff_use[key][st_id] = a_id
                 for g_id in info["group_ids"]:
                     self.group_use[key][g_id] = a_id
-            self.staff_week_load[st_id][w] += dur
-            self.staff_day_load[st_id][w][d] += dur
+            self.staff_week_load[st_id][act.week] += dur
+            self.staff_day_load[st_id][act.week][d] += dur
 
     # ---------- feasibility checks ----------
 
@@ -83,50 +76,47 @@ class LocalSearchImprover:
         if new_slot < 0 or new_slot + dur > inst.slots_per_day:
             return False
 
+        # respect staff day availability
         staff = inst.staff[st_id]
         if new_day not in staff.available_days:
             return False
-        new_day_load = self.staff_day_load[st_id][w][new_day] + dur
-        if staff.max_slots_per_day is not None and new_day_load > staff.max_slots_per_day:
-            return False
 
+        # check instantaneous occupancy
         for ds in range(dur):
             s = new_slot + ds
             key = (w, new_day, s)
 
-            if r in self.room_use[key] and self.room_use[key][r] != a_id:
+            if r is not None and r in self.room_use[key] and self.room_use[key][r] != a_id:
                 return False
-
             if st_id in self.staff_use[key] and self.staff_use[key][st_id] != a_id:
                 return False
-
             for g_id in info["group_ids"]:
                 if g_id in self.group_use[key] and self.group_use[key][g_id] != a_id:
                     return False
 
         return True
 
-    def _can_place_room(self, schedule, a_id, new_room_id) -> bool:
+    def _room_ok(self, schedule, a_id, new_room_id) -> bool:
         inst = self.inst
         act = inst.activities[a_id]
         info = schedule[a_id]
-        w = info["week"]
-        d = info["day"]
-        s0 = info["slot"]
-        dur = info["duration"]
+        w = info["week"]; d = info["day"]
+        s0 = info["slot"]; dur = info["duration"]
 
         room = inst.rooms[new_room_id]
-        total_students = sum(inst.groups[g].size for g in info["group_ids"])
-        if room.capacity < total_students:
-            return False
-
         if act.kind == "LAB":
             if room.room_type not in ("COMPUTER_LAB", "SPECIALIZED_LAB"):
                 return False
-            if act.requires_specialization and act.requires_specialization not in room.specialization_tags:
+            tag = getattr(act, "requires_specialization", None)
+            if tag:
+                tags = getattr(room, "specialization_tags", []) or []
+                if room.room_type != "SPECIALIZED_LAB" or tag not in tags:
+                    return False
+        elif act.kind == "LEC":
+            if room.room_type != "LECTURE":
                 return False
-        else:
-            if room.room_type not in ("LECTURE", "TUTORIAL"):
+        else:  # TUT
+            if room.room_type not in ("TUTORIAL", "LECTURE"):
                 return False
 
         for ds in range(dur):
@@ -137,23 +127,20 @@ class LocalSearchImprover:
 
         return True
 
-    # ---------- apply moves ----------
+    # ---------- apply ----------
 
     def _apply_time_move(self, schedule, a_id, new_day, new_slot):
-        inst = self.inst
         info = schedule[a_id]
         w = info["week"]
-        old_day = info["day"]
-        old_slot = info["slot"]
-        dur = info["duration"]
-        r = info["room_id"]
-        st_id = info["staff_id"]
-        groups = info["group_ids"]
+        old_day = info["day"]; old_slot = info["slot"]
+        dur = info["duration"]; r = info["room_id"]
+        st_id = info["staff_id"]; groups = info["group_ids"]
 
         for ds in range(dur):
             s = old_slot + ds
             key = (w, old_day, s)
-            self.room_use[key].pop(r, None)
+            if r is not None:
+                self.room_use[key].pop(r, None)
             self.staff_use[key].pop(st_id, None)
             for g in groups:
                 self.group_use[key].pop(g, None)
@@ -162,7 +149,8 @@ class LocalSearchImprover:
         for ds in range(dur):
             s = new_slot + ds
             key = (w, new_day, s)
-            self.room_use[key][r] = a_id
+            if r is not None:
+                self.room_use[key][r] = a_id
             self.staff_use[key][st_id] = a_id
             for g in groups:
                 self.group_use[key][g] = a_id
@@ -173,16 +161,15 @@ class LocalSearchImprover:
 
     def _apply_room_move(self, schedule, a_id, new_room_id):
         info = schedule[a_id]
-        w = info["week"]
-        d = info["day"]
-        s0 = info["slot"]
-        dur = info["duration"]
+        w = info["week"]; d = info["day"]
+        s0 = info["slot"]; dur = info["duration"]
         old_room = info["room_id"]
 
-        for ds in range(dur):
-            s = s0 + ds
-            key = (w, d, s)
-            self.room_use[key].pop(old_room, None)
+        if old_room is not None:
+            for ds in range(dur):
+                s = s0 + ds
+                key = (w, d, s)
+                self.room_use[key].pop(old_room, None)
 
         for ds in range(dur):
             s = s0 + ds
@@ -191,7 +178,7 @@ class LocalSearchImprover:
 
         info["room_id"] = new_room_id
 
-    # ---------- penalty evaluation ----------
+    # ---------- penalty ----------
 
     def compute_soft_penalty(self, schedule: Dict[int, Dict[str, Any]]) -> int:
         inst = self.inst
@@ -211,65 +198,46 @@ class LocalSearchImprover:
 
         penalty = 0
 
-        group_occ = {}
-        staff_occ = {}
-        for g_id in inst.groups.keys():
-            for w in weeks:
-                for d in days:
-                    for s in range(slots):
-                        group_occ[g_id, w, d, s] = 0
-        for s_id in inst.staff.keys():
-            for w in weeks:
-                for d in days:
-                    for s in range(slots):
-                        staff_occ[s_id, w, d, s] = 0
+        group_occ = {(g, w, d, s): 0 for g in inst.groups for w in weeks for d in days for s in range(slots)}
+        staff_occ = {(s_id, w, d, s): 0 for s_id in inst.staff for w in weeks for d in days for s in range(slots)}
 
         for a_id, info in schedule.items():
-            w = info["week"]
-            d = info["day"]
-            s0 = info["slot"]
-            dur = info["duration"]
+            w = info["week"]; d = info["day"]
+            s0 = info["slot"]; dur = info["duration"]
             st_id = info["staff_id"]
             for ds in range(dur):
                 s = s0 + ds
-                if s < 0 or s >= slots:
-                    continue
-                staff_occ[st_id, w, d, s] = 1
-                for g_id in info["group_ids"]:
-                    group_occ[g_id, w, d, s] = 1
+                if 0 <= s < slots:
+                    staff_occ[(st_id, w, d, s)] = 1
+                    for g_id in info["group_ids"]:
+                        group_occ[(g_id, w, d, s)] = 1
 
-        group_day_active = {}
-        staff_day_active = {}
-        for g_id in inst.groups.keys():
-            for w in weeks:
-                for d in days:
-                    group_day_active[g_id, w, d] = 1 if any(
-                        group_occ[g_id, w, d, s] for s in range(slots)
-                    ) else 0
-        for s_id in inst.staff.keys():
-            for w in weeks:
-                for d in days:
-                    staff_day_active[s_id, w, d] = 1 if any(
-                        staff_occ[s_id, w, d, s] for s in range(slots)
-                    ) else 0
+        group_day_active = {(g, w, d): int(any(group_occ[(g, w, d, s)] for s in range(slots)))
+                            for g in inst.groups for w in weeks for d in days}
+        staff_day_active = {(s_id, w, d): int(any(staff_occ[(s_id, w, d, s)] for s in range(slots)))
+                            for s_id in inst.staff for w in weeks for d in days}
 
+        # student free days and Mon–Fri free days
         for g_id, g in inst.groups.items():
             for w in weeks:
-                free_days = sum(1 - group_day_active[g_id, w, d] for d in days)
-                if free_days < g.preferred_free_days:
-                    penalty += W_STUD_FREE_DAYS * (g.preferred_free_days - free_days)
+                free_days = sum(1 - group_day_active[(g_id, w, d)] for d in days)
+                want = getattr(g, "preferred_free_days", 0)
+                if free_days < want:
+                    penalty += W_STUD_FREE_DAYS * (want - free_days)
 
         workdays = [d for d in days if d in {"MON", "TUE", "WED", "THU", "FRI"}]
         for g_id, g in inst.groups.items():
             for w in weeks:
-                free_mf = sum(1 - group_day_active[g_id, w, d] for d in workdays)
-                if free_mf < g.preferred_free_days:
-                    penalty += W_STUD_FREE_MF * (g.preferred_free_days - free_mf)
+                free_mf = sum(1 - group_day_active[(g_id, w, d)] for d in workdays)
+                want = getattr(g, "preferred_free_days", 0)
+                if free_mf < want:
+                    penalty += W_STUD_FREE_MF * (want - free_mf)
 
+        # gaps, heavy days, early-start discourager
         for g_id in inst.groups.keys():
             for w in weeks:
                 for d in days:
-                    occ = [group_occ[g_id, w, d, s] for s in range(slots)]
+                    occ = [group_occ[(g_id, w, d, s)] for s in range(slots)]
                     blocks = 0
                     prev = 0
                     load = 0
@@ -283,44 +251,42 @@ class LocalSearchImprover:
                         penalty += W_STUD_GAPS * (blocks - 1)
                     if load > 3:
                         penalty += W_BALANCE * (load - 3)
+                    if occ and occ[0] == 1 and any(occ[s] == 1 for s in range(1, slots)):
+                        penalty += W_EARLY_START
 
+        # staff free day
         for s_id in inst.staff.keys():
             for w in weeks:
-                free_days = sum(1 - staff_day_active[s_id, w, d] for d in days)
+                free_days = sum(1 - staff_day_active[(s_id, w, d)] for d in days)
                 if free_days < 1:
                     penalty += W_STAFF_FREE_DAYS * (1 - free_days)
 
+        # minimize active days for groups
         for g_id in inst.groups.keys():
             for w in weeks:
-                active_days = sum(group_day_active[g_id, w, d] for d in days)
+                active_days = sum(group_day_active[(g_id, w, d)] for d in days)
                 if active_days > 3:
                     penalty += W_ACTIVE_DAYS * (active_days - 3)
 
-        for g_id in inst.groups.keys():
-            for w in weeks:
-                for d in days:
-                    occ = [group_occ[g_id, w, d, s] for s in range(slots)]
-                    if occ[0] == 1 and any(occ[s] == 1 for s in range(1, slots)):
-                        penalty += W_EARLY_START
-
+        # week-to-week stability of day-activity pattern
         for g_id in inst.groups.keys():
             for wi in range(1, len(weeks)):
                 w_prev = weeks[wi - 1]
                 w_curr = weeks[wi]
                 for d in days:
-                    if group_day_active[g_id, w_prev, d] != group_day_active[g_id, w_curr, d]:
+                    if group_day_active[(g_id, w_prev, d)] != group_day_active[(g_id, w_curr, d)]:
                         penalty += W_STABILITY
 
+        # room consistency per (course, group, kind)
         key_to_rooms = {}
         for a_id, info in schedule.items():
-            c = info["course_id"]
-            kind = info["kind"]
-            r = info["room_id"]
+            c = info["course_id"]; kind = info["kind"]; r = info["room_id"]
             for g_id in info["group_ids"]:
                 key = (c, g_id, kind)
                 key_to_rooms.setdefault(key, set()).add(r)
-
         for key, rooms in key_to_rooms.items():
+            if None in rooms:
+                continue
             if len(rooms) > 1:
                 penalty += W_ROOM_CONSISTENCY * (len(rooms) - 1)
 
@@ -346,6 +312,7 @@ class LocalSearchImprover:
         rooms = list(self.inst.rooms.keys())
 
         for it in range(iterations):
+            # exponential cooling
             if start_temp <= end_temp:
                 temp = end_temp
             else:
@@ -356,12 +323,9 @@ class LocalSearchImprover:
             move_type = random.choice(["time", "room"])
 
             info = current[a_id]
-            old_day = info["day"]
-            old_slot = info["slot"]
-            old_room = info["room_id"]
+            old_day = info["day"]; old_slot = info["slot"]; old_room = info["room_id"]
 
             moved = False
-
             if move_type == "time":
                 attempts = 0
                 while attempts < 15 and not moved:
@@ -374,15 +338,14 @@ class LocalSearchImprover:
                     if self._can_place_time(current, a_id, new_day, new_slot):
                         self._apply_time_move(current, a_id, new_day, new_slot)
                         moved = True
-
-            else:  # room move
+            else:
                 attempts = 0
                 while attempts < 10 and not moved:
                     attempts += 1
                     new_room = random.choice(rooms)
                     if new_room == old_room:
                         continue
-                    if self._can_place_room(current, a_id, new_room):
+                    if self._room_ok(current, a_id, new_room):
                         self._apply_room_move(current, a_id, new_room)
                         moved = True
 
@@ -391,15 +354,7 @@ class LocalSearchImprover:
 
             new_pen = self.compute_soft_penalty(current)
             delta = new_pen - current_pen
-
-            accept = False
-            if delta <= 0:
-                accept = True
-            else:
-                if temp > 0:
-                    prob = math.exp(-delta / temp)
-                    if random.random() < prob:
-                        accept = True
+            accept = delta <= 0 or (temp > 0 and random.random() < math.exp(-delta / temp))
 
             if accept:
                 current_pen = new_pen
