@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Dict, Any, Iterable
 from collections import Counter, defaultdict
 from datetime import datetime, date, time, timedelta
@@ -242,10 +243,13 @@ def print_group_quality(inst: Instance, schedule: Dict[int, Dict[str, Any]]) -> 
 def main():
     MODE = "target_case"
 
-    CP_TIME_LIMIT = 120.0
-    LS_ITERATIONS = 10000
+    CP_TIME_LIMIT = float(os.getenv("TT_TIME_LIMIT", "120.0"))
+    CP_WORKERS = int(os.getenv("TT_CP_WORKERS", "8"))
+    LS_ITERATIONS = int(os.getenv("TT_LS_ITERATIONS", "10000"))
     LS_START_TEMP = 5.0
     LS_END_TEMP = 0.1
+    LS_MAX_SECONDS_ENV = os.getenv("TT_LS_MAX_SECONDS")
+    LS_MAX_SECONDS = float(LS_MAX_SECONDS_ENV) if LS_MAX_SECONDS_ENV not in (None, "") else None
 
     DAY_START = "08:30"
     SLOT_MINUTES = 90
@@ -262,8 +266,12 @@ def main():
     print_instance_stats(inst)
     check_staff_weekly_capacity(inst)  # prints warnings only
 
-    solver_model = TimetableSolver(inst)
-    cp_solver, status = solver_model.solve(time_limit_seconds=CP_TIME_LIMIT)
+    room_mode = os.getenv("TT_ROOM_MODE", "greedy")
+    use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
+    use_objective = use_objective_env not in ("0", "false", "False", "no")
+
+    solver_model = TimetableSolver(inst, room_mode=room_mode, use_objective=use_objective)
+    cp_solver, status = solver_model.solve(time_limit_seconds=CP_TIME_LIMIT, workers=CP_WORKERS)
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         print("No feasible solution, status:", status)
@@ -281,6 +289,7 @@ def main():
         improved = ls.improve(
             schedule, iterations=LS_ITERATIONS,
             start_temp=LS_START_TEMP, end_temp=LS_END_TEMP,
+            max_seconds=LS_MAX_SECONDS,
         )
         print("Soft penalty after local search:", ls.compute_soft_penalty(improved))
 

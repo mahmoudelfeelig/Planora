@@ -37,10 +37,11 @@ class TimetableSolver:
       - Model targets fast feasibility on large instances. Put preferences into metaheuristics.
     """
 
-    def __init__(self, inst: Instance, room_mode: str = "greedy"):
+    def __init__(self, inst: Instance, room_mode: str = "cp_rooms", *, use_objective: bool = True):
         assert room_mode in ("greedy", "cp_rooms")
         self.inst = inst
         self.room_mode = room_mode
+        self.use_objective = bool(use_objective)
 
         self.m = cp_model.CpModel()
 
@@ -87,6 +88,8 @@ class TimetableSolver:
         self._precompute()
         self._build_variables()
         self._add_constraints()
+        if self.use_objective:
+            self._add_objective()
         self._add_decision_strategy()
 
     # ---------- public API ----------
@@ -159,28 +162,62 @@ class TimetableSolver:
     def _is_block_prof(self, staff) -> bool:
         return bool(getattr(staff, "blocks_only", False) or getattr(staff, "prefers_block", False) or getattr(staff, "is_block_prof", False))
 
+    def _validate_staff_assignments(self) -> None:
+        inst = self.inst
+        errs: list[str] = []
+        for a in inst.activities.values():
+            if a.kind == "LEC":
+                sid = a.prof_id
+                s = inst.staff.get(sid)
+                if s is None:
+                    errs.append(f"activity {a.id}: missing professor staff id {sid}")
+                    continue
+                if not s.is_prof:
+                    errs.append(f"activity {a.id}: LEC must be taught by a professor (staff {sid})")
+                if a.course_id not in getattr(s, "can_teach_courses", set()):
+                    errs.append(f"activity {a.id}: professor {sid} cannot teach course {a.course_id}")
+            else:
+                sid = a.ta_id
+                s = inst.staff.get(sid)
+                if s is None:
+                    errs.append(f"activity {a.id}: missing TA staff id {sid}")
+                    continue
+                if s.is_prof:
+                    errs.append(f"activity {a.id}: {a.kind} must be taught by a TA (staff {sid})")
+                if a.course_id not in getattr(s, "can_teach_courses", set()):
+                    errs.append(f"activity {a.id}: TA {sid} cannot teach course {a.course_id}")
+        if errs:
+            raise ValueError("Invalid staff assignment/competency: " + "; ".join(errs))
+
+    def _validate_block_professor_rules(self) -> None:
+        inst = self.inst
+        errs: list[str] = []
+
+        # Group LEC activities by (prof, course, week)
+        by_scw: DefaultDict[Tuple[int, int, int], List[int]] = defaultdict(list)
+        for a_id, a in inst.activities.items():
+            if a.kind == "LEC":
+                by_scw[(a.prof_id, a.course_id, a.week)].append(a_id)
+
+        for (sid, c_id, w), act_ids in by_scw.items():
+            s = inst.staff.get(sid)
+            if s is None or not self._is_block_prof(s):
+                continue
+            total = sum(inst.activities[a].duration for a in act_ids)
+            if not (2 <= total <= 3):
+                errs.append(f"block-prof {sid} course {c_id} week {w}: total lecture slots {total} not in [2,3]")
+        if errs:
+            raise ValueError("Block-professor rule violation: " + "; ".join(errs))
+
     def _validate_semester_rules(self) -> None:
         """
         Generator/semester invariants used by the solver:
-        - For any course that has lectures, the total LEC slot count across the semester
-            must equal the total TUT slot count per group for that course.
-            (Lectures are shared; tutorials are per group.)
+        - Activity totals must match the course metadata (lecture/tutorial slot totals,
+          lab session counts and lab durations).
         - Week-1 must be lectures-only; tutorials/labs in the first week are rejected.
         """
         inst = self.inst
         first_week = inst.weeks[0] if inst.weeks else None
-
-        # Pre-index activities per course and per course+group
-        lec_slots_by_course: dict[int, int] = {}
-        tut_slots_by_course_group: dict[tuple[int, int], int] = {}
-
-        for act in inst.activities.values():
-            if act.kind == "LEC":
-                lec_slots_by_course[act.course_id] = lec_slots_by_course.get(act.course_id, 0) + act.duration
-            elif act.kind == "TUT":
-                for g in act.group_ids:
-                    key = (act.course_id, g)
-                    tut_slots_by_course_group[key] = tut_slots_by_course_group.get(key, 0) + act.duration
 
         # Work out which groups belong to each course (prefer the explicit share list)
         course_groups: dict[int, list[int]] = {}
@@ -190,27 +227,48 @@ class TimetableSolver:
             ]
             course_groups[c_id] = gids
 
-        courses_with_tutorials = {a.course_id for a in inst.activities.values() if a.kind == "TUT"}
+        # Validate per-course totals against metadata (treat lecture/tutorial counts as slot totals).
+        errs: list[str] = []
+        by_course_kind: dict[tuple[int, str], list] = {}
+        for a in inst.activities.values():
+            by_course_kind.setdefault((a.course_id, a.kind), []).append(a)
 
-        mismatches: list[str] = []
-        for c_id, lec_slots in lec_slots_by_course.items():
-            # Skip lab-only courses (no lectures)
-            if lec_slots == 0:
-                continue
-            # Only enforce lecture/tutorial parity when the instance actually contains tutorials
-            # for the course (keeps LEC_ONLY test instances valid).
-            if c_id not in courses_with_tutorials:
-                continue
+        for c_id, c in inst.courses.items():
+            lecs = by_course_kind.get((c_id, "LEC"), [])
+            tuts = by_course_kind.get((c_id, "TUT"), [])
+            labs = by_course_kind.get((c_id, "LAB"), [])
+
+            lec_slots = sum(a.duration for a in lecs)
+            tut_slots_by_group: dict[int, int] = {}
+            for a in tuts:
+                for g in a.group_ids:
+                    tut_slots_by_group[g] = tut_slots_by_group.get(g, 0) + a.duration
+            lab_sessions = len(labs)
+
+            if c.structure_type == "LAB_ONLY":
+                if lecs or tuts:
+                    errs.append(f"course {c_id}: LAB_ONLY must not include LEC/TUT activities")
+
+            if int(getattr(c, "lecture_count", 0) or 0) != lec_slots:
+                errs.append(f"course {c_id}: lecture slots {lec_slots} != lecture_count {c.lecture_count}")
+
+            expected_tut = int(getattr(c, "tutorial_count", 0) or 0)
             for g_id in course_groups.get(c_id, []):
-                tut_slots = tut_slots_by_course_group.get((c_id, g_id), 0)
-                if tut_slots != lec_slots:
-                    mismatches.append(f"course {c_id} (group {g_id}): LEC_slots={lec_slots}, TUT_slots={tut_slots}")
+                got = tut_slots_by_group.get(g_id, 0)
+                if expected_tut != got:
+                    errs.append(f"course {c_id} group {g_id}: tutorial slots {got} != tutorial_count {expected_tut}")
 
-        if mismatches:
-            raise ValueError(
-                "Per-course per-group lecture/tutorial slot totals must match. "
-                "Mismatches: " + ", ".join(mismatches)
-            )
+            expected_lab_weeks = int(getattr(c, "lab_weeks", 0) or 0)
+            if expected_lab_weeks != lab_sessions:
+                errs.append(f"course {c_id}: lab sessions {lab_sessions} != lab_weeks {expected_lab_weeks}")
+            if labs:
+                expected_dur = int(getattr(c, "lab_duration", 0) or 0)
+                for a in labs:
+                    if a.duration != expected_dur:
+                        errs.append(f"course {c_id}: LAB a{a.id} duration {a.duration} != lab_duration {expected_dur}")
+
+        if errs:
+            raise ValueError("Instance violates course totals: " + "; ".join(errs))
 
         # Enforce: week-1 contains lectures only
         if first_week is not None:
@@ -230,6 +288,8 @@ class TimetableSolver:
         inst = self.inst
 
         self._validate_semester_rules()
+        self._validate_staff_assignments()
+        self._validate_block_professor_rules()
 
         # staff per activity: professors teach LEC, TAs teach TUT/LAB by convention
         for a_id, act in inst.activities.items():
@@ -273,6 +333,20 @@ class TimetableSolver:
                     if sunday_range and sunday_range[0] <= t <= sunday_range[1]:
                         continue
                     times.append(t)
+
+            lock = getattr(inst, "locked_activities", {}) or {}
+            fixed = lock.get(a_id) if isinstance(lock, dict) else None
+            if fixed and isinstance(fixed, dict) and "day" in fixed and "slot" in fixed:
+                fixed_day = str(fixed["day"])
+                fixed_slot = int(fixed["slot"])
+                if fixed_day not in self.days:
+                    raise ValueError(f"Locked activity {a_id}: day '{fixed_day}' is not in inst.days")
+                if not (0 <= fixed_slot <= max_start_slot):
+                    raise ValueError(f"Locked activity {a_id}: slot {fixed_slot} invalid for duration {act.duration}")
+                fixed_t = self.days.index(fixed_day) * self.S + fixed_slot
+                if fixed_t not in times:
+                    raise ValueError(f"Locked activity {a_id}: fixed time {fixed_day}@{fixed_slot} is not allowed")
+                times = [fixed_t]
             if not times:
                 raise ValueError(f"No allowed starts for activity {a_id}")
             self.allowed_starts[a_id] = times
@@ -343,24 +417,30 @@ class TimetableSolver:
 
     def _compute_allowed_rooms(self) -> None:
         inst = self.inst
+
+        def required_capacity(act_id: int) -> int:
+            gids = inst.activities[act_id].group_ids
+            return sum(inst.groups[g].size for g in gids if g in inst.groups)
+
         for a_id, act in inst.activities.items():
             rooms: List[int] = []
+            need = required_capacity(a_id)
             if act.kind == "LAB":
                 req = getattr(act, "requires_specialization", None)
                 lab_candidates = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("SPECIALIZED_LAB", "COMPUTER_LAB")]
                 if req:
                     for r_id in lab_candidates:
                         tags = getattr(inst.rooms[r_id], "specialization_tags", []) or []
-                        if req in tags:
+                        if req in tags and inst.rooms[r_id].capacity >= need:
                             rooms.append(r_id)
                     if not rooms:
                         raise ValueError(f"Activity {a_id} requires specialized lab '{req}' but no matching room exists")
                 else:
-                    rooms = lab_candidates
+                    rooms = [r_id for r_id in lab_candidates if inst.rooms[r_id].capacity >= need]
             elif act.kind == "TUT":
-                rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("TUTORIAL", "LECTURE")]
+                rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("TUTORIAL", "LECTURE") and r.capacity >= need]
             else:  # LEC
-                rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE"]
+                rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE" and r.capacity >= need]
 
             if not rooms:
                 raise ValueError(f"No eligible rooms for activity {a_id} ({act.kind})")
@@ -428,6 +508,81 @@ class TimetableSolver:
                         d_idx = t // self.S
                         m.Add(y_day[d_idx] >= self.x[(a_id, t)])
                 m.Add(sum(y_day.values()) <= 2)
+
+        # Block-only professor lecture blocks (per course/week): single 2–3-slot contiguous block on one day.
+        for s_id, staff in inst.staff.items():
+            if not getattr(staff, "blocks_only", False):
+                continue
+            for w in self.weeks:
+                # courses with lectures taught by this professor in this week
+                courses_here = {
+                    act.course_id
+                    for act in inst.activities.values()
+                    if act.week == w and act.kind == "LEC" and act.prof_id == s_id
+                }
+                for c_id in courses_here:
+                    lec_ids = [
+                        a_id for a_id, act in inst.activities.items()
+                        if act.week == w and act.kind == "LEC" and act.prof_id == s_id and act.course_id == c_id
+                    ]
+                    if not lec_ids:
+                        continue
+
+                    occ: Dict[Tuple[int, int], cp_model.BoolVar] = {
+                        (d, s): m.NewBoolVar(f"blk_occ[{s_id},{c_id},{w},{d},{s}]")
+                        for d in range(self.D) for s in range(self.S)
+                    }
+                    for (d, s), b in occ.items():
+                        terms: List[cp_model.BoolVar] = []
+                        for a_id in lec_ids:
+                            act = inst.activities[a_id]
+                            for t in self.allowed_starts[a_id]:
+                                d_idx = t // self.S
+                                s0 = t % self.S
+                                if d_idx != d:
+                                    continue
+                                if s0 <= s < s0 + act.duration:
+                                    terms.append(self.x[(a_id, t)])
+                                    m.Add(b >= self.x[(a_id, t)])
+                        if terms:
+                            m.Add(sum(terms) >= b)
+                        else:
+                            m.Add(b == 0)
+
+                    day_used = {d: m.NewBoolVar(f"blk_day[{s_id},{c_id},{w},{d}]") for d in range(self.D)}
+                    for d in range(self.D):
+                        day_terms = [occ[(d, s)] for s in range(self.S)]
+                        for s in range(self.S):
+                            m.Add(day_used[d] >= occ[(d, s)])
+                        m.Add(sum(day_terms) >= day_used[d])
+                    m.Add(sum(day_used.values()) == 1)
+
+                    total_slots_terms: List[cp_model.LinearExpr] = []
+                    for a_id in lec_ids:
+                        act = inst.activities[a_id]
+                        for t in self.allowed_starts[a_id]:
+                            total_slots_terms.append(act.duration * self.x[(a_id, t)])
+                    total_slots = sum(total_slots_terms)
+                    m.Add(total_slots >= 2)
+                    m.Add(total_slots <= 3)
+                    m.Add(sum(occ.values()) == total_slots)
+
+                    start_block: Dict[Tuple[int, int], cp_model.BoolVar] = {
+                        (d, s): m.NewBoolVar(f"blk_start[{s_id},{c_id},{w},{d},{s}]")
+                        for d in range(self.D) for s in range(self.S)
+                    }
+                    for d in range(self.D):
+                        # slot 0
+                        m.Add(start_block[(d, 0)] <= occ[(d, 0)])
+                        m.Add(start_block[(d, 0)] >= occ[(d, 0)])
+                        for s in range(1, self.S):
+                            cur = occ[(d, s)]
+                            prev = occ[(d, s - 1)]
+                            sb = start_block[(d, s)]
+                            m.Add(sb <= cur)
+                            m.Add(sb + prev <= 1)
+                            m.Add(sb + prev >= cur)
+                    m.Add(sum(start_block.values()) == 1)
 
         # Optional weekly load cap
         for s_id, staff in inst.staff.items():
@@ -534,6 +689,35 @@ class TimetableSolver:
         if self.room_mode == "cp_rooms":
             room_intervals_by_week: Dict[Tuple[int, int], List[cp_model.IntervalVar]] = {}
 
+            # Locked rooms (partial re-solve support)
+            locks = getattr(inst, "locked_activities", {}) or {}
+            if isinstance(locks, dict):
+                for a_id, fixed in locks.items():
+                    if not isinstance(fixed, dict) or "room_id" not in fixed:
+                        continue
+                    if a_id not in self.allowed_rooms:
+                        continue
+                    fixed_room = int(fixed["room_id"])
+                    if fixed_room not in self.allowed_rooms[a_id]:
+                        raise ValueError(f"Locked activity {a_id}: room_id {fixed_room} is not eligible")
+                    for r in self.allowed_rooms[a_id]:
+                        self.m.Add(self.room_sel[(a_id, r)] == (1 if r == fixed_room else 0))
+
+            # Room availability (if provided): forbid (activity start, room) combinations that
+            # use any unavailable (day, slot) pair.
+            full_pairs = {(d, s) for d in self.days for s in range(self.S)}
+
+            def _room_allows(room_id: int, day: str, start_slot: int, dur: int) -> bool:
+                avail = getattr(inst.rooms[room_id], "availability", None)
+                if avail is None:
+                    return True
+                if isinstance(avail, set) and avail.issuperset(full_pairs):
+                    return True
+                for off in range(dur):
+                    if (day, start_slot + off) not in avail:
+                        return False
+                return True
+
             for w in self.weeks:
                 clustered: Set[int] = set()
 
@@ -582,9 +766,278 @@ class TimetableSolver:
                         room_intervals_by_week.setdefault((r, w), []).append(iv)
                         self.room_iv[(a_id, r)] = iv
 
+                # Availability constraints for all activities in the week (clustered or not)
+                for a_id, act in self.inst.activities.items():
+                    if act.week != w:
+                        continue
+                    dur = act.duration
+                    allowed_starts = self.allowed_starts[a_id]
+                    for r in self.allowed_rooms.get(a_id, []):
+                        room = inst.rooms[r]
+                        avail = getattr(room, "availability", None)
+                        if avail is None:
+                            continue
+                        if isinstance(avail, set) and avail.issuperset(full_pairs):
+                            continue
+                        for t in allowed_starts:
+                            d_idx = t // self.S
+                            s0 = t % self.S
+                            if not _room_allows(r, self.days[d_idx], s0, dur):
+                                self.m.Add(self.room_sel[(a_id, r)] + self.x[(a_id, t)] <= 1)
+
             for (r, w), ivs in room_intervals_by_week.items():
                 if len(ivs) > 1:
                     self.m.AddNoOverlap(ivs)
+
+    def _add_objective(self) -> None:
+        """
+        Add a linear soft-constraint objective similar to the local-search scorer.
+
+        Notes:
+          - This is a weighted penalty model; it does not change feasibility.
+          - Room-consistency penalties are included only in CP-rooming mode.
+        """
+        m = self.m
+        inst = self.inst
+
+        weights = {
+            "stud_free_days": 10,
+            "stud_free_mf": 5,
+            "stud_gaps": 5,
+            "staff_free_day": 6,
+            "active_days": 3,
+            "early_start": 2,
+            "balance": 2,
+            "stability": 1,
+            "room_consistency": 1,
+        }
+        overrides = getattr(inst, "soft_weights", None)
+        if isinstance(overrides, dict):
+            for k, v in overrides.items():
+                try:
+                    weights[str(k)] = int(v)
+                except Exception:
+                    continue
+
+        days = list(self.days)
+        weeks = list(self.weeks)
+        S = int(self.S)
+        D = int(self.D)
+
+        group_ids = list(inst.groups.keys())
+        staff_ids = list(inst.staff.keys())
+
+        mf_days = {d for d in days if d in {"MON", "TUE", "WED", "THU", "FRI"}}
+        mf_day_idx = [i for i, d in enumerate(days) if d in mf_days]
+
+        # Precompute occupancy terms by (entity, week, day_idx, slot).
+        g_terms: DefaultDict[Tuple[int, int, int, int], List[cp_model.BoolVar]] = defaultdict(list)
+        s_terms: DefaultDict[Tuple[int, int, int, int], List[cp_model.BoolVar]] = defaultdict(list)
+
+        for a_id, act in inst.activities.items():
+            w = act.week
+            if w not in set(weeks):
+                continue
+            dur = int(act.duration)
+            sid = self.activity_staff[a_id]
+            for t in self.allowed_starts[a_id]:
+                d_idx = t // S
+                s0 = t % S
+                xvar = self.x[(a_id, t)]
+                for off in range(dur):
+                    slot = s0 + off
+                    if 0 <= slot < S:
+                        s_terms[(sid, w, d_idx, slot)].append(xvar)
+                        for g in act.group_ids:
+                            g_terms[(int(g), w, d_idx, slot)].append(xvar)
+
+        # Build group occupancy and day-active booleans.
+        g_occ: Dict[Tuple[int, int, int, int], cp_model.BoolVar] = {}
+        g_day: Dict[Tuple[int, int, int], cp_model.BoolVar] = {}
+        g_active_days: Dict[Tuple[int, int], cp_model.LinearExpr] = {}
+
+        for g in group_ids:
+            for w in weeks:
+                for d_idx in range(D):
+                    for s in range(S):
+                        key = (g, w, d_idx, s)
+                        b = m.NewBoolVar(f"g_occ[{g},{w},{d_idx},{s}]")
+                        terms = g_terms.get(key, [])
+                        if terms:
+                            for xvar in terms:
+                                m.Add(b >= xvar)
+                            m.Add(sum(terms) >= b)
+                        else:
+                            m.Add(b == 0)
+                        g_occ[key] = b
+
+        for g in group_ids:
+            for w in weeks:
+                day_bools: List[cp_model.BoolVar] = []
+                for d_idx in range(D):
+                    b = m.NewBoolVar(f"g_day[{g},{w},{d_idx}]")
+                    occs = [g_occ[(g, w, d_idx, s)] for s in range(S)]
+                    for o in occs:
+                        m.Add(b >= o)
+                    m.Add(sum(occs) >= b)
+                    g_day[(g, w, d_idx)] = b
+                    day_bools.append(b)
+                g_active_days[(g, w)] = sum(day_bools)
+
+        # Staff day activity for staff-free-day penalty.
+        s_occ: Dict[Tuple[int, int, int, int], cp_model.BoolVar] = {}
+        s_day: Dict[Tuple[int, int, int], cp_model.BoolVar] = {}
+        s_active_days: Dict[Tuple[int, int], cp_model.LinearExpr] = {}
+
+        for sid in staff_ids:
+            for w in weeks:
+                for d_idx in range(D):
+                    for s in range(S):
+                        key = (sid, w, d_idx, s)
+                        b = m.NewBoolVar(f"s_occ[{sid},{w},{d_idx},{s}]")
+                        terms = s_terms.get(key, [])
+                        if terms:
+                            for xvar in terms:
+                                m.Add(b >= xvar)
+                            m.Add(sum(terms) >= b)
+                        else:
+                            m.Add(b == 0)
+                        s_occ[key] = b
+
+        for sid in staff_ids:
+            for w in weeks:
+                day_bools: List[cp_model.BoolVar] = []
+                for d_idx in range(D):
+                    b = m.NewBoolVar(f"s_day[{sid},{w},{d_idx}]")
+                    occs = [s_occ[(sid, w, d_idx, s)] for s in range(S)]
+                    for o in occs:
+                        m.Add(b >= o)
+                    m.Add(sum(occs) >= b)
+                    s_day[(sid, w, d_idx)] = b
+                    day_bools.append(b)
+                s_active_days[(sid, w)] = sum(day_bools)
+
+        penalties: List[cp_model.LinearExpr] = []
+
+        # Student free days + Mon–Fri free days + active days.
+        for g, group in inst.groups.items():
+            want = int(getattr(group, "preferred_free_days", 0) or 0)
+            for w in weeks:
+                active = g_active_days[(g, w)]
+
+                slack_free = m.NewIntVar(0, D, f"slack_free[{g},{w}]")
+                m.Add(slack_free >= want - D + active)
+                penalties.append(weights["stud_free_days"] * slack_free)
+
+                if mf_day_idx:
+                    active_mf = sum(g_day[(g, w, d)] for d in mf_day_idx)
+                    slack_mf = m.NewIntVar(0, len(mf_day_idx), f"slack_mf[{g},{w}]")
+                    m.Add(slack_mf >= want - len(mf_day_idx) + active_mf)
+                    penalties.append(weights["stud_free_mf"] * slack_mf)
+
+                slack_active = m.NewIntVar(0, D, f"slack_active[{g},{w}]")
+                m.Add(slack_active >= active - 3)
+                penalties.append(weights["active_days"] * slack_active)
+
+        # Student gaps, balance, early start (per day).
+        for g in group_ids:
+            for w in weeks:
+                for d_idx in range(D):
+                    occs = [g_occ[(g, w, d_idx, s)] for s in range(S)]
+
+                    load = sum(occs)
+                    slack_load = m.NewIntVar(0, S, f"slack_load[{g},{w},{d_idx}]")
+                    m.Add(slack_load >= load - 3)
+                    penalties.append(weights["balance"] * slack_load)
+
+                    # blocks: count starts of occupied segments
+                    starts = [m.NewBoolVar(f"g_block[{g},{w},{d_idx},0]")]
+                    m.Add(starts[0] == occs[0])
+                    for s in range(1, S):
+                        sb = m.NewBoolVar(f"g_block[{g},{w},{d_idx},{s}]")
+                        cur = occs[s]
+                        prev = occs[s - 1]
+                        m.Add(sb <= cur)
+                        m.Add(sb + prev <= 1)
+                        m.Add(sb + prev >= cur)
+                        starts.append(sb)
+                    blocks = sum(starts)
+                    slack_gaps = m.NewIntVar(0, S, f"slack_gaps[{g},{w},{d_idx}]")
+                    m.Add(slack_gaps >= blocks - 1)
+                    penalties.append(weights["stud_gaps"] * slack_gaps)
+
+                    # early start: slot-0 occupied and any later slot occupied
+                    if S >= 2:
+                        any_rest = m.NewBoolVar(f"g_any_rest[{g},{w},{d_idx}]")
+                        rest = occs[1:]
+                        for o in rest:
+                            m.Add(any_rest >= o)
+                        m.Add(sum(rest) >= any_rest)
+
+                        early = m.NewBoolVar(f"g_early[{g},{w},{d_idx}]")
+                        m.Add(early <= occs[0])
+                        m.Add(early <= any_rest)
+                        m.Add(early >= occs[0] + any_rest - 1)
+                        penalties.append(weights["early_start"] * early)
+
+        # Staff: require at least one free day per week (soft penalty).
+        for sid in staff_ids:
+            for w in weeks:
+                active = s_active_days[(sid, w)]
+                slack = m.NewIntVar(0, D, f"slack_staff_free[{sid},{w}]")
+                m.Add(slack >= 1 - D + active)
+                penalties.append(weights["staff_free_day"] * slack)
+
+        # Stability: day-active pattern changes between consecutive weeks.
+        for g in group_ids:
+            for wi in range(1, len(weeks)):
+                w_prev = weeks[wi - 1]
+                w_curr = weeks[wi]
+                for d_idx in range(D):
+                    a = g_day[(g, w_prev, d_idx)]
+                    b = g_day[(g, w_curr, d_idx)]
+                    diff = m.NewBoolVar(f"g_stab[{g},{w_curr},{d_idx}]")
+                    m.Add(diff >= a - b)
+                    m.Add(diff >= b - a)
+                    m.Add(diff <= a + b)
+                    m.Add(diff <= 2 - a - b)
+                    penalties.append(weights["stability"] * diff)
+
+        # Room consistency per (course, group, kind) across weeks (CP-rooming only).
+        if self.room_mode == "cp_rooms":
+            key_to_activities: DefaultDict[Tuple[int, int, str], List[int]] = defaultdict(list)
+            for a_id, act in inst.activities.items():
+                for g in act.group_ids:
+                    key_to_activities[(act.course_id, int(g), act.kind)].append(a_id)
+
+            for (c_id, g_id, kind), act_ids in key_to_activities.items():
+                if len(act_ids) <= 1:
+                    continue
+                room_ids: Set[int] = set()
+                for a_id in act_ids:
+                    room_ids.update(self.allowed_rooms.get(a_id, []))
+                if not room_ids:
+                    continue
+
+                used: Dict[int, cp_model.BoolVar] = {r: m.NewBoolVar(f"room_used[{c_id},{g_id},{kind},{r}]") for r in room_ids}
+                for r in room_ids:
+                    terms: List[cp_model.BoolVar] = []
+                    for a_id in act_ids:
+                        if r in self.allowed_rooms.get(a_id, []):
+                            sel = self.room_sel[(a_id, r)]
+                            terms.append(sel)
+                            m.Add(used[r] >= sel)
+                    if terms:
+                        m.Add(sum(terms) >= used[r])
+                    else:
+                        m.Add(used[r] == 0)
+
+                slack = m.NewIntVar(0, len(room_ids), f"slack_room_cons[{c_id},{g_id},{kind}]")
+                m.Add(slack >= sum(used.values()) - 1)
+                penalties.append(weights["room_consistency"] * slack)
+
+        if penalties:
+            m.Minimize(sum(penalties))
 
     def _add_decision_strategy(self) -> None:
         if self._dec_free_bools:
@@ -673,6 +1126,16 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
             for tag in getattr(room, "specialization_tags", []) or []:
                 spec_rooms_by_tag.setdefault(tag, []).append(r_id)
 
+    def _room_available(room_id: int, day: str, start_slot: int, dur: int) -> bool:
+        avail = getattr(inst.rooms[room_id], "availability", None)
+        if avail is None:
+            return True
+        if isinstance(avail, set):
+            for off in range(dur):
+                if (day, start_slot + off) not in avail:
+                    return False
+        return True
+
     # time occupancy
     slot_acts: Dict[Tuple[int, str, int], List[int]] = {}
     for a_id, info in schedule.items():
@@ -681,6 +1144,19 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
         for off in range(dur):
             s = s0 + off
             slot_acts.setdefault((w, d, s), []).append(a_id)
+
+    # honor locked rooms before assigning anything else
+    locks = getattr(inst, "locked_activities", {}) or {}
+    for a_id, fixed in locks.items():
+        if not isinstance(fixed, dict) or "room_id" not in fixed or a_id not in schedule:
+            continue
+        room_id = int(fixed["room_id"])
+        info = schedule[a_id]
+        if info.get("room_id") not in (None, room_id):
+            raise ValueError(f"Locked room for activity {a_id} conflicts with pre-assigned room")
+        if not _room_available(room_id, info["day"], info["slot"], info["duration"]):
+            raise ValueError(f"Locked room for activity {a_id} is unavailable at the scheduled time")
+        schedule[a_id]["room_id"] = room_id
 
     clusters = _clusters_for_assignment(inst)
 
@@ -696,10 +1172,12 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                 gids.add(int(g))
         return sum(inst.groups[g].size for g in gids if g in inst.groups)
 
-    def _pick_room(room_ids: List[int], occupied: set[int], required_capacity: int) -> int | None:
+    def _pick_room(room_ids: List[int], occupied: set[int], required_capacity: int, day: str, slot: int, dur: int) -> int | None:
         candidates = [
             r_id for r_id in room_ids
-            if r_id not in occupied and inst.rooms[r_id].capacity >= required_capacity
+            if r_id not in occupied
+            and inst.rooms[r_id].capacity >= required_capacity
+            and _room_available(r_id, day, slot, dur)
         ]
         candidates.sort(key=lambda r_id: inst.rooms[r_id].capacity)
         return candidates[0] if candidates else None
@@ -732,7 +1210,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         clusters_here_lec.append(members)
                 for members in clusters_here_lec:
                     req = _required_capacity_for_members(members)
-                    room_id = _pick_room(lecture_rooms, occupied, req)
+                    room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
                     if room_id is None:
                         raise ValueError(f"No LECTURE room fits LEC cluster at {w}-{d}-{s} (need cap {req})")
                     for a_id in members:
@@ -748,9 +1226,9 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         clusters_here_tut.append(members)
                 for members in clusters_here_tut:
                     req = _required_capacity_for_members(members)
-                    room_id = _pick_room(tutorial_rooms, occupied, req)
+                    room_id = _pick_room(tutorial_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
                     if room_id is None:
-                        room_id = _pick_room(lecture_rooms, occupied, req)
+                        room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
                     if room_id is None:
                         raise ValueError(f"No room fits TUT cluster at {w}-{d}-{s} (need cap {req})")
                     for a_id in members:
@@ -766,7 +1244,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         clusters_here_lab.append(members)
                 for members in clusters_here_lab:
                     req = _required_capacity_for_members(members)
-                    room_id = _pick_room(lab_rooms, occupied, req)
+                    room_id = _pick_room(lab_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
                     if room_id is None:
                         raise ValueError(f"No LAB room fits LAB cluster at {w}-{d}-{s} (need cap {req})")
                     for a_id in members:
@@ -797,9 +1275,9 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     for a_id in acts_tag:
                         req = _required_capacity_for_activity(a_id)
                         preferred = [r for r in spec_rooms_by_tag.get(tag, []) if r not in occupied]
-                        room_id = _pick_room(preferred, occupied, req)
+                        room_id = _pick_room(preferred, occupied, req, d, s, schedule[a_id]["duration"])
                         if room_id is None:
-                            room_id = _pick_room(lab_rooms, occupied, req)
+                            room_id = _pick_room(lab_rooms, occupied, req, d, s, schedule[a_id]["duration"])
                         if room_id is None:
                             raise ValueError(f"No lab room fits specialised lab a{a_id} (need cap {req})")
                         schedule[a_id]["room_id"] = room_id
@@ -807,7 +1285,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
 
                 for a_id in labs_generic:
                     req = _required_capacity_for_activity(a_id)
-                    room_id = _pick_room(lab_rooms, occupied, req)
+                    room_id = _pick_room(lab_rooms, occupied, req, d, s, schedule[a_id]["duration"])
                     if room_id is None:
                         raise ValueError(f"No lab room fits lab a{a_id} (need cap {req})")
                     schedule[a_id]["room_id"] = room_id
@@ -816,7 +1294,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                 # lectures
                 for a_id in lecs:
                     req = _required_capacity_for_activity(a_id)
-                    room_id = _pick_room(lecture_rooms, occupied, req)
+                    room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
                     if room_id is None:
                         raise ValueError(f"No lecture room fits a{a_id} (need cap {req})")
                     schedule[a_id]["room_id"] = room_id
@@ -825,9 +1303,9 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                 # tutorials (prefer TUTORIAL then LECTURE)
                 for a_id in tuts:
                     req = _required_capacity_for_activity(a_id)
-                    room_id = _pick_room(tutorial_rooms, occupied, req)
+                    room_id = _pick_room(tutorial_rooms, occupied, req, d, s, schedule[a_id]["duration"])
                     if room_id is None:
-                        room_id = _pick_room(lecture_rooms, occupied, req)
+                        room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
                     if room_id is None:
                         raise ValueError(f"No tutorial/lecture room fits a{a_id} (need cap {req})")
                     schedule[a_id]["room_id"] = room_id

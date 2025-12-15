@@ -152,3 +152,133 @@ def test_export_groups_ics_per_id_writes_expected_vevent(monkeypatch):
     assert "UID:group-1-a1-w1-dMON-s0" in ics_text
     assert "SUMMARY:C1 LEC" in ics_text
     assert "LOCATION:Room 101" in ics_text
+
+
+def test_export_groups_pdf_writes_pdf_header(tmp_path):
+    inst = make_instance(
+        days=["MON"],
+        slots_per_day=1,
+        weeks=[1],
+        groups={1: Group(id=1, name="Group A", program_id=1, size=30, course_ids=[1])},
+        courses={
+            1: Course(
+                id=1,
+                code="C1",
+                name="Course 1",
+                structure_type="LEC_ONLY",
+                lecture_count=1,
+                tutorial_count=0,
+                lab_weeks=0,
+                lab_duration=0,
+                share_lecture_group_ids=[],
+            )
+        },
+        staff={1: StaffMember(
+            id=1,
+            name="Prof-1",
+            is_prof=True,
+            available_days={"MON"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses={1},
+            prefers_block=False,
+            blocks_only=False,
+        )},
+        rooms={1: Room(id=1, name="Room 101", capacity=120, room_type="LECTURE", specialization_tags=set())},
+        activities={
+            1: Activity(
+                id=1,
+                course_id=1,
+                week=1,
+                kind="LEC",
+                duration=1,
+                group_ids=[1],
+                prof_id=1,
+                ta_id=1,
+                requires_specialization=None,
+            )
+        },
+    )
+    schedule = {
+        1: {
+            "week": 1,
+            "day": "MON",
+            "slot": 0,
+            "duration": 1,
+            "room_id": 1,
+            "staff_id": 1,
+            "course_id": 1,
+            "group_ids": [1],
+            "kind": "LEC",
+        }
+    }
+
+    out_path = tmp_path / "groups.pdf"
+    exporter.export_groups_pdf(inst, schedule, out_path)
+    data = out_path.read_bytes()
+    assert data.startswith(b"%PDF-")
+
+
+def test_export_summary_reports_writes_csvs(tmp_path):
+    inst = make_instance(
+        days=["MON"],
+        slots_per_day=1,
+        weeks=[1],
+        groups={1: Group(id=1, name="Group A", program_id=1, size=30, course_ids=[1])},
+        courses={
+            1: Course(
+                id=1,
+                code="C1",
+                name="Course 1",
+                structure_type="LEC_ONLY",
+                lecture_count=1,
+                tutorial_count=0,
+                lab_weeks=0,
+                lab_duration=0,
+                share_lecture_group_ids=[],
+            )
+        },
+        staff={1: StaffMember(
+            id=1,
+            name="Prof-1",
+            is_prof=True,
+            available_days={"MON"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses={1},
+            prefers_block=False,
+            blocks_only=False,
+        )},
+        rooms={1: Room(id=1, name="Room 101", capacity=120, room_type="LECTURE", specialization_tags=set())},
+        activities={
+            1: Activity(
+                id=1,
+                course_id=1,
+                week=1,
+                kind="LEC",
+                duration=1,
+                group_ids=[1],
+                prof_id=1,
+                ta_id=1,
+                requires_specialization=None,
+            )
+        },
+    )
+    schedule = {
+        1: {
+            "week": 1,
+            "day": "MON",
+            "slot": 0,
+            "duration": 1,
+            "room_id": 1,
+            "staff_id": 1,
+            "course_id": 1,
+            "group_ids": [1],
+            "kind": "LEC",
+        }
+    }
+
+    exporter.export_summary_reports(inst, schedule, tmp_path)
+    assert (tmp_path / "staff_load.csv").exists()
+    assert (tmp_path / "group_load.csv").exists()
+    assert (tmp_path / "room_util.csv").exists()

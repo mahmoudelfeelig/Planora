@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Tuple, Optional, Any
 
 
 @dataclass
@@ -58,6 +58,8 @@ class Room:
     capacity: int
     room_type: str                 # "LECTURE", "TUTORIAL", "SPECIALIZED_LAB", "COMPUTER_LAB"
     specialization_tags: Set[str] = field(default_factory=set)
+    # Optional availability; when None, the room is assumed available for all (day, slot) pairs.
+    availability: Optional[Set[Tuple[str, int]]] = None
 
 
 @dataclass
@@ -85,3 +87,10 @@ class Instance:
     staff: Dict[int, StaffMember]
     rooms: Dict[int, Room]
     activities: Dict[int, Activity]
+
+    # Optional: activity locks for partial re-solving. Keys are activity ids; values may contain
+    # any of: "day" (str), "slot" (int), "room_id" (int).
+    locked_activities: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+
+    # Optional: global soft constraint weights for CP objective (when used).
+    soft_weights: Dict[str, int] = field(default_factory=dict)

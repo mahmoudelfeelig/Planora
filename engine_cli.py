@@ -56,8 +56,12 @@ def main() -> int:
 
     # Build and solve the CP model
     try:
-        # Room assignment defaults to the fast greedy pass; the UI will run local search afterwards.
-        solver_model = TimetableSolver(inst, room_mode="greedy")
+        room_mode = os.getenv("TT_ROOM_MODE", "greedy")
+        use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
+        use_objective = use_objective_env not in ("0", "false", "False", "no")
+
+        # CP-rooming defaults to enforcing capacity/availability; override via env for speed trade-offs.
+        solver_model = TimetableSolver(inst, room_mode=room_mode, use_objective=use_objective)
 
         # Optional time limit via env var (seconds). Keep defaults if unset.
         tl = os.getenv("TT_TIME_LIMIT")

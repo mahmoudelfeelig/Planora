@@ -1,6 +1,6 @@
 # University Timetabling Scheduler (Python)
 
-Generates and edits 12-week university timetables (lectures, tutorials, and labs) on a fixed weekly grid, using an OR-Tools CP-SAT feasibility model plus an optional local-search improver. Includes a PyQt6 desktop UI and exporters for DOCX/CSV/ICS.
+Generates and edits 12-week university timetables (lectures, tutorials, and labs) on a fixed weekly grid, using an OR-Tools CP-SAT feasibility model plus an optional local-search improver. Includes a PyQt6 desktop UI and exporters for DOCX/CSV/ICS/PDF plus CSV summary reports.
 
 ## What’s in this repo
 
@@ -77,4 +77,4 @@ Optional solver time limit (seconds) for the UI worker:
 ## Notes / current limitations
 
 - The built-in generator focuses on `LEC_TUT` and `LAB_ONLY` course patterns; other structure types can be added by extending `generator.py`.
-- Some features commonly found in full timetabling products (data import/edit screens, scenario persistence, PDF export, REST API) are not implemented here.
+- Some features commonly found in full timetabling products (data import/edit screens, scenario persistence, multi-scenario comparison, detailed constraint explanation) are not implemented here.

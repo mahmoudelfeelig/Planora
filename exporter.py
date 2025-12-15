@@ -217,6 +217,182 @@ def export_schedule_to_csv(inst: Instance, schedule: Dict[int, Dict[str, Any]], 
                 info.get("kind"),
             ])
 
+# -------- Minimal PDF export (no external dependencies) --------
+
+def _pdf_escape(s: str) -> str:
+    return s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _write_simple_pdf(pages: List[List[str]], out_path: str | Path) -> None:
+    """
+    Write a basic text-only PDF with one or more pages.
+    This avoids external PDF dependencies and is sufficient for quick reporting.
+    """
+    path = Path(out_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    objects: List[bytes] = []
+
+    def add_obj(data: str) -> int:
+        objects.append(data.encode("latin-1", errors="replace"))
+        return len(objects)
+
+    font_obj = add_obj("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+
+    page_obj_ids: List[int] = []
+    for page_lines in pages:
+        x0 = 50
+        y0 = 800
+        leading = 12
+        lines = ["BT", "/F1 10 Tf", f"{leading} TL", f"{x0} {y0} Td"]
+        for line in page_lines:
+            lines.append(f"({_pdf_escape(line)}) Tj")
+            lines.append("T*")
+        lines.append("ET")
+        stream = "\n".join(lines) + "\n"
+
+        content = f"<< /Length {len(stream.encode('latin-1', errors='replace'))} >>\nstream\n{stream}endstream"
+        content_id = add_obj(content)
+
+        page_dict = f"<< /Type /Page /Parent 0 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 {font_obj} 0 R >> >> /Contents {content_id} 0 R >>"
+        page_id = add_obj(page_dict)
+        page_obj_ids.append(page_id)
+
+    kids = " ".join(f"{pid} 0 R" for pid in page_obj_ids)
+    pages_id = add_obj(f"<< /Type /Pages /Count {len(page_obj_ids)} /Kids [ {kids} ] >>")
+
+    for page_id in page_obj_ids:
+        raw = objects[page_id - 1].decode("latin-1", errors="replace")
+        objects[page_id - 1] = raw.replace("/Parent 0 0 R", f"/Parent {pages_id} 0 R").encode("latin-1", errors="replace")
+
+    catalog_id = add_obj(f"<< /Type /Catalog /Pages {pages_id} 0 R >>")
+
+    header = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
+    offsets = [0]
+    body = b""
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(len(header) + len(body))
+        body += f"{i} 0 obj\n".encode("latin-1") + obj + b"\nendobj\n"
+
+    xref_start = len(header) + len(body)
+    xref = [f"xref\n0 {len(objects)+1}\n".encode("latin-1")]
+    xref.append(b"0000000000 65535 f \n")
+    for off in offsets[1:]:
+        xref.append(f"{off:010d} 00000 n \n".encode("latin-1"))
+    xref_bytes = b"".join(xref)
+
+    trailer = (
+        f"trailer\n<< /Size {len(objects)+1} /Root {catalog_id} 0 R >>\n"
+        f"startxref\n{xref_start}\n%%EOF\n"
+    ).encode("latin-1")
+
+    path.write_bytes(header + body + xref_bytes + trailer)
+
+
+def export_groups_pdf(inst: Instance, schedule: Dict[int, Dict[str, Any]], out_path: str | Path) -> None:
+    """
+    Text-only PDF export: one page per group with a sorted activity list.
+    """
+    pages: List[List[str]] = []
+    day_order = {d: i for i, d in enumerate(inst.days)}
+
+    for g_id, g in sorted(inst.groups.items()):
+        lines: List[str] = [f"Group: {g.name} (id {g_id})"]
+        items = []
+        for a_id, info in schedule.items():
+            if g_id not in info.get("group_ids", []):
+                continue
+            course = inst.courses.get(info["course_id"])
+            room = inst.rooms.get(info.get("room_id")) if info.get("room_id") is not None else None
+            staff = inst.staff.get(info.get("staff_id")) if info.get("staff_id") is not None else None
+            items.append((
+                int(info["week"]),
+                day_order.get(str(info["day"]), 999),
+                int(info["slot"]),
+                a_id,
+                course.code if course else str(info.get("course_id")),
+                str(info.get("kind", "")),
+                room.name if room else str(info.get("room_id")),
+                staff.name if staff else str(info.get("staff_id")),
+                int(info.get("duration", 1)),
+                str(info.get("day")),
+            ))
+        items.sort()
+
+        for (w, _, slot, a_id, code, kind, room_name, staff_name, dur, day) in items:
+            lines.append(f"W{w:02d} {day} s{slot+1} dur{dur}  {code} {kind}  room={room_name}  staff={staff_name}  (A{a_id})")
+        if len(lines) == 1:
+            lines.append("(no scheduled activities)")
+        pages.append(lines)
+
+    _write_simple_pdf(pages, out_path)
+
+
+# -------- richer reporting --------
+
+def export_summary_reports(inst: Instance, schedule: Dict[int, Dict[str, Any]], out_dir: str | Path) -> None:
+    """
+    Write small CSV reports that are easy to inspect:
+      - staff_load.csv: per staff/week total slots
+      - group_load.csv: per group/week total slots
+      - room_util.csv: per room/week total slots
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    staff_load: Dict[tuple[int, int], int] = {}
+    group_load: Dict[tuple[int, int], int] = {}
+    room_load: Dict[tuple[int, int], int] = {}
+
+    for info in schedule.values():
+        w = int(info["week"])
+        dur = int(info["duration"])
+
+        sid = info.get("staff_id")
+        if sid is not None:
+            key = (int(sid), w)
+            staff_load[key] = staff_load.get(key, 0) + dur
+
+        rid = info.get("room_id")
+        if rid is not None:
+            key = (int(rid), w)
+            room_load[key] = room_load.get(key, 0) + dur
+
+        for g in info.get("group_ids", []) or []:
+            key = (int(g), w)
+            group_load[key] = group_load.get(key, 0) + dur
+
+    def _write(path: Path, header: List[str], rows: List[List[object]]) -> None:
+        with path.open("w", newline="", encoding="utf-8") as f:
+            cw = csv.writer(f)
+            cw.writerow(header)
+            cw.writerows(rows)
+
+    _write(
+        out_dir / "staff_load.csv",
+        ["staff_id", "staff_name", "week", "slots"],
+        [
+            [sid, inst.staff.get(sid).name if sid in inst.staff else "", w, slots]
+            for (sid, w), slots in sorted(staff_load.items())
+        ],
+    )
+    _write(
+        out_dir / "group_load.csv",
+        ["group_id", "group_name", "week", "slots"],
+        [
+            [gid, inst.groups.get(gid).name if gid in inst.groups else "", w, slots]
+            for (gid, w), slots in sorted(group_load.items())
+        ],
+    )
+    _write(
+        out_dir / "room_util.csv",
+        ["room_id", "room_name", "week", "slots"],
+        [
+            [rid, inst.rooms.get(rid).name if rid in inst.rooms else "", w, slots]
+            for (rid, w), slots in sorted(room_load.items())
+        ],
+    )
+
 # -------- ICS (one file per entity) --------
 
 def _monday_of_week0(anchor: Optional[date] = None) -> date:
@@ -225,11 +401,11 @@ def _monday_of_week0(anchor: Optional[date] = None) -> date:
         return today + timedelta(days=(7 - today.weekday()) % 7)
     return anchor - timedelta(days=anchor.weekday())
 
-def _slot_dt(anchor_monday: date, day_name: str, slot_index: int, slot_minutes: int, day_start: time, weeks_offset: int) -> tuple[datetime, datetime]:
+def _slot_dt(anchor_monday: date, day_name: str, slot_index: int, slot_minutes: int, slot_break_minutes: int, day_start: time, weeks_offset: int) -> tuple[datetime, datetime]:
     day_map = {name.upper()[:3]: i for i, name in enumerate(["MON","TUE","WED","THU","FRI","SAT","SUN"])}
     weekday = day_map.get(day_name.upper()[:3], 0)
     d = anchor_monday + timedelta(days=weekday + 7 * weeks_offset)
-    start = datetime.combine(d, day_start) + timedelta(minutes=slot_index * slot_minutes)
+    start = datetime.combine(d, day_start) + timedelta(minutes=slot_index * (slot_minutes + slot_break_minutes))
     end = start + timedelta(minutes=slot_minutes)
     return start, end
 
@@ -275,6 +451,10 @@ def _get_slot_minutes(inst: Instance) -> int:
     v = getattr(inst, "slot_minutes", None)
     return int(v) if isinstance(v, int) and v > 0 else _DEFAULT_SLOT_MINUTES
 
+def _get_slot_break_minutes(inst: Instance) -> int:
+    v = getattr(inst, "slot_break_minutes", None)
+    return int(v) if isinstance(v, int) and v >= 0 else _DEFAULT_BREAK_MINUTES
+
 def _get_day_start(inst: Instance) -> time:
     v = getattr(inst, "day_start_time", None)
     if isinstance(v, str) and ":" in v:
@@ -295,6 +475,7 @@ def export_groups_ics_per_id(inst: Instance, schedule: Dict[int, Dict[str, Any]]
                              week0_monday: Optional[date] = None) -> None:
     base = Path(out_dir)
     slot_minutes = _get_slot_minutes(inst)
+    slot_break_minutes = _get_slot_break_minutes(inst)
     day_start = _get_day_start(inst)
     monday0 = _monday_of_week0(week0_monday)
 
@@ -308,7 +489,7 @@ def export_groups_ics_per_id(inst: Instance, schedule: Dict[int, Dict[str, Any]]
             s0 = int(info["slot"])
             dur = int(info["duration"])
             # Emit one VEVENT per slot block of duration
-            start, _ = _slot_dt(monday0, dname, s0, slot_minutes, day_start, weeks_offset=w-1)
+            start, _ = _slot_dt(monday0, dname, s0, slot_minutes, slot_break_minutes, day_start, weeks_offset=w-1)
             end = start + timedelta(minutes=dur * slot_minutes)
             course = inst.courses.get(info["course_id"])
             room = inst.rooms.get(info.get("room_id")) if info.get("room_id") is not None else None
@@ -325,6 +506,7 @@ def export_staff_ics_per_id(inst: Instance, schedule: Dict[int, Dict[str, Any]],
                              week0_monday: Optional[date] = None) -> None:
     base = Path(out_dir)
     slot_minutes = _get_slot_minutes(inst)
+    slot_break_minutes = _get_slot_break_minutes(inst)
     day_start = _get_day_start(inst)
     monday0 = _monday_of_week0(week0_monday)
 
@@ -337,7 +519,7 @@ def export_staff_ics_per_id(inst: Instance, schedule: Dict[int, Dict[str, Any]],
             dname = str(info["day"])
             s0 = int(info["slot"])
             dur = int(info["duration"])
-            start, _ = _slot_dt(monday0, dname, s0, slot_minutes, day_start, weeks_offset=w-1)
+            start, _ = _slot_dt(monday0, dname, s0, slot_minutes, slot_break_minutes, day_start, weeks_offset=w-1)
             end = start + timedelta(minutes=dur * slot_minutes)
             course = inst.courses.get(info["course_id"])
             room = inst.rooms.get(info.get("room_id")) if info.get("room_id") is not None else None
@@ -353,6 +535,7 @@ def export_rooms_ics_per_id(inst: Instance, schedule: Dict[int, Dict[str, Any]],
                              week0_monday: Optional[date] = None) -> None:
     base = Path(out_dir)
     slot_minutes = _get_slot_minutes(inst)
+    slot_break_minutes = _get_slot_break_minutes(inst)
     day_start = _get_day_start(inst)
     monday0 = _monday_of_week0(week0_monday)
 
@@ -365,7 +548,7 @@ def export_rooms_ics_per_id(inst: Instance, schedule: Dict[int, Dict[str, Any]],
             dname = str(info["day"])
             s0 = int(info["slot"])
             dur = int(info["duration"])
-            start, _ = _slot_dt(monday0, dname, s0, slot_minutes, day_start, weeks_offset=w-1)
+            start, _ = _slot_dt(monday0, dname, s0, slot_minutes, slot_break_minutes, day_start, weeks_offset=w-1)
             end = start + timedelta(minutes=dur * slot_minutes)
             course = inst.courses.get(info["course_id"])
             staff = inst.staff.get(info.get("staff_id")) if info.get("staff_id") is not None else None

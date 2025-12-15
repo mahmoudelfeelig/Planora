@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List, Set
 import random
 import math
+import time
 
 from domain import Instance
 
@@ -18,8 +19,77 @@ class LocalSearchImprover:
 
     def __init__(self, inst: Instance):
         self.inst = inst
+        self._locked: Dict[int, Dict[str, Any]] = {}
+        self._allowed_rooms: Dict[int, List[int]] = {}
+        self._cluster_by_act: Dict[int, List[int]] = {}
 
     # ---------- state ----------
+
+    def _compute_allowed_rooms(self) -> None:
+        inst = self.inst
+
+        def required_capacity(act_id: int) -> int:
+            gids = inst.activities[act_id].group_ids
+            return sum(inst.groups[g].size for g in gids if g in inst.groups)
+
+        for a_id, act in inst.activities.items():
+            rooms: List[int] = []
+            need = required_capacity(a_id)
+            if act.kind == "LAB":
+                req = getattr(act, "requires_specialization", None)
+                lab_candidates = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("SPECIALIZED_LAB", "COMPUTER_LAB")]
+                if req:
+                    for r_id in lab_candidates:
+                        tags = getattr(inst.rooms[r_id], "specialization_tags", []) or []
+                        if req in tags and inst.rooms[r_id].capacity >= need:
+                            rooms.append(r_id)
+                else:
+                    rooms = [r_id for r_id in lab_candidates if inst.rooms[r_id].capacity >= need]
+            elif act.kind == "TUT":
+                rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("TUTORIAL", "LECTURE") and r.capacity >= need]
+            else:  # LEC
+                rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE" and r.capacity >= need]
+
+            if rooms:
+                self._allowed_rooms[a_id] = rooms
+
+    def _compute_clusters(self) -> None:
+        """
+        Build activity clusters (same logic as solver) to keep equal starts together.
+        """
+        inst = self.inst
+        by_ckwg: Dict[Tuple[int, str, int, int], List[int]] = {}
+        for a_id, a in inst.activities.items():
+            if len(a.group_ids) == 1:
+                by_ckwg.setdefault((a.course_id, a.kind, a.week, a.group_ids[0]), []).append(a_id)
+
+        clusters: List[List[int]] = []
+        for c_id, course in inst.courses.items():
+            shared = getattr(course, "share_lecture_group_ids", None)
+            if not shared:
+                continue
+            shared_set = set(shared)
+            by_week: Dict[int, List[int]] = {}
+            for (cc, kind, week, g), ids in by_ckwg.items():
+                if cc != c_id or kind != "LEC" or g not in shared_set:
+                    continue
+                by_week.setdefault(week, []).extend(ids)
+            for ids in by_week.values():
+                if len(ids) >= 2:
+                    clusters.append(sorted(ids))
+
+        key_map: Dict[Tuple[str, int, str], List[int]] = {}
+        for a_id, a in inst.activities.items():
+            key = getattr(a, "cluster_key", None)
+            if key:
+                key_map.setdefault((str(key), a.week, a.kind), []).append(a_id)
+        for ids in key_map.values():
+            if len(ids) >= 2:
+                clusters.append(sorted(ids))
+
+        for cluster in clusters:
+            for a_id in cluster:
+                self._cluster_by_act[a_id] = cluster
 
     def _build_state(self, schedule: Dict[int, Dict[str, Any]]):
         inst = self.inst
@@ -30,6 +100,11 @@ class LocalSearchImprover:
         self.room_use: Dict[Tuple[int, str, int], Dict[int, int]] = {}
         self.staff_use: Dict[Tuple[int, str, int], Dict[int, int]] = {}
         self.group_use: Dict[Tuple[int, str, int], Dict[int, int]] = {}
+        self._locked = getattr(inst, "locked_activities", {}) or {}
+        self._allowed_rooms = {}
+        self._cluster_by_act = {}
+        self._compute_allowed_rooms()
+        self._compute_clusters()
 
         for w in weeks:
             for d in days:
@@ -64,6 +139,21 @@ class LocalSearchImprover:
 
     # ---------- feasibility checks ----------
 
+    def _is_block_staff(self, staff) -> bool:
+        return bool(getattr(staff, "blocks_only", False) or getattr(staff, "prefers_block", False) or getattr(staff, "is_block_prof", False))
+
+    def _room_available(self, room_id: int, day: str, start_slot: int, dur: int) -> bool:
+        room = self.inst.rooms[room_id]
+        avail = getattr(room, "availability", None)
+        if avail is None:
+            return True
+        pairs = getattr(room, "availability", None)
+        if isinstance(pairs, set):
+            for off in range(dur):
+                if (day, start_slot + off) not in pairs:
+                    return False
+        return True
+
     def _can_place_time(self, schedule, a_id, new_day, new_slot) -> bool:
         inst = self.inst
         info = schedule[a_id]
@@ -76,10 +166,23 @@ class LocalSearchImprover:
         if new_slot < 0 or new_slot + dur > inst.slots_per_day:
             return False
 
+        locked = self._locked.get(a_id, {})
+        if isinstance(locked, dict) and "day" in locked and "slot" in locked:
+            if locked["day"] != new_day or int(locked["slot"]) != int(new_slot):
+                return False
+
         # respect staff day availability
         staff = inst.staff[st_id]
+        if getattr(staff, "blocks_only", False):
+            return False  # avoid breaking block-only contiguity rule
         if new_day not in staff.available_days:
             return False
+
+        # soft block staff: cap distinct teaching days to 2
+        if self._is_block_staff(staff):
+            used_days = {d for d, load in self.staff_day_load[st_id][w].items() if load > 0}
+            if new_day not in used_days and len(used_days) >= 2:
+                return False
 
         # check instantaneous occupancy
         for ds in range(dur):
@@ -94,6 +197,52 @@ class LocalSearchImprover:
                 if g_id in self.group_use[key] and self.group_use[key][g_id] != a_id:
                     return False
 
+        # daily and weekly load caps
+        max_per_day = getattr(staff, "max_slots_per_day", None)
+        if max_per_day is not None:
+            load_day = self.staff_day_load[st_id][w][new_day] + dur
+            if load_day > int(max_per_day):
+                return False
+        max_per_week = getattr(staff, "max_slots_per_week", None)
+        if max_per_week is not None:
+            load_week = self.staff_week_load[st_id][w] + dur
+            if load_week > int(max_per_week):
+                return False
+
+        return True
+
+    def _cluster_can_place_time(self, schedule, cluster: List[int], new_day: str, new_slot: int) -> bool:
+        """
+        Validate a cluster move in one shot to keep load caps correct.
+        """
+        inst = self.inst
+        added_week: Dict[Tuple[int, int], int] = {}
+        added_day: Dict[Tuple[int, int, str], int] = {}
+
+        for cid in cluster:
+            info = schedule[cid]
+            w = info["week"]
+            dur = info["duration"]
+            st_id = info["staff_id"]
+            added_week[(st_id, w)] = added_week.get((st_id, w), 0) + dur
+            added_day[(st_id, w, new_day)] = added_day.get((st_id, w, new_day), 0) + dur
+
+            if not self._can_place_time(schedule, cid, new_day, new_slot):
+                return False
+
+        # Load caps with combined deltas
+        for (st_id, w), add in added_week.items():
+            staff = inst.staff[st_id]
+            max_week = getattr(staff, "max_slots_per_week", None)
+            if max_week is not None and self.staff_week_load[st_id][w] + add > int(max_week):
+                return False
+
+        for (st_id, w, d), add in added_day.items():
+            staff = inst.staff[st_id]
+            max_day = getattr(staff, "max_slots_per_day", None)
+            if max_day is not None and self.staff_day_load[st_id][w][d] + add > int(max_day):
+                return False
+
         return True
 
     def _room_ok(self, schedule, a_id, new_room_id) -> bool:
@@ -102,6 +251,17 @@ class LocalSearchImprover:
         info = schedule[a_id]
         w = info["week"]; d = info["day"]
         s0 = info["slot"]; dur = info["duration"]
+
+        locked = self._locked.get(a_id, {})
+        if isinstance(locked, dict) and "room_id" in locked and int(locked["room_id"]) != int(new_room_id):
+            return False
+
+        if a_id in self._allowed_rooms and new_room_id not in self._allowed_rooms[a_id]:
+            return False
+        if a_id not in self._allowed_rooms:
+            need = sum(inst.groups[g].size for g in act.group_ids if g in inst.groups)
+            if inst.rooms[new_room_id].capacity < need:
+                return False
 
         room = inst.rooms[new_room_id]
         if act.kind == "LAB":
@@ -118,6 +278,9 @@ class LocalSearchImprover:
         else:  # TUT
             if room.room_type not in ("TUTORIAL", "LECTURE"):
                 return False
+
+        if not self._room_available(new_room_id, d, s0, dur):
+            return False
 
         for ds in range(dur):
             s = s0 + ds
@@ -300,6 +463,7 @@ class LocalSearchImprover:
         iterations: int = 300,
         start_temp: float = 5.0,
         end_temp: float = 0.1,
+        max_seconds: float | None = None,
     ):
         current = {a_id: info.copy() for a_id, info in schedule.items()}
         best = {a_id: info.copy() for a_id, info in schedule.items()}
@@ -310,6 +474,7 @@ class LocalSearchImprover:
 
         activity_ids = list(current.keys())
         rooms = list(self.inst.rooms.keys())
+        start_ts = time.perf_counter()
 
         for it in range(iterations):
             # exponential cooling
@@ -319,7 +484,11 @@ class LocalSearchImprover:
                 frac = it / max(1, iterations - 1)
                 temp = start_temp * ((end_temp / start_temp) ** frac)
 
+            if max_seconds is not None and (time.perf_counter() - start_ts) >= max_seconds:
+                break
+
             a_id = random.choice(activity_ids)
+            cluster = self._cluster_by_act.get(a_id, [a_id])
             move_type = random.choice(["time", "room"])
 
             info = current[a_id]
@@ -335,8 +504,9 @@ class LocalSearchImprover:
                     new_slot = random.randint(0, self.inst.slots_per_day - dur)
                     if new_day == old_day and new_slot == old_slot:
                         continue
-                    if self._can_place_time(current, a_id, new_day, new_slot):
-                        self._apply_time_move(current, a_id, new_day, new_slot)
+                    if self._cluster_can_place_time(current, cluster, new_day, new_slot):
+                        for cid in cluster:
+                            self._apply_time_move(current, cid, new_day, new_slot)
                         moved = True
             else:
                 attempts = 0
@@ -345,8 +515,9 @@ class LocalSearchImprover:
                     new_room = random.choice(rooms)
                     if new_room == old_room:
                         continue
-                    if self._room_ok(current, a_id, new_room):
-                        self._apply_room_move(current, a_id, new_room)
+                    if all(self._room_ok(current, cid, new_room) for cid in cluster):
+                        for cid in cluster:
+                            self._apply_room_move(current, cid, new_room)
                         moved = True
 
             if not moved:
@@ -363,8 +534,10 @@ class LocalSearchImprover:
                     best = {a_id: info.copy() for a_id, info in current.items()}
             else:
                 if move_type == "time":
-                    self._apply_time_move(current, a_id, old_day, old_slot)
+                    for cid in cluster:
+                        self._apply_time_move(current, cid, old_day, old_slot)
                 else:
-                    self._apply_room_move(current, a_id, old_room)
+                    for cid in cluster:
+                        self._apply_room_move(current, cid, old_room)
 
         return best

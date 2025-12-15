@@ -28,11 +28,12 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QSpinBox,
     QAbstractSpinBox,
+    QCheckBox,
 )
 
 from generator import generate_instance
 from metaheuristics import LocalSearchImprover
-from exporter import export_group_schedules_to_docx
+from exporter import export_group_schedules_to_docx, export_groups_pdf, export_summary_reports
 from domain import Instance
 from main import normalize_instance_for_spec, check_staff_weekly_capacity, stamp_instance_time
 
@@ -54,12 +55,14 @@ class EditActivityDialog(QDialog):
         week: int,
         day: str,
         slot: int,
+        locked: Dict[int, Dict[str, Any]] | None = None,
     ):
         super().__init__(parent)
         self.inst = inst
         self.schedule = schedule
         self.act_ids = act_ids
         self.week = week
+        self.locked = locked or {}
 
         self.setWindowTitle("Edit activity")
         layout = QFormLayout(self)
@@ -103,13 +106,19 @@ class EditActivityDialog(QDialog):
         layout.addRow("Room:", self.room_combo)
 
         self.staff_combo = QComboBox()
-        cur_staff = cur_info["staff_id"]
-        for s_id, s in inst.staff.items():
-            self.staff_combo.addItem(f"{s.name} (id {s_id})", s_id)
-        idx = self.staff_combo.findData(cur_staff)
-        if idx >= 0:
-            self.staff_combo.setCurrentIndex(idx)
+        self._populate_staff_combo(int(cur_a_id))
         layout.addRow("Staff:", self.staff_combo)
+
+        self.lock_time_cb = QCheckBox("Lock time (day/slot)")
+        self.lock_room_cb = QCheckBox("Lock room")
+        fixed = self.locked.get(int(cur_a_id), {})
+        if isinstance(fixed, dict):
+            self.lock_time_cb.setChecked("day" in fixed and "slot" in fixed)
+            self.lock_room_cb.setChecked("room_id" in fixed)
+        layout.addRow(self.lock_time_cb)
+        layout.addRow(self.lock_room_cb)
+
+        self.activity_combo.currentIndexChanged.connect(self._on_activity_changed)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -119,13 +128,59 @@ class EditActivityDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
 
-    def get_values(self) -> Tuple[int, str, int, int, int]:
+    def _populate_staff_combo(self, a_id: int) -> None:
+        self.staff_combo.clear()
+        act = self.inst.activities[a_id]
+        course_id = act.course_id
+        want_prof = act.kind == "LEC"
+        for s_id, s in self.inst.staff.items():
+            if want_prof and not s.is_prof:
+                continue
+            if (not want_prof) and s.is_prof:
+                continue
+            if course_id not in getattr(s, "can_teach_courses", set()):
+                continue
+            self.staff_combo.addItem(f"{s.name} (id {s_id})", s_id)
+
+        cur_info = self.schedule[a_id]
+        cur_staff = cur_info["staff_id"]
+        idx = self.staff_combo.findData(cur_staff)
+        if idx >= 0:
+            self.staff_combo.setCurrentIndex(idx)
+
+    def _on_activity_changed(self) -> None:
+        a_id = int(self.activity_combo.currentData())
+        info = self.schedule[a_id]
+
+        idx = self.day_combo.findData(info["day"])
+        if idx >= 0:
+            self.day_combo.setCurrentIndex(idx)
+
+        idx = self.slot_combo.findData(info["slot"])
+        if idx >= 0:
+            self.slot_combo.setCurrentIndex(idx)
+
+        idx = self.room_combo.findData(info["room_id"])
+        if idx >= 0:
+            self.room_combo.setCurrentIndex(idx)
+
+        self._populate_staff_combo(a_id)
+
+        fixed = self.locked.get(a_id, {})
+        if isinstance(fixed, dict):
+            self.lock_time_cb.setChecked("day" in fixed and "slot" in fixed)
+            self.lock_room_cb.setChecked("room_id" in fixed)
+        else:
+            self.lock_time_cb.setChecked(False)
+            self.lock_room_cb.setChecked(False)
+
+    def get_values(self) -> Tuple[int, str, int, int, int, bool, bool]:
         a_id = self.activity_combo.currentData()
         day = self.day_combo.currentData()
         slot = self.slot_combo.currentData()
         room_id = self.room_combo.currentData()
         staff_id = self.staff_combo.currentData()
-        return a_id, day, slot, room_id, staff_id
+        return a_id, day, slot, room_id, staff_id, bool(self.lock_time_cb.isChecked()), bool(self.lock_room_cb.isChecked())
 
 
 # ---------- Main window ----------
@@ -141,6 +196,7 @@ class MainWindow(QMainWindow):
         self.inst: Instance | None = None
         self.base_schedule: Dict[int, Dict[str, Any]] = {}
         self.current_schedule: Dict[int, Dict[str, Any]] = {}
+        self.locked_activities: Dict[int, Dict[str, Any]] = {}
 
         self.proc: QProcess | None = None
         self.tmp_inst_path: str | None = None
@@ -169,6 +225,8 @@ class MainWindow(QMainWindow):
 
         self.generate_button = QPushButton("Generate")
         self.solve_button = QPushButton("Solve")
+        self.resolve_button = QPushButton("Re-solve")
+        self.clear_locks_button = QPushButton("Clear Locks")
         self.improve_button = QPushButton("Improve")
 
         self.improve_runs_spin = QSpinBox()
@@ -181,6 +239,8 @@ class MainWindow(QMainWindow):
         self.improve_runs_spin.setMinimumWidth(90)
 
         self.export_button = QPushButton("Export DOCX")
+        self.export_pdf_button = QPushButton("Export PDF")
+        self.export_reports_button = QPushButton("Export Reports")
 
         self.view_type_combo = QComboBox()
         self.view_type_combo.addItems(["Group", "Staff", "Room"])
@@ -195,10 +255,14 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(self.mode_combo)
         top_layout.addWidget(self.generate_button)
         top_layout.addWidget(self.solve_button)
+        top_layout.addWidget(self.resolve_button)
+        top_layout.addWidget(self.clear_locks_button)
         top_layout.addWidget(self.improve_button)
         top_layout.addWidget(QLabel("Iterations:"))
         top_layout.addWidget(self.improve_runs_spin)
         top_layout.addWidget(self.export_button)
+        top_layout.addWidget(self.export_pdf_button)
+        top_layout.addWidget(self.export_reports_button)
         top_layout.addWidget(QLabel("View:"))
         top_layout.addWidget(self.view_type_combo)
         top_layout.addWidget(self.entity_combo)
@@ -294,8 +358,12 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         self.generate_button.clicked.connect(self.on_generate)
         self.solve_button.clicked.connect(self.on_solve)
+        self.resolve_button.clicked.connect(self.on_resolve)
+        self.clear_locks_button.clicked.connect(self.on_clear_locks)
         self.improve_button.clicked.connect(self.on_improve)
         self.export_button.clicked.connect(self.on_export)
+        self.export_pdf_button.clicked.connect(self.on_export_pdf)
+        self.export_reports_button.clicked.connect(self.on_export_reports)
         self.view_type_combo.currentIndexChanged.connect(self.update_entities)
         self.entity_combo.currentIndexChanged.connect(self.update_table)
         self.week_combo.currentIndexChanged.connect(self.update_table)
@@ -312,8 +380,12 @@ class MainWindow(QMainWindow):
         for btn in [
             self.generate_button,
             self.solve_button,
+            self.resolve_button,
+            self.clear_locks_button,
             self.improve_button,
             self.export_button,
+            self.export_pdf_button,
+            self.export_reports_button,
         ]:
             btn.setEnabled(enable)
         self.improve_runs_spin.setEnabled(enable)
@@ -375,18 +447,25 @@ class MainWindow(QMainWindow):
 
         self.base_schedule = {}
         self.current_schedule = {}
+        self.locked_activities = {}
         self.set_status(f"Instance generated ({mode})")
         self.populate_weeks()
         self.update_entities()
         self.clear_table()
 
-    def on_solve(self):
+    def _start_solver_process(self, *, keep_locks: bool) -> None:
         if self.inst is None:
             self.set_status("Generate instance first")
             return
         if self.proc is not None:
             QMessageBox.warning(self, "Busy", "Solver already running.")
             return
+
+        if not keep_locks:
+            self.locked_activities = {}
+
+        # Push locks into the instance so the worker can fix them.
+        self.inst.locked_activities = dict(self.locked_activities)
 
         tmp_dir = tempfile.gettempdir()
         inst_name = f"tt_inst_{uuid.uuid4().hex}.pkl"
@@ -416,8 +495,24 @@ class MainWindow(QMainWindow):
         self.proc.errorOccurred.connect(self.on_solver_error)
 
         self.set_busy(True)
-        self.set_status("Solving in external process...")
+        lock_count = len(self.locked_activities)
+        self.set_status("Solving in external process..." + (f" (locks={lock_count})" if lock_count else ""))
         self.proc.start()
+
+    def on_solve(self):
+        self._start_solver_process(keep_locks=False)
+
+    def on_resolve(self):
+        if not self.current_schedule:
+            self.set_status("No schedule yet; run Solve first")
+            return
+        self._start_solver_process(keep_locks=True)
+
+    def on_clear_locks(self):
+        self.locked_activities = {}
+        if self.inst is not None:
+            self.inst.locked_activities = {}
+        self.set_status("Locks cleared")
 
     def on_solver_error(self, error):
         self.set_busy(False)
@@ -577,6 +672,55 @@ class MainWindow(QMainWindow):
             return
 
         self.set_status(f"Exported to {path}")
+
+    def on_export_pdf(self):
+        if not self.current_schedule or self.inst is None:
+            self.set_status("No schedule to export")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export group schedules (PDF)",
+            "timetable.pdf",
+            "PDF document (*.pdf)",
+        )
+        if not path:
+            return
+
+        try:
+            self.set_status("Exporting PDF...")
+            export_groups_pdf(self.inst, self.current_schedule, path)
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Export error", str(e))
+            self.set_status("Export error")
+            return
+
+        self.set_status(f"Exported to {path}")
+
+    def on_export_reports(self):
+        if not self.current_schedule or self.inst is None:
+            self.set_status("No schedule to export")
+            return
+
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Export CSV reports (choose folder)",
+            "",
+        )
+        if not path:
+            return
+
+        try:
+            self.set_status("Writing reports...")
+            export_summary_reports(self.inst, self.current_schedule, path)
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Export error", str(e))
+            self.set_status("Export error")
+            return
+
+        self.set_status(f"Reports written to {path}")
 
     # ----- table rendering -----
 
@@ -845,11 +989,11 @@ class MainWindow(QMainWindow):
         if not act_ids:
             return
 
-        dlg = EditActivityDialog(self, self.inst, self.current_schedule, act_ids, week, day, slot)
+        dlg = EditActivityDialog(self, self.inst, self.current_schedule, act_ids, week, day, slot, locked=self.locked_activities)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
-        a_id, new_day, new_slot, new_room, new_staff = dlg.get_values()
+        a_id, new_day, new_slot, new_room, new_staff, lock_time, lock_room = dlg.get_values()
         ok, reason = self.check_move(a_id, new_day, new_slot, new_room, new_staff)
         if not ok:
             QMessageBox.warning(self, "Invalid move", reason)
@@ -861,9 +1005,33 @@ class MainWindow(QMainWindow):
         info["room_id"] = new_room
         info["staff_id"] = new_staff
 
+        # Persist staff assignment onto the instance (solver convention: prof for LEC, TA for TUT/LAB).
+        act = self.inst.activities[a_id]
+        if act.kind == "LEC":
+            act.prof_id = int(new_staff)
+        else:
+            act.ta_id = int(new_staff)
+
+        # Update locks (used by re-solve).
+        fixed = dict(self.locked_activities.get(a_id, {}))
+        if lock_time:
+            fixed["day"] = new_day
+            fixed["slot"] = int(new_slot)
+        else:
+            fixed.pop("day", None)
+            fixed.pop("slot", None)
+        if lock_room:
+            fixed["room_id"] = int(new_room)
+        else:
+            fixed.pop("room_id", None)
+        if fixed:
+            self.locked_activities[a_id] = fixed
+        else:
+            self.locked_activities.pop(a_id, None)
+
         self.update_table()
         self.update_quality_summary()
-        self.set_status(f"Edited A{a_id}")
+        self.set_status(f"Edited A{a_id} (locks={len(self.locked_activities)})")
 
     def check_move(
         self,
@@ -885,6 +1053,16 @@ class MainWindow(QMainWindow):
             return False, "Activity would overflow the day."
 
         staff = inst.staff[new_staff_id]
+        if act.kind == "LEC":
+            if not staff.is_prof:
+                return False, "Lectures must be taught by a professor."
+            if act.course_id not in staff.can_teach_courses:
+                return False, "Professor cannot teach this course."
+        else:
+            if staff.is_prof:
+                return False, "Tutorials/labs must be taught by a TA."
+            if act.course_id not in staff.can_teach_courses:
+                return False, "TA cannot teach this course."
         if new_day not in staff.available_days:
             return False, "Staff unavailable on that day."
 
@@ -911,15 +1089,22 @@ class MainWindow(QMainWindow):
         total_students = sum(inst.groups[g].size for g in groups)
         if room.capacity < total_students:
             return False, "Room capacity too small."
+        if room.availability is not None:
+            for s in range(new_slot, new_slot + dur):
+                if (new_day, s) not in room.availability:
+                    return False, "Room unavailable at that day/slot."
 
         if act.kind == "LAB":
             if room.room_type not in ("COMPUTER_LAB", "SPECIALIZED_LAB"):
                 return False, "Lab must be in a lab room."
             if act.requires_specialization and act.requires_specialization not in room.specialization_tags:
                 return False, "Wrong specialized lab."
-        else:
+        elif act.kind == "LEC":
+            if room.room_type != "LECTURE":
+                return False, "Lecture must use a lecture room."
+        else:  # TUT
             if room.room_type not in ("LECTURE", "TUTORIAL"):
-                return False, "Lecture/Tutorial must use lecture/tutorial room."
+                return False, "Tutorial must use a lecture/tutorial room."
 
         new_slots = set(range(new_slot, new_slot + dur))
         for b_id, b in schedule.items():

@@ -22,20 +22,48 @@ def build_instance(
 ) -> Instance:
     if courses is None:
         course_ids = {act.course_id for act in activities.values()}
-        courses = {
-            c_id: Course(
+        courses = {}
+
+        # Infer per-course metadata from the provided activities (counts treated as slot totals).
+        for c_id in course_ids:
+            lecs = [a for a in activities.values() if a.course_id == c_id and a.kind == "LEC"]
+            tuts = [a for a in activities.values() if a.course_id == c_id and a.kind == "TUT"]
+            labs = [a for a in activities.values() if a.course_id == c_id and a.kind == "LAB"]
+
+            lecture_count = sum(a.duration for a in lecs)
+            tut_slots_by_group = {}
+            for a in tuts:
+                for g in a.group_ids:
+                    tut_slots_by_group[g] = tut_slots_by_group.get(g, 0) + a.duration
+            tutorial_count = 0
+            if tut_slots_by_group:
+                vals = set(tut_slots_by_group.values())
+                assert len(vals) == 1, "test builder expects equal tutorial totals per group"
+                tutorial_count = vals.pop()
+
+            lab_weeks = len(labs)
+            lab_duration = labs[0].duration if labs else 0
+
+            if lecture_count == 0 and tutorial_count == 0 and lab_weeks > 0:
+                structure_type = "LAB_ONLY"
+            elif lab_weeks > 0:
+                structure_type = "LEC_TUT_LAB"
+            elif tutorial_count > 0:
+                structure_type = "LEC_TUT"
+            else:
+                structure_type = "LEC_ONLY"
+
+            courses[c_id] = Course(
                 id=c_id,
                 code=f"C{c_id}",
                 name=f"Course {c_id}",
-                structure_type="LEC_ONLY",
-                lecture_count=12,
-                tutorial_count=0,
-                lab_weeks=0,
-                lab_duration=0,
+                structure_type=structure_type,
+                lecture_count=lecture_count,
+                tutorial_count=tutorial_count,
+                lab_weeks=lab_weeks,
+                lab_duration=lab_duration,
                 share_lecture_group_ids=[],
             )
-            for c_id in course_ids
-        }
 
     return Instance(
         days=list(days),
@@ -892,7 +920,7 @@ def test_shared_lecture_clusters_force_same_start_when_feasible() -> None:
             code="C1",
             name="Course 1",
             structure_type="LEC_TUT",
-            lecture_count=12,
+            lecture_count=2,
             tutorial_count=0,
             lab_weeks=0,
             lab_duration=0,
@@ -993,7 +1021,7 @@ def test_disjoint_shared_lecture_availability_causes_infeasible_cluster() -> Non
             code="C1",
             name="Course 1",
             structure_type="LEC_TUT",
-            lecture_count=12,
+            lecture_count=2,
             tutorial_count=0,
             lab_weeks=0,
             lab_duration=0,
@@ -1192,4 +1220,267 @@ def test_activity_with_no_allowed_start_times_raises() -> None:
     )
 
     with pytest.raises(ValueError, match="No allowed starts"):
+        TimetableSolver(inst)
+
+
+def test_locked_activity_time_and_room_are_respected() -> None:
+    groups = {1: Group(id=1, name="G1", program_id=1, size=30, course_ids=[1])}
+    staff = {
+        1: StaffMember(
+            id=1,
+            name="Prof-1",
+            is_prof=True,
+            available_days={"MON", "TUE"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses={1},
+            prefers_block=False,
+            blocks_only=False,
+        ),
+        2: StaffMember(
+            id=2,
+            name="TA-1",
+            is_prof=False,
+            available_days={"MON", "TUE"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses={1},
+            prefers_block=False,
+            blocks_only=False,
+        ),
+    }
+    rooms = {
+        1: Room(id=1, name="L1", capacity=200, room_type="LECTURE", specialization_tags=set()),
+        2: Room(id=2, name="L2", capacity=200, room_type="LECTURE", specialization_tags=set()),
+    }
+    activities = {
+        1: Activity(
+            id=1,
+            course_id=1,
+            week=1,
+            kind="LEC",
+            duration=1,
+            group_ids=[1],
+            prof_id=1,
+            ta_id=2,
+            requires_specialization=None,
+        ),
+        2: Activity(
+            id=2,
+            course_id=1,
+            week=1,
+            kind="LEC",
+            duration=1,
+            group_ids=[1],
+            prof_id=1,
+            ta_id=2,
+            requires_specialization=None,
+        ),
+    }
+    inst = build_instance(
+        days=["MON", "TUE"],
+        slots_per_day=2,
+        weeks=[1],
+        groups=groups,
+        staff=staff,
+        rooms=rooms,
+        activities=activities,
+    )
+
+    solver = TimetableSolver(inst)
+    cp_solver, status = solver.solve()
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    sched = solver.extract_solution(cp_solver)
+
+    lock_a = 1
+    locked = {
+        "day": sched[lock_a]["day"],
+        "slot": sched[lock_a]["slot"],
+        "room_id": sched[lock_a]["room_id"],
+    }
+    inst.locked_activities = {lock_a: locked}
+
+    solver2 = TimetableSolver(inst)
+    cp_solver2, status2 = solver2.solve()
+    assert status2 in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    sched2 = solver2.extract_solution(cp_solver2)
+
+    assert sched2[lock_a]["day"] == locked["day"]
+    assert sched2[lock_a]["slot"] == locked["slot"]
+    assert sched2[lock_a]["room_id"] == locked["room_id"]
+
+
+def test_room_availability_is_respected_in_cp_rooming() -> None:
+    groups = {1: Group(id=1, name="G1", program_id=1, size=30, course_ids=[1])}
+    staff = {
+        1: StaffMember(
+            id=1,
+            name="Prof-1",
+            is_prof=True,
+            available_days={"MON", "TUE"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses={1},
+            prefers_block=False,
+            blocks_only=False,
+        ),
+        2: StaffMember(
+            id=2,
+            name="TA-1",
+            is_prof=False,
+            available_days={"MON", "TUE"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses={1},
+            prefers_block=False,
+            blocks_only=False,
+        ),
+    }
+    rooms = {
+        1: Room(
+            id=1,
+            name="L1",
+            capacity=200,
+            room_type="LECTURE",
+            specialization_tags=set(),
+            availability={("TUE", 0)},
+        ),
+    }
+    activities = {
+        1: Activity(
+            id=1,
+            course_id=1,
+            week=1,
+            kind="LEC",
+            duration=1,
+            group_ids=[1],
+            prof_id=1,
+            ta_id=2,
+            requires_specialization=None,
+        ),
+    }
+    inst = build_instance(
+        days=["MON", "TUE"],
+        slots_per_day=1,
+        weeks=[1],
+        groups=groups,
+        staff=staff,
+        rooms=rooms,
+        activities=activities,
+    )
+
+    solver = TimetableSolver(inst)
+    cp_solver, status = solver.solve()
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    sched = solver.extract_solution(cp_solver)
+    assert sched[1]["day"] == "TUE"
+
+
+def test_capacity_filters_out_ineligible_rooms() -> None:
+    groups = {1: Group(id=1, name="G1", program_id=1, size=200, course_ids=[1])}
+    staff = {
+        1: StaffMember(
+            id=1,
+            name="Prof-1",
+            is_prof=True,
+            available_days={"MON"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses={1},
+            prefers_block=False,
+            blocks_only=False,
+        ),
+        2: StaffMember(
+            id=2,
+            name="TA-1",
+            is_prof=False,
+            available_days={"MON"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses={1},
+            prefers_block=False,
+            blocks_only=False,
+        ),
+    }
+    rooms = {
+        1: Room(id=1, name="SmallLec", capacity=100, room_type="LECTURE", specialization_tags=set()),
+    }
+    activities = {
+        1: Activity(
+            id=1,
+            course_id=1,
+            week=1,
+            kind="LEC",
+            duration=1,
+            group_ids=[1],
+            prof_id=1,
+            ta_id=2,
+            requires_specialization=None,
+        ),
+    }
+    inst = build_instance(
+        days=["MON"],
+        slots_per_day=1,
+        weeks=[1],
+        groups=groups,
+        staff=staff,
+        rooms=rooms,
+        activities=activities,
+    )
+
+    with pytest.raises(ValueError, match="No eligible rooms"):
+        TimetableSolver(inst)
+
+
+def test_staff_competency_is_enforced() -> None:
+    groups = {1: Group(id=1, name="G1", program_id=1, size=30, course_ids=[1])}
+    staff = {
+        1: StaffMember(
+            id=1,
+            name="Prof-1",
+            is_prof=True,
+            available_days={"MON"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses=set(),
+            prefers_block=False,
+            blocks_only=False,
+        ),
+        2: StaffMember(
+            id=2,
+            name="TA-1",
+            is_prof=False,
+            available_days={"MON"},
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses={1},
+            prefers_block=False,
+            blocks_only=False,
+        ),
+    }
+    rooms = {1: Room(id=1, name="L1", capacity=200, room_type="LECTURE", specialization_tags=set())}
+    activities = {
+        1: Activity(
+            id=1,
+            course_id=1,
+            week=1,
+            kind="LEC",
+            duration=1,
+            group_ids=[1],
+            prof_id=1,
+            ta_id=2,
+            requires_specialization=None,
+        ),
+    }
+    inst = build_instance(
+        days=["MON"],
+        slots_per_day=1,
+        weeks=[1],
+        groups=groups,
+        staff=staff,
+        rooms=rooms,
+        activities=activities,
+    )
+
+    with pytest.raises(ValueError, match="Invalid staff assignment/competency"):
         TimetableSolver(inst)
