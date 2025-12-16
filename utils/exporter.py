@@ -12,7 +12,7 @@ try:
 except Exception:  # pragma: no cover
     Document = None  # type: ignore
 
-from domain import Instance
+from utils.domain import Instance
 
 # -------- time labels --------
 

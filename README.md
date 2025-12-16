@@ -4,15 +4,22 @@ Generates and edits 12-week university timetables (lectures, tutorials, and labs
 
 ## What’s in this repo
 
-- `domain.py`: dataclasses for `Program`, `Group`, `Course`, `StaffMember`, `Room`, `Activity`, and `Instance`.
-- `generator.py`: creates a synthetic university instance (multiple “modes” like `small_demo`, `target_case`).
-- `solver_cp_sat.py`: CP-SAT feasibility solver (`TimetableSolver`) and a greedy room assigner.
-- `metaheuristics.py`: local-search improver (`LocalSearchImprover`) for schedule quality.
-- `ui_desktop.py`: PyQt6 desktop UI (generate → solve → improve → export).
-- `engine_cli.py`: small worker process used by the UI to run the solver out-of-process.
-- `exporter.py`: exports schedules to DOCX (optional dependency), CSV, and per-entity ICS files.
+- `utils/`: dataclasses (`domain.py`), generator (`generator.py`), exporter (`exporter.py`).
+- `core/`: CP-SAT solver (`solver_cp_sat.py`), local search (`metaheuristics.py`), solver worker (`engine_cli.py`).
+- `ui/`: PyQt6 desktop UI (`app.py`, `dialogs.py`, `styles.py`) with a thin `ui_desktop.py` launcher.
+- `main.py`: CLI entry point (generate → solve → optional local search → export).
 - `tests/`: pytest suite that checks key behaviors and constraints.
-- `PROGRAM_SPECS.md` / `SCHEDULE_SPECS.md`: checklist-format specs for quick verification (supersede the DOCX copies).
+- `SPECS.md`: unified program + schedule spec checklist (replaces PROGRAM/SCHEDULE_SPECS).
+
+## Performance / Quality knobs
+
+- Hard constraints (including room conflicts) are enforced by default (`TT_ROOM_MODE=cp_rooms`, objective on).
+- Faster but looser room handling: set `TT_ROOM_MODE=greedy` (room overlaps checked after CP, faster).
+- Skip CP soft objective to speed up: `TT_USE_OBJECTIVE=0` (local search still improves quality).
+- Time/worker limits: `TT_TIME_LIMIT` (seconds), `TT_CP_WORKERS` (threads).
+- Local search: `TT_LS_ITERATIONS`, `TT_LS_MAX_SECONDS` (0/blank = no cap).
+
+The desktop UI exposes these toggles: room mode (Strict/Fast), objective on/off, CP time limit, worker count, and local-search iterations/time budget.
 
 ## Key concepts
 

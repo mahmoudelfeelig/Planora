@@ -5,8 +5,8 @@ from typing import Dict
 
 import pytest
 
-import exporter
-from domain import Activity, Course, Group, Instance, Room, StaffMember
+from utils import exporter
+from utils.domain import Activity, Course, Group, Instance, Room, StaffMember
 
 
 def make_instance(

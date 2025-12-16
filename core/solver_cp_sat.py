@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple, Optional, Set, DefaultDict
 from collections import defaultdict
 
 from ortools.sat.python import cp_model
-from domain import Instance
+from utils.domain import Instance
 
 
 class TimetableSolver:

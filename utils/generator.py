@@ -8,7 +8,7 @@ from dataclasses import is_dataclass
 from pathlib import Path
 from typing import Any, DefaultDict, Dict, List, Tuple
 
-from domain import Activity, Course, Group, Instance, Program, Room, StaffMember
+from utils.domain import Activity, Course, Group, Instance, Program, Room, StaffMember
 
 
 DAYS: List[str] = ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
@@ -581,15 +581,16 @@ def _inject_cross_major_clusters(
             g0 = a.group_ids[0]
             act_prog[a_id] = groups[g0].program_id
 
-    # candidates by week and kind
-    by_week_kind: DefaultDict[Tuple[int, str], List[int]] = defaultdict(list)
+    # candidates by (week, kind, tag) to keep LAB specializations compatible
+    by_bucket: DefaultDict[Tuple[int, str, str], List[int]] = defaultdict(list)
     for a_id, a in activities.items():
         if a.kind in ("TUT", "LAB") and a.week != 1:
-            by_week_kind[(a.week, a.kind)].append(a_id)
+            tag = getattr(a, "requires_specialization", None) if a.kind == "LAB" else "ANY"
+            by_bucket[(a.week, a.kind, str(tag))].append(a_id)
 
     # choose a few clusters with low probability
     cluster_budget = 0
-    for (week, kind), ids in by_week_kind.items():
+    for (week, kind, tag), ids in by_bucket.items():
         if cluster_budget >= 3:
             break
         if rng.random() > 0.08:  # ~8% of weeks

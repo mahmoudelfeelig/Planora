@@ -4,7 +4,7 @@ import random
 import math
 import time
 
-from domain import Instance
+from utils.domain import Instance
 
 
 class LocalSearchImprover:

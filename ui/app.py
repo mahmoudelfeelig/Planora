@@ -23,164 +23,25 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QFileDialog,
-    QDialog,
-    QFormLayout,
-    QDialogButtonBox,
     QSpinBox,
     QAbstractSpinBox,
     QCheckBox,
 )
 
-from generator import generate_instance
-from metaheuristics import LocalSearchImprover
-from exporter import export_group_schedules_to_docx, export_groups_pdf, export_summary_reports
-from domain import Instance
+from ui.constants import (
+    DEFAULT_DAY_START,
+    DEFAULT_SLOT_MINUTES,
+    DEFAULT_BREAK_MINUTES,
+    DEFAULT_TIME_LIMIT,
+    DEFAULT_CP_WORKERS,
+)
+from ui.dialogs import EditActivityDialog
+from ui.styles import DARK_STYLE
+from utils.generator import generate_instance
+from core.metaheuristics import LocalSearchImprover
+from utils.exporter import export_group_schedules_to_docx, export_groups_pdf, export_summary_reports
+from utils.domain import Instance
 from main import normalize_instance_for_spec, check_staff_weekly_capacity, stamp_instance_time
-
-# Default time grid for exports/labels (matches main.py)
-DAY_START = "08:30"
-SLOT_MINUTES = 90
-BREAK_MINUTES = 0
-
-
-# ---------- Edit dialog ----------
-
-class EditActivityDialog(QDialog):
-    def __init__(
-        self,
-        parent,
-        inst: Instance,
-        schedule: Dict[int, Dict[str, Any]],
-        act_ids: List[int],
-        week: int,
-        day: str,
-        slot: int,
-        locked: Dict[int, Dict[str, Any]] | None = None,
-    ):
-        super().__init__(parent)
-        self.inst = inst
-        self.schedule = schedule
-        self.act_ids = act_ids
-        self.week = week
-        self.locked = locked or {}
-
-        self.setWindowTitle("Edit activity")
-        layout = QFormLayout(self)
-
-        self.activity_combo = QComboBox()
-        for a_id in act_ids:
-            info = schedule[a_id]
-            course = inst.courses.get(info["course_id"])
-            label = f"A{a_id}"
-            if course:
-                label += f" {course.code} {course.name}"
-            label += f" ({info['kind']})"
-            self.activity_combo.addItem(label, a_id)
-        layout.addRow("Activity:", self.activity_combo)
-
-        self.day_combo = QComboBox()
-        for d in inst.days:
-            self.day_combo.addItem(d, d)
-        idx = self.day_combo.findData(day)
-        if idx >= 0:
-            self.day_combo.setCurrentIndex(idx)
-        layout.addRow("Day:", self.day_combo)
-
-        self.slot_combo = QComboBox()
-        for s in range(inst.slots_per_day):
-            self.slot_combo.addItem(str(s + 1), s)
-        idx = self.slot_combo.findData(slot)
-        if idx >= 0:
-            self.slot_combo.setCurrentIndex(idx)
-        layout.addRow("Start slot:", self.slot_combo)
-
-        self.room_combo = QComboBox()
-        for r_id, r in inst.rooms.items():
-            self.room_combo.addItem(f"{r.name} (id {r_id})", r_id)
-        cur_a_id = self.activity_combo.currentData()
-        cur_info = schedule[cur_a_id]
-        cur_room = cur_info["room_id"]
-        idx = self.room_combo.findData(cur_room)
-        if idx >= 0:
-            self.room_combo.setCurrentIndex(idx)
-        layout.addRow("Room:", self.room_combo)
-
-        self.staff_combo = QComboBox()
-        self._populate_staff_combo(int(cur_a_id))
-        layout.addRow("Staff:", self.staff_combo)
-
-        self.lock_time_cb = QCheckBox("Lock time (day/slot)")
-        self.lock_room_cb = QCheckBox("Lock room")
-        fixed = self.locked.get(int(cur_a_id), {})
-        if isinstance(fixed, dict):
-            self.lock_time_cb.setChecked("day" in fixed and "slot" in fixed)
-            self.lock_room_cb.setChecked("room_id" in fixed)
-        layout.addRow(self.lock_time_cb)
-        layout.addRow(self.lock_room_cb)
-
-        self.activity_combo.currentIndexChanged.connect(self._on_activity_changed)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addRow(buttons)
-
-    def _populate_staff_combo(self, a_id: int) -> None:
-        self.staff_combo.clear()
-        act = self.inst.activities[a_id]
-        course_id = act.course_id
-        want_prof = act.kind == "LEC"
-        for s_id, s in self.inst.staff.items():
-            if want_prof and not s.is_prof:
-                continue
-            if (not want_prof) and s.is_prof:
-                continue
-            if course_id not in getattr(s, "can_teach_courses", set()):
-                continue
-            self.staff_combo.addItem(f"{s.name} (id {s_id})", s_id)
-
-        cur_info = self.schedule[a_id]
-        cur_staff = cur_info["staff_id"]
-        idx = self.staff_combo.findData(cur_staff)
-        if idx >= 0:
-            self.staff_combo.setCurrentIndex(idx)
-
-    def _on_activity_changed(self) -> None:
-        a_id = int(self.activity_combo.currentData())
-        info = self.schedule[a_id]
-
-        idx = self.day_combo.findData(info["day"])
-        if idx >= 0:
-            self.day_combo.setCurrentIndex(idx)
-
-        idx = self.slot_combo.findData(info["slot"])
-        if idx >= 0:
-            self.slot_combo.setCurrentIndex(idx)
-
-        idx = self.room_combo.findData(info["room_id"])
-        if idx >= 0:
-            self.room_combo.setCurrentIndex(idx)
-
-        self._populate_staff_combo(a_id)
-
-        fixed = self.locked.get(a_id, {})
-        if isinstance(fixed, dict):
-            self.lock_time_cb.setChecked("day" in fixed and "slot" in fixed)
-            self.lock_room_cb.setChecked("room_id" in fixed)
-        else:
-            self.lock_time_cb.setChecked(False)
-            self.lock_room_cb.setChecked(False)
-
-    def get_values(self) -> Tuple[int, str, int, int, int, bool, bool]:
-        a_id = self.activity_combo.currentData()
-        day = self.day_combo.currentData()
-        slot = self.slot_combo.currentData()
-        room_id = self.room_combo.currentData()
-        staff_id = self.staff_combo.currentData()
-        return a_id, day, slot, room_id, staff_id, bool(self.lock_time_cb.isChecked()), bool(self.lock_room_cb.isChecked())
 
 
 # ---------- Main window ----------
@@ -189,7 +50,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("University Timetabling")
-        icon_path = os.path.join(os.path.dirname(__file__), "app_icon.png")
+        icon_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "app_icon.png"))
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
@@ -229,6 +90,22 @@ class MainWindow(QMainWindow):
         self.clear_locks_button = QPushButton("Clear Locks")
         self.improve_button = QPushButton("Improve")
 
+        self.room_mode_combo = QComboBox()
+        self.room_mode_combo.addItems(["Strict (CP rooms)", "Fast (Greedy rooms)"])
+        self.room_mode_combo.setCurrentIndex(0)
+
+        self.objective_cb = QCheckBox("Use CP objective")
+        self.objective_cb.setChecked(True)
+
+        self.time_limit_spin = QSpinBox()
+        self.time_limit_spin.setRange(5, 600)
+        self.time_limit_spin.setValue(DEFAULT_TIME_LIMIT)
+        self.time_limit_spin.setSuffix(" s")
+
+        self.workers_spin = QSpinBox()
+        self.workers_spin.setRange(1, 64)
+        self.workers_spin.setValue(DEFAULT_CP_WORKERS)
+
         self.improve_runs_spin = QSpinBox()
         self.improve_runs_spin.setRange(10, 100000)
         self.improve_runs_spin.setSingleStep(10)
@@ -237,6 +114,11 @@ class MainWindow(QMainWindow):
             QAbstractSpinBox.ButtonSymbols.UpDownArrows
         )
         self.improve_runs_spin.setMinimumWidth(90)
+
+        self.ls_time_spin = QSpinBox()
+        self.ls_time_spin.setRange(0, 600)
+        self.ls_time_spin.setValue(10)
+        self.ls_time_spin.setSuffix(" s")
 
         self.export_button = QPushButton("Export DOCX")
         self.export_pdf_button = QPushButton("Export PDF")
@@ -258,8 +140,17 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(self.resolve_button)
         top_layout.addWidget(self.clear_locks_button)
         top_layout.addWidget(self.improve_button)
-        top_layout.addWidget(QLabel("Iterations:"))
+        top_layout.addWidget(QLabel("LS iters:"))
         top_layout.addWidget(self.improve_runs_spin)
+        top_layout.addWidget(QLabel("LS time:"))
+        top_layout.addWidget(self.ls_time_spin)
+        top_layout.addWidget(QLabel("Room mode:"))
+        top_layout.addWidget(self.room_mode_combo)
+        top_layout.addWidget(self.objective_cb)
+        top_layout.addWidget(QLabel("Limit:"))
+        top_layout.addWidget(self.time_limit_spin)
+        top_layout.addWidget(QLabel("Workers:"))
+        top_layout.addWidget(self.workers_spin)
         top_layout.addWidget(self.export_button)
         top_layout.addWidget(self.export_pdf_button)
         top_layout.addWidget(self.export_reports_button)
@@ -287,73 +178,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.quality_label)
         self.setCentralWidget(central)
 
-        self.setStyleSheet(
-            """
-            QMainWindow {
-                background-color: #121212;
-            }
-            QLabel {
-                color: #f5f5f5;
-                font-size: 10pt;
-            }
-            QComboBox, QPushButton, QSpinBox {
-                font-size: 10pt;
-            }
-            QComboBox, QSpinBox {
-                background-color: #1f1f23;
-                color: #f5f5f5;
-                border: 1px solid #555555;
-                border-radius: 3px;
-                padding: 2px 6px;
-            }
-            QComboBox:hover, QSpinBox:hover {
-                background-color: #26262b;
-            }
-
-            QSpinBox::up-button, QSpinBox::down-button {
-                background-color: #4b2e83;
-                border: none;
-                width: 18px;
-            }
-            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
-                background-color: #6a44c2;
-            }
-            QSpinBox::up-button:pressed, QSpinBox::down-button:pressed {
-                background-color: #38215c;
-            }
-
-            QPushButton {
-                color: #ffffff;
-                background-color: #4b2e83;
-                border-radius: 4px;
-                padding: 4px 10px;
-            }
-            QPushButton:hover {
-                background-color: #6a44c2;
-            }
-            QPushButton:pressed {
-                background-color: #38215c;
-            }
-            QPushButton:disabled {
-                background-color: #555555;
-            }
-            QTableWidget {
-                background-color: #18181c;
-                color: #f5f5f5;
-                gridline-color: #3c3f41;
-                font-size: 9pt;
-            }
-            QTableWidget::item:selected {
-                background-color: #3c78d8;
-                color: #ffffff;
-            }
-            QHeaderView::section {
-                background-color: #26262b;
-                color: #f5f5f5;
-                font-weight: bold;
-            }
-            """
-        )
+        self.setStyleSheet(DARK_STYLE)
 
     def _connect_signals(self):
         self.generate_button.clicked.connect(self.on_generate)
@@ -389,6 +214,11 @@ class MainWindow(QMainWindow):
         ]:
             btn.setEnabled(enable)
         self.improve_runs_spin.setEnabled(enable)
+        self.ls_time_spin.setEnabled(enable)
+        self.room_mode_combo.setEnabled(enable)
+        self.objective_cb.setEnabled(enable)
+        self.time_limit_spin.setEnabled(enable)
+        self.workers_spin.setEnabled(enable)
 
     def populate_weeks(self):
         self.week_combo.blockSignals(True)
@@ -437,7 +267,12 @@ class MainWindow(QMainWindow):
         try:
             inst = generate_instance(mode=mode)
             normalize_instance_for_spec(inst)
-            stamp_instance_time(inst, DAY_START, SLOT_MINUTES, BREAK_MINUTES)
+            stamp_instance_time(
+                inst,
+                DEFAULT_DAY_START,
+                DEFAULT_SLOT_MINUTES,
+                DEFAULT_BREAK_MINUTES,
+            )
             check_staff_weekly_capacity(inst)  # logs warnings to stdout
             self.inst = inst
         except Exception as e:
@@ -485,11 +320,28 @@ class MainWindow(QMainWindow):
 
         python_exe = sys.executable
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        solver_script = os.path.join(base_dir, "engine_cli.py")
+        solver_script = os.path.normpath(os.path.join(base_dir, "..", "core", "engine_cli.py"))
 
         self.proc = QProcess(self)
         self.proc.setProgram(python_exe)
         self.proc.setArguments([solver_script, self.tmp_inst_path, self.tmp_res_path])
+        env_map = os.environ.copy()
+        env_map["TT_ROOM_MODE"] = "cp_rooms" if self.room_mode_combo.currentIndex() == 0 else "greedy"
+        env_map["TT_TIME_LIMIT"] = str(self.time_limit_spin.value())
+        env_map["TT_CP_WORKERS"] = str(self.workers_spin.value())
+        env_map["TT_USE_OBJECTIVE"] = "1" if self.objective_cb.isChecked() else "0"
+        # ensure the worker can import core/utils modules
+        env_map["PYTHONPATH"] = os.pathsep.join([os.path.dirname(os.path.dirname(os.path.abspath(__file__))), env_map.get("PYTHONPATH", "")])
+        try:
+            from PyQt6.QtCore import QProcessEnvironment
+
+            penv = QProcessEnvironment.systemEnvironment()
+            for k, v in env_map.items():
+                penv.insert(k, str(v))
+            self.proc.setProcessEnvironment(penv)
+        except Exception:
+            # Fallback for platforms without QProcessEnvironment
+            self.proc.setEnvironment([f"{k}={v}" for k, v in env_map.items()])
         self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self.proc.finished.connect(self.on_solver_finished)
         self.proc.errorOccurred.connect(self.on_solver_error)
@@ -596,7 +448,12 @@ class MainWindow(QMainWindow):
             if self.inst is not None and self.current_schedule:
                 ls = LocalSearchImprover(self.inst)
                 before = ls.compute_soft_penalty(self.current_schedule)
-                improved = ls.improve(self.current_schedule, iterations=1000)
+                max_seconds = self.ls_time_spin.value() or None
+                improved = ls.improve(
+                    self.current_schedule,
+                    iterations=int(self.improve_runs_spin.value()),
+                    max_seconds=max_seconds,
+                )
                 after = ls.compute_soft_penalty(improved)
                 self.current_schedule = {
                     a_id: info.copy() for a_id, info in improved.items()
@@ -630,7 +487,8 @@ class MainWindow(QMainWindow):
             self.set_status(f"Improving ({total_iters} iterations)...")
             QApplication.processEvents()
 
-            improved = ls.improve(base_schedule, iterations=total_iters)
+            max_seconds = self.ls_time_spin.value() or None
+            improved = ls.improve(base_schedule, iterations=total_iters, max_seconds=max_seconds)
             best_pen = ls.compute_soft_penalty(improved)
 
             self.current_schedule = {
@@ -1127,7 +985,7 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    icon_path = os.path.join(os.path.dirname(__file__), "app_icon.png")
+    icon_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "app_icon.png"))
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
     win = MainWindow()

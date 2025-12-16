@@ -6,7 +6,7 @@ import pickle
 import traceback
 from typing import Dict, Any
 
-from solver_cp_sat import TimetableSolver
+from core.solver_cp_sat import TimetableSolver
 
 
 def _map_status_to_ui(status: int) -> int:
@@ -56,7 +56,7 @@ def main() -> int:
 
     # Build and solve the CP model
     try:
-        room_mode = os.getenv("TT_ROOM_MODE", "greedy")
+        room_mode = os.getenv("TT_ROOM_MODE", "cp_rooms")
         use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
         use_objective = use_objective_env not in ("0", "false", "False", "no")
 

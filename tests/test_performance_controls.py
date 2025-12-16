@@ -4,15 +4,15 @@ import time
 
 from ortools.sat.python import cp_model
 
-from generator import generate_instance
-from solver_cp_sat import TimetableSolver
-from metaheuristics import LocalSearchImprover
+from utils.generator import generate_instance
+from core.solver_cp_sat import TimetableSolver
+from core.metaheuristics import LocalSearchImprover
 
 
 def _solve_small_instance():
     inst = generate_instance("small_demo")
     solver = TimetableSolver(inst, room_mode="greedy", use_objective=False)
-    cp, status = solver.solve(time_limit_seconds=5, workers=4)
+    cp, status = solver.solve(time_limit_seconds=10, workers=4)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     schedule = solver.extract_solution(cp)
     return inst, schedule

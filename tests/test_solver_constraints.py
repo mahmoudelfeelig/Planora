@@ -5,8 +5,8 @@ from typing import Dict, Sequence
 from ortools.sat.python import cp_model
 import pytest
 
-from domain import Activity, Course, Group, Instance, Room, StaffMember
-from solver_cp_sat import TimetableSolver
+from utils.domain import Activity, Course, Group, Instance, Room, StaffMember
+from core.solver_cp_sat import TimetableSolver
 
 
 def build_instance(

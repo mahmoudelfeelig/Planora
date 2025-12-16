@@ -4,7 +4,7 @@ from typing import Dict, List
 
 import pytest
 
-from domain import Activity, Course, Group, Instance, Room, StaffMember
+from utils.domain import Activity, Course, Group, Instance, Room, StaffMember
 from main import normalize_instance_for_spec, check_staff_weekly_capacity
 
 

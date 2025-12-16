@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Dict
 
-from domain import Activity, Course, Group, Instance, Room, StaffMember
-from solver_cp_sat import assign_rooms_greedily
+from utils.domain import Activity, Course, Group, Instance, Room, StaffMember
+from core.solver_cp_sat import assign_rooms_greedily
 
 
 def make_instance(

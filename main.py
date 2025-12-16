@@ -7,11 +7,11 @@ from datetime import datetime, date, time, timedelta
 
 from ortools.sat.python import cp_model
 
-from generator import generate_instance
-from solver_cp_sat import TimetableSolver
-from metaheuristics import LocalSearchImprover
-from domain import Instance
-from exporter import (
+from utils.generator import generate_instance
+from core.solver_cp_sat import TimetableSolver
+from core.metaheuristics import LocalSearchImprover
+from utils.domain import Instance
+from utils.exporter import (
     export_group_schedules_to_docx,
     export_groups_ics_per_id,
     export_staff_ics_per_id,
@@ -266,7 +266,7 @@ def main():
     print_instance_stats(inst)
     check_staff_weekly_capacity(inst)  # prints warnings only
 
-    room_mode = os.getenv("TT_ROOM_MODE", "greedy")
+    room_mode = os.getenv("TT_ROOM_MODE", "cp_rooms")
     use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
     use_objective = use_objective_env not in ("0", "false", "False", "no")
 

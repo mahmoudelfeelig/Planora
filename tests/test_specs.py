@@ -4,7 +4,7 @@ from collections import defaultdict
 
 import pytest
 
-from generator import generate_instance
+from utils.generator import generate_instance
 
 
 @pytest.fixture(scope="module")

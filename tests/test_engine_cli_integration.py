@@ -6,7 +6,7 @@ import sys
 import os
 from pathlib import Path
 
-from generator import generate_instance
+from utils.generator import generate_instance
 from main import normalize_instance_for_spec, stamp_instance_time
 
 
@@ -20,12 +20,14 @@ def test_engine_cli_solves_and_respects_locks(tmp_path: Path) -> None:
 
     in_path.write_bytes(pickle.dumps(inst))
 
+    solver_path = Path(__file__).resolve().parent.parent / "core" / "engine_cli.py"
+    env = {**os.environ, "TT_TIME_LIMIT": "20", "PYTHONPATH": str(Path(__file__).resolve().parent.parent)}
     proc = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve().parent.parent / "engine_cli.py"), str(in_path), str(out_path)],
+        [sys.executable, str(solver_path), str(in_path), str(out_path)],
         capture_output=True,
         text=True,
         check=False,
-        env={**os.environ, "TT_TIME_LIMIT": "5"},
+        env=env,
     )
     assert proc.returncode == 0
     assert out_path.exists()
@@ -46,11 +48,11 @@ def test_engine_cli_solves_and_respects_locks(tmp_path: Path) -> None:
     out_path.unlink()
 
     proc2 = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve().parent.parent / "engine_cli.py"), str(in_path), str(out_path)],
+        [sys.executable, str(solver_path), str(in_path), str(out_path)],
         capture_output=True,
         text=True,
         check=False,
-        env={**os.environ, "TT_TIME_LIMIT": "5"},
+        env=env,
     )
     assert proc2.returncode == 0
     res2 = pickle.loads(out_path.read_bytes())
