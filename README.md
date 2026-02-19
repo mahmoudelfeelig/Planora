@@ -91,6 +91,10 @@ Workflow:
 Optional solver time limit (seconds) for the UI worker:
 
 - `TT_TIME_LIMIT=300`
+- `TT_PHASED_SOLVE=1` enables a feasibility-first pipeline:
+  - solve without objective up to `TT_FEASIBILITY_SECONDS`
+  - then run iterative local-search improvement slices for up to `TT_IMPROVE_TOTAL_SECONDS`
+  - tune rounds via `TT_IMPROVE_SLICE_SECONDS`, `TT_IMPROVE_ITERS_PER_SLICE`, and `TT_IMPROVE_MAX_ROUNDS`
 
 ### Test and CI commands
 

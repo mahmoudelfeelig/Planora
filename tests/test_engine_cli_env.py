@@ -121,3 +121,75 @@ def test_engine_cli_greedy_fallback_after_retry(monkeypatch, tmp_path: Path):
         ("cp_rooms", False, 6),
         ("greedy", False, 6),
     ]
+
+
+def test_engine_cli_phased_solve_runs_feasibility_then_improves(monkeypatch, tmp_path: Path):
+    in_path, out_path = _write_instance(tmp_path)
+    calls: list[tuple[str, bool, int | None, float | None]] = []
+    improve_calls: list[tuple[int, float | None]] = []
+
+    class FakeSolver:
+        def __init__(self, inst, room_mode="cp_rooms", *, use_objective=True):
+            self.room_mode = room_mode
+            self.use_objective = use_objective
+
+        def solve(self, *, time_limit_seconds=None, workers=None, random_seed=None, log_progress=False):
+            calls.append((self.room_mode, self.use_objective, workers, time_limit_seconds))
+            return object(), cp_model.FEASIBLE
+
+        def extract_solution(self, sat):
+            return {
+                1: {
+                    "room_id": 1,
+                    "staff_id": 1,
+                    "week": 1,
+                    "day": "MON",
+                    "slot": 0,
+                    "duration": 1,
+                    "group_ids": [],
+                    "course_id": 1,
+                    "kind": "LEC",
+                }
+            }
+
+    class FakeImprover:
+        def __init__(self, inst):
+            pass
+
+        def compute_soft_penalty(self, schedule):
+            info = schedule[1]
+            return 5 if info["slot"] == 1 else 10
+
+        def improve(self, schedule, *, iterations=0, max_seconds=None, **kwargs):
+            improve_calls.append((int(iterations), max_seconds))
+            out = {a_id: info.copy() for a_id, info in schedule.items()}
+            out[1]["slot"] = 1
+            return out
+
+    monkeypatch.setattr(engine_cli, "TimetableSolver", FakeSolver)
+    monkeypatch.setattr(engine_cli, "LocalSearchImprover", FakeImprover)
+    monkeypatch.setenv("TT_ROOM_MODE", "cp_rooms")
+    monkeypatch.setenv("TT_CP_WORKERS", "2")
+    monkeypatch.setenv("TT_PHASED_SOLVE", "1")
+    monkeypatch.setenv("TT_FEASIBILITY_SECONDS", "7")
+    monkeypatch.setenv("TT_IMPROVE_TOTAL_SECONDS", "2")
+    monkeypatch.setenv("TT_IMPROVE_SLICE_SECONDS", "1")
+    monkeypatch.setenv("TT_IMPROVE_ITERS_PER_SLICE", "123")
+    monkeypatch.setenv("TT_IMPROVE_MAX_ROUNDS", "2")
+    monkeypatch.setattr(engine_cli.sys, "argv", ["engine_cli.py", str(in_path), str(out_path)])
+
+    rc = engine_cli.main()
+    assert rc == 0
+    assert out_path.exists()
+    assert calls == [("cp_rooms", False, 2, 7.0)]
+    assert improve_calls == [(123, 1.0), (123, 1.0)]
+
+    payload = pickle.loads(out_path.read_bytes())
+    meta = payload.get("meta", {})
+    phased = meta.get("phased", {})
+    improvement = meta.get("improvement", {})
+    assert phased.get("enabled") is True
+    assert improvement.get("enabled") is True
+    assert improvement.get("start_penalty") == 10
+    assert improvement.get("final_penalty") == 5
+    assert payload["schedule"][1]["slot"] == 1

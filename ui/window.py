@@ -471,10 +471,25 @@ class MainWindow(QMainWindow):
         self.proc.setProgram(python_exe)
         self.proc.setArguments([solver_script, self.tmp_inst_path, self.tmp_res_path])
         env_map = os.environ.copy()
+        time_limit_seconds = float(self.time_limit_spin.value())
+        objective_on = self.objective_cb.isChecked()
         env_map["TT_ROOM_MODE"] = "cp_rooms" if self.room_mode_combo.currentIndex() == 0 else "greedy"
         env_map["TT_TIME_LIMIT"] = str(self.time_limit_spin.value())
         env_map["TT_CP_WORKERS"] = str(self.workers_spin.value())
-        env_map["TT_USE_OBJECTIVE"] = "1" if self.objective_cb.isChecked() else "0"
+        env_map["TT_USE_OBJECTIVE"] = "1" if objective_on else "0"
+        if objective_on:
+            # Feasibility-first then iterative improvement within the total solve budget.
+            feasibility_seconds = min(30.0, time_limit_seconds) if time_limit_seconds > 0 else 30.0
+            improve_budget_seconds = max(0.0, time_limit_seconds - feasibility_seconds)
+            env_map["TT_PHASED_SOLVE"] = "1"
+            env_map["TT_FEASIBILITY_SECONDS"] = f"{feasibility_seconds:g}"
+            env_map["TT_IMPROVE_TOTAL_SECONDS"] = f"{improve_budget_seconds:g}"
+            env_map["TT_IMPROVE_SLICE_SECONDS"] = "5"
+            env_map["TT_IMPROVE_ITERS_PER_SLICE"] = "1200"
+            env_map["TT_IMPROVE_MAX_ROUNDS"] = "12"
+        else:
+            env_map["TT_PHASED_SOLVE"] = "0"
+            env_map["TT_IMPROVE_TOTAL_SECONDS"] = "0"
         # ensure the worker can import core/utils modules
         env_map["PYTHONPATH"] = os.pathsep.join([os.path.dirname(os.path.dirname(os.path.abspath(__file__))), env_map.get("PYTHONPATH", "")])
         try:

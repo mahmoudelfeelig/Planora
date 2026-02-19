@@ -24,20 +24,28 @@ This document merges the program- and schedule-level specs. All modes must respe
 - Fast: greedy assignment after CP timing; still respects eligibility/capacity/availability, but conflicts are not part of CP timing.
 
 ## Soft Constraints
-- Free days (overall and Mon–Fri), gaps, heavy days, early starts, active-day minimization, week-to-week stability, staff free day, room consistency. Modeled in CP objective (optional) and in local search.
+- Free days (overall and Mon–Fri), gaps, thin/single days, late starts, active-day minimization, week-to-week stability, staff free day, room consistency. Modeled in CP objective (optional) and in local search.
 
 ## Solve/Improve Flow
 - CLI/UI use CP-SAT; UNKNOWN maps to non-feasible. Local search optional with iteration/time cap.
+- Optional phased solve (anytime):
+  - Phase 1: feasibility-first CP run (objective off) bounded by `TT_FEASIBILITY_SECONDS`.
+  - Phase 2: iterative local-search improvement slices bounded by `TT_IMPROVE_TOTAL_SECONDS`.
+  - Worker always returns the best schedule found so far under the configured budgets.
 - Exports: DOCX, CSV, ICS (per group/staff/room) with stamped time grid; PDF (text-only) and CSV summary reports.
 
 ## Performance / Quality Knobs
 - `TT_ROOM_MODE`: `cp_rooms` (strict, default) vs `greedy` (faster).
 - `TT_USE_OBJECTIVE`: `1`/`0` to toggle CP soft objective.
 - `TT_TIME_LIMIT`: CP time limit (seconds); `TT_CP_WORKERS`: solver threads.
+- `TT_PHASED_SOLVE`: `1` enables feasibility-first + iterative improvement.
+- `TT_FEASIBILITY_SECONDS`: phase-1 budget (seconds).
+- `TT_IMPROVE_TOTAL_SECONDS`: total phase-2 budget (seconds).
+- `TT_IMPROVE_SLICE_SECONDS`, `TT_IMPROVE_ITERS_PER_SLICE`, `TT_IMPROVE_MAX_ROUNDS`: per-round local-search controls.
 - `TT_LS_ITERATIONS`, `TT_LS_MAX_SECONDS`: local-search effort.
 - Desktop UI exposes these toggles (room mode, objective, time limit, workers, LS iters/time).
 
 ## Known Limitations
 - No Sunday scheduling without code changes.
 - In greedy room mode, room constraints don’t influence CP timing (validated afterward).
-- UI manual edits remain basic; no full conflict/explanation panel.
+- UI manual edits remain basic; conflict explanations are heuristic only.

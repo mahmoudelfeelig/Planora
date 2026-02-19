@@ -3,10 +3,12 @@ from __future__ import annotations
 import sys
 import os
 import pickle
+import time
 import traceback
 from typing import Dict, Any
 
 from core.solver_cp_sat import TimetableSolver, GreedyRoomingError
+from core.metaheuristics import LocalSearchImprover
 
 
 def _map_status_to_ui(status: int) -> int:
@@ -51,6 +53,16 @@ def _read_bool_env(name: str, default: bool) -> bool:
     return raw.strip().lower() not in ("", "0", "false", "no")
 
 
+def _read_float_env(name: str) -> float | None:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return None
+    value = float(raw)
+    if value < 0:
+        raise ValueError(f"{name} must be >= 0, got {value}")
+    return value
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print(
@@ -77,12 +89,17 @@ def main() -> int:
         use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
         use_objective = use_objective_env not in ("0", "false", "False", "no")
         retry_without_objective = _read_bool_env("TT_RETRY_NO_OBJECTIVE", True)
+        phased_solve = _read_bool_env("TT_PHASED_SOLVE", False)
         log_progress_env = os.getenv("TT_CP_LOG", "").strip().lower()
         log_progress = log_progress_env not in ("", "0", "false", "no")
         workers = _read_int_env("TT_CP_WORKERS")
         attempts: list[dict[str, object]] = []
+        meta: dict[str, object] = {"attempts": attempts}
 
         from ortools.sat.python import cp_model
+
+        def _is_feasible(raw_status: int) -> bool:
+            return raw_status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
         def _solve_attempt(mode: str, objective: bool, limit: float | None):
             nonlocal attempts
@@ -107,20 +124,43 @@ def main() -> int:
         strict_tl = os.getenv("TT_STRICT_TIME_LIMIT")
         time_limit = float(tl) if tl else None
         strict_limit = float(strict_tl) if strict_tl else (min(time_limit, 30.0) if time_limit else 30.0)
+        feasibility_seconds = _read_float_env("TT_FEASIBILITY_SECONDS")
 
-        solver_model, sat, status = _solve_attempt(room_mode, use_objective, strict_limit)
+        improve_total_seconds = _read_float_env("TT_IMPROVE_TOTAL_SECONDS") or 0.0
+        improve_slice_seconds = _read_float_env("TT_IMPROVE_SLICE_SECONDS")
+        if improve_slice_seconds is None or improve_slice_seconds <= 0:
+            improve_slice_seconds = 5.0
+        improve_iters_per_slice = _read_int_env("TT_IMPROVE_ITERS_PER_SLICE")
+        if improve_iters_per_slice is None:
+            improve_iters_per_slice = 1200
+        improve_max_rounds = _read_int_env("TT_IMPROVE_MAX_ROUNDS")
+        if improve_max_rounds is None:
+            improve_max_rounds = 12
 
-        # Retry in the same room mode without objective when objective search times out/returns unknown.
-        if (
-            retry_without_objective
-            and use_objective
-            and status not in (cp_model.OPTIMAL, cp_model.FEASIBLE)
-        ):
-            solver_model, sat, status = _solve_attempt(room_mode, False, time_limit)
+        if phased_solve:
+            feasibility_limit = feasibility_seconds if feasibility_seconds is not None else strict_limit
+            solver_model, sat, status = _solve_attempt(room_mode, False, feasibility_limit)
+            if room_mode == "cp_rooms" and not _is_feasible(status):
+                solver_model, sat, status = _solve_attempt("greedy", False, feasibility_limit)
+            meta["phased"] = {
+                "enabled": True,
+                "feasibility_seconds": feasibility_limit,
+                "improve_total_seconds": improve_total_seconds,
+                "improve_slice_seconds": improve_slice_seconds,
+                "improve_iters_per_slice": improve_iters_per_slice,
+                "improve_max_rounds": improve_max_rounds,
+            }
+        else:
+            solver_model, sat, status = _solve_attempt(room_mode, use_objective, strict_limit)
 
-        # Fallback: if strict mode still fails, retry with greedy rooming and no objective for feasibility.
-        if room_mode == "cp_rooms" and status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            solver_model, sat, status = _solve_attempt("greedy", False, time_limit)
+            # Retry in the same room mode without objective when objective search times out/returns unknown.
+            if retry_without_objective and use_objective and not _is_feasible(status):
+                solver_model, sat, status = _solve_attempt(room_mode, False, time_limit)
+
+            # Fallback: if strict mode still fails, retry with greedy rooming and no objective for feasibility.
+            if room_mode == "cp_rooms" and not _is_feasible(status):
+                solver_model, sat, status = _solve_attempt("greedy", False, time_limit)
+            meta["phased"] = {"enabled": False}
     except Exception as e:
         print(f"[error] CP build/solve failed: {e}", file=sys.stderr)
         traceback.print_exc()
@@ -132,7 +172,7 @@ def main() -> int:
     if ui_status not in (0, 4):
         try:
             with open(out_path, "wb") as f:
-                pickle.dump({"status": ui_status, "schedule": {}, "meta": {"attempts": attempts}}, f)
+                pickle.dump({"status": ui_status, "schedule": {}, "meta": meta}, f)
         except Exception as e:
             print(f"[error] failed to write result pickle: {e}", file=sys.stderr)
             traceback.print_exc()
@@ -147,7 +187,7 @@ def main() -> int:
         traceback.print_exc()
         try:
             with open(out_path, "wb") as f:
-                pickle.dump({"status": -2, "schedule": {}, "error": str(e), "reason": e.reason}, f)
+                pickle.dump({"status": -2, "schedule": {}, "error": str(e), "reason": e.reason, "meta": meta}, f)
         except Exception as write_err:
             print(f"[error] failed to write result pickle: {write_err}", file=sys.stderr)
         return 0
@@ -156,17 +196,63 @@ def main() -> int:
         traceback.print_exc()
         return 4
 
+    if phased_solve and improve_total_seconds > 0:
+        try:
+            improver = LocalSearchImprover(inst)
+            best_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
+            best_penalty = int(improver.compute_soft_penalty(best_schedule))
+            base_penalty = best_penalty
+            start_ts = time.perf_counter()
+            deadline = start_ts + improve_total_seconds
+            rounds: list[dict[str, object]] = []
+
+            for round_idx in range(1, improve_max_rounds + 1):
+                remaining = deadline - time.perf_counter()
+                if remaining <= 0:
+                    break
+                slice_budget = min(improve_slice_seconds, remaining)
+                candidate = improver.improve(
+                    best_schedule,
+                    iterations=improve_iters_per_slice,
+                    max_seconds=slice_budget,
+                )
+                candidate_penalty = int(improver.compute_soft_penalty(candidate))
+                accepted = candidate_penalty <= best_penalty
+                if accepted:
+                    best_schedule = {a_id: info.copy() for a_id, info in candidate.items()}
+                    best_penalty = candidate_penalty
+                rounds.append(
+                    {
+                        "round": round_idx,
+                        "slice_seconds": slice_budget,
+                        "candidate_penalty": candidate_penalty,
+                        "accepted": accepted,
+                        "best_penalty": best_penalty,
+                    }
+                )
+
+            schedule = best_schedule
+            meta["improvement"] = {
+                "enabled": True,
+                "start_penalty": base_penalty,
+                "final_penalty": best_penalty,
+                "rounds": rounds,
+                "elapsed_seconds": time.perf_counter() - start_ts,
+            }
+        except Exception as e:
+            meta["improvement"] = {"enabled": True, "error": str(e)}
+
     # Persist exactly what the UI expects
     try:
         with open(out_path, "wb") as f:
-            pickle.dump({"status": ui_status, "schedule": schedule, "meta": {"attempts": attempts}}, f)
+            pickle.dump({"status": ui_status, "schedule": schedule, "meta": meta}, f)
     except Exception as e:
         print(f"[error] failed to write result pickle: {e}", file=sys.stderr)
         traceback.print_exc()
         return 5
 
     # Brief log line for the merged QProcess output
-    print(f"[ok] solved. activities={len(inst.activities)} status={ui_status} (raw={status})")
+    print(f"[ok] solved. activities={len(inst.activities)} status={ui_status} (raw={status}) attempts={len(attempts)}")
     return 0
 
 
