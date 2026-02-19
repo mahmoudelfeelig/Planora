@@ -6,7 +6,7 @@ import pickle
 import traceback
 from typing import Dict, Any
 
-from core.solver_cp_sat import TimetableSolver
+from core.solver_cp_sat import TimetableSolver, GreedyRoomingError
 
 
 def _map_status_to_ui(status: int) -> int:
@@ -34,6 +34,16 @@ def _map_status_to_ui(status: int) -> int:
     return status
 
 
+def _read_int_env(name: str) -> int | None:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return None
+    value = int(raw)
+    if value < 1:
+        raise ValueError(f"{name} must be >= 1, got {value}")
+    return value
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print(
@@ -59,15 +69,34 @@ def main() -> int:
         room_mode = os.getenv("TT_ROOM_MODE", "cp_rooms")
         use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
         use_objective = use_objective_env not in ("0", "false", "False", "no")
+        log_progress_env = os.getenv("TT_CP_LOG", "").strip().lower()
+        log_progress = log_progress_env not in ("", "0", "false", "no")
+        workers = _read_int_env("TT_CP_WORKERS")
 
         # CP-rooming defaults to enforcing capacity/availability; override via env for speed trade-offs.
         solver_model = TimetableSolver(inst, room_mode=room_mode, use_objective=use_objective)
 
         # Optional time limit via env var (seconds). Keep defaults if unset.
         tl = os.getenv("TT_TIME_LIMIT")
+        strict_tl = os.getenv("TT_STRICT_TIME_LIMIT")
         time_limit = float(tl) if tl else None
+        strict_limit = float(strict_tl) if strict_tl else (min(time_limit, 30.0) if time_limit else 30.0)
 
-        sat, status = solver_model.solve(time_limit_seconds=time_limit)
+        sat, status = solver_model.solve(
+            time_limit_seconds=strict_limit,
+            workers=workers,
+            log_progress=log_progress,
+        )
+
+        # Fallback: if strict mode times out/unknown, retry with greedy rooming and no objective for feasibility.
+        from ortools.sat.python import cp_model
+        if room_mode == "cp_rooms" and status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            solver_model = TimetableSolver(inst, room_mode="greedy", use_objective=False)
+            sat, status = solver_model.solve(
+                time_limit_seconds=time_limit,
+                workers=workers,
+                log_progress=log_progress,
+            )
     except Exception as e:
         print(f"[error] CP build/solve failed: {e}", file=sys.stderr)
         traceback.print_exc()
@@ -89,6 +118,15 @@ def main() -> int:
 
     try:
         schedule: Dict[int, Dict[str, Any]] = solver_model.extract_solution(sat)
+    except GreedyRoomingError as e:
+        print(f"[error] greedy rooming failed: {e}", file=sys.stderr)
+        traceback.print_exc()
+        try:
+            with open(out_path, "wb") as f:
+                pickle.dump({"status": -2, "schedule": {}, "error": str(e), "reason": e.reason}, f)
+        except Exception as write_err:
+            print(f"[error] failed to write result pickle: {write_err}", file=sys.stderr)
+        return 0
     except Exception as e:
         print(f"[error] failed to extract solution: {e}", file=sys.stderr)
         traceback.print_exc()
