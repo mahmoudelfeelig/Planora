@@ -1023,7 +1023,9 @@ class MainWindow(QMainWindow):
 
         self.base_schedule = filtered
         self.current_schedule = {a_id: info.copy() for a_id, info in filtered.items()}
-        errors = validate_schedule_against_instance(self.inst, self.current_schedule, strict_rooms=True)
+        # Allow importing partially specified schedules (room_id may be blank).
+        # Room consistency can still be repaired/validated after solving/exporting.
+        errors = validate_schedule_against_instance(self.inst, self.current_schedule, strict_rooms=False)
         if errors:
             msg = "Schedule violates hard rules:\n" + "\n".join(f"- {e}" for e in errors[:20])
             if len(errors) > 20:
