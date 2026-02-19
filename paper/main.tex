@@ -19,10 +19,12 @@
 \maketitle
 
 \begin{abstract}
-We present a university timetabling system that schedules lectures, tutorials, and labs over a fixed weekly grid.
-Our approach combines a constraint-programming feasibility model solved with Google's OR-Tools CP-SAT solver, optional soft-constraint optimization, and a post-processing local-search improver.
-We describe the mathematical model, key hard and soft constraints, and the overall software architecture.
-Experimental results are reported on generated instances and, optionally, public benchmarks.
+We present an end-to-end university timetabling system that schedules lectures, tutorials, and labs over a fixed weekly grid.
+The solver combines a CP-SAT feasibility model (OR-Tools), two room-assignment modes (integrated CP rooming and fast greedy rooming), and an optional local-search post-improver.
+The implementation also includes a phased solve pipeline for UI use: feasibility-first search under a time budget followed by iterative improvement rounds.
+On generated scenarios (\texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, \texttt{target\_case}), 16/16 runs were feasible under retry/fallback settings.
+For larger scenarios, requesting fast greedy rooming was consistently faster than requesting strict CP rooming (median speedup about \(1.8\times\) to \(2.1\times\)).
+We provide model details, system architecture, reproducible experiment commands, and implementation-grounded limitations.
 \end{abstract}
 
 \section{Introduction}
@@ -49,6 +51,9 @@ Experimental results are reported on generated instances and, optionally, public
 \section{Limitations and Future Work}
 \input{sections/08_limitations.tex}
 
+\section{Conclusion}
+\input{sections/09_conclusion.tex}
+
 \bibliographystyle{plain}
 \bibliography{refs}
 
@@ -57,4 +62,3 @@ Experimental results are reported on generated instances and, optionally, public
 \input{sections/99_reproducibility.tex}
 
 \end{document}
-

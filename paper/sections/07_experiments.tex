@@ -1,49 +1,68 @@
-This section reports empirical results obtained by running the released code.
-We recommend reporting both feasibility/performance and schedule quality.
+This section reports measurements from running the released code and scripts.
 
-\subsection{Generated Instances}
-We evaluate on generated instances produced by the project's generator modes (e.g., \texttt{small\_demo}, \texttt{target\_case}).
-For each mode and seed, we record:
+\subsection{Research Questions}
+We evaluate three practical questions:
 \begin{itemize}[leftmargin=*]
-  \item number of programs/groups/courses/activities/rooms/staff,
-  \item solver mode (\texttt{cp\_rooms} vs \texttt{greedy}),
-  \item CP-SAT time limit, number of workers, objective on/off,
-  \item feasibility status and runtime,
-  \item soft penalty before/after local search.
+  \item \textbf{RQ1 (Feasibility reliability):} does the retry/fallback pipeline consistently return a feasible schedule?
+  \item \textbf{RQ2 (Runtime trade-off):} how much faster is requested \texttt{greedy} room mode than requested \texttt{cp\_rooms} on larger scenarios?
+  \item \textbf{RQ3 (Fallback behavior):} how often do strict-room requests end up requiring greedy fallback?
 \end{itemize}
 
-The runs in Table~\ref{tab:perf} were produced by \texttt{scripts/run\_experiments.py}
-on modes \texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, and \texttt{target\_case}
-with seeds \(\{1,2\}\), requested room modes \(\{\texttt{cp\_rooms}, \texttt{greedy}\}\),
-strict time budget \(15\) seconds, global per-attempt time budget \(45\) seconds, and \(4\) workers.
+\subsection{Setup}
+Runs were generated with \texttt{scripts/run\_experiments.py} on modes
+\texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, and \texttt{target\_case},
+seeds \(\{1,2\}\), and requested room modes \(\{\texttt{cp\_rooms}, \texttt{greedy}\}\).
+Per run we logged instance size, solve status, attempt history, total CP runtime, and base/LS penalties.
 
-We enabled two reliability strategies:
+Configuration:
 \begin{itemize}[leftmargin=*]
-  \item retry the same room mode with objective disabled when the first objective-enabled solve is not feasible;
-  \item if the requested mode is \texttt{cp\_rooms} and still non-feasible, fall back to \texttt{greedy} with objective disabled.
+  \item strict first-attempt budget: \(15\) s;
+  \item per-attempt time limit: \(45\) s;
+  \item workers: \(4\);
+  \item objective enabled on first attempt;
+  \item reliability strategies:
+  \begin{itemize}[leftmargin=*]
+    \item objective-off retry in the same room mode if the first attempt is non-feasible;
+    \item \texttt{cp\_rooms} \(\rightarrow\) \texttt{greedy} fallback if still non-feasible.
+  \end{itemize}
 \end{itemize}
 
-The generated JSONL output was converted to LaTeX rows using \texttt{scripts/jsonl\_to\_latex\_table.py}.
+The JSONL output was converted into LaTeX rows by \texttt{scripts/jsonl\_to\_latex\_table.py}.
 
-Observed trends:
+\subsection{Results}
+Table~\ref{tab:perf} summarizes 16 runs in total.
+
+\paragraph{RQ1 (Feasibility reliability).}
+All 16/16 runs were feasible with the configured retry/fallback policy (\(100\%\) feasibility in every scenario/mode pair in the table).
+
+\paragraph{RQ2 (Runtime trade-off).}
+On larger scenarios, requested \texttt{greedy} is consistently faster than requested \texttt{cp\_rooms}:
 \begin{itemize}[leftmargin=*]
-  \item \texttt{small\_demo}: 100\% feasible in both requested modes with low median runtime (\(\approx 15\)s).
-  \item \texttt{block\_profs} and \texttt{mixed\_large}: both are now 100\% feasible in the tested seeds under the retry/fallback pipeline.
-  \item \texttt{target\_case}: 100\% feasible under the same pipeline; requesting \texttt{greedy} remains substantially faster than requesting \texttt{cp\_rooms}.
-  \item For requested \texttt{cp\_rooms} on the larger scenarios, final extraction often uses the \texttt{greedy} fallback mode after strict-room attempts consume the initial budget.
+  \item \texttt{block\_profs}: \(70.46\) s vs \(38.18\) s (\(\approx 1.85\times\) speedup),
+  \item \texttt{mixed\_large}: \(83.62\) s vs \(45.62\) s (\(\approx 1.83\times\)),
+  \item \texttt{target\_case}: \(81.69\) s vs \(38.38\) s (\(\approx 2.13\times\)).
 \end{itemize}
+On \texttt{small\_demo}, both requested modes are similar (\(\approx 15\) s median).
+
+\paragraph{RQ3 (Fallback behavior).}
+Among 8 runs that requested \texttt{cp\_rooms}, only 2 finished in \texttt{cp\_rooms} (both \texttt{small\_demo}); the remaining 6 completed via \texttt{greedy} fallback.
+This indicates strict room integration is often the runtime bottleneck on larger generated scenarios under short strict budgets.
+
+\paragraph{Quality note.}
+The main table focuses on feasibility and CP runtime.
+Local search was not enabled in this batch (\texttt{ls\_iters}=0), so LS columns are intentionally shown as \texttt{-}.
 
 \subsection{Public Benchmarks (Optional)}
-If using public benchmarks (e.g., International Timetabling Competition instances~\cite{itc2007_track3,mccollum2010itc}), we must define a mapping from benchmark input to this paper's data model and constraints.
-Only benchmarks that can be mapped without altering the stated constraints should be reported.
-For curriculum-based course timetabling datasets, reporting should follow the published data/validation conventions~\cite{bonutti2012benchmarking,bettinelli2015overview}.
+If using public benchmarks (e.g., ITC Track 3~\cite{itc2007_track3,mccollum2010itc}),
+the mapping from benchmark schema to this project's data model must be fixed and documented before comparing scores.
+For curriculum-based datasets, reporting should follow the published conventions~\cite{bonutti2012benchmarking,bettinelli2015overview}.
 
-\subsection{Tables and Figures}
-Table~\ref{tab:perf} reports aggregated metrics by scenario and requested room mode.
-The full per-run breakdown is available in \texttt{sections/07\_experiments\_runs.tex}.
+\subsection{Tables}
+The full per-run rows are included in \texttt{sections/07\_experiments\_runs.tex}.
 
 \begin{table}[h]
 \centering
+\small
 \begin{tabular}{lrrrrrrr}
 \toprule
 Scenario & Req. mode & Runs & Feasible (\%) & Median CP (s) & Median base penalty & Median LS penalty & Objective retries \\
@@ -51,6 +70,6 @@ Scenario & Req. mode & Runs & Feasible (\%) & Median CP (s) & Median base penalt
 \input{sections/07_experiments_table.tex}
 \bottomrule
 \end{tabular}
-\caption{Aggregated performance and quality metrics on generated instances (\texttt{-} means no feasible schedule extracted).}
+\caption{Aggregated performance and quality metrics on generated instances (\texttt{-} means not evaluated in this batch).}
 \label{tab:perf}
 \end{table}

@@ -1,15 +1,39 @@
-To reproduce results:
+Minimum reproducibility checklist:
 \begin{itemize}[leftmargin=*]
-  \item Record the Python version and package versions (OR-Tools, PyQt6, etc.).
-  \item Record solver parameters (time limit, worker count, room mode, objective on/off, local-search iterations/time cap).
-  \item Fix random seeds for instance generation.
-  \item Save the generated instance and resulting schedule as a project snapshot (\texttt{.json} or \texttt{.pkl}).
+  \item Python and package versions (especially OR-Tools and PyQt6),
+  \item git commit hash of the code used for runs,
+  \item exact solver settings (room mode, objective, time limits, workers, LS settings),
+  \item random seeds and scenario modes,
+  \item raw JSONL experiment output.
 \end{itemize}
 
-For this paper, we recommend publishing:
-\begin{itemize}[leftmargin=*]
-  \item a table of all runs (seeds and parameters),
-  \item the corresponding project snapshot files,
-  \item the exact command lines used to run each experiment.
-\end{itemize}
+Commands used to produce the tables in this draft:
+\begin{verbatim}
+python scripts/run_experiments.py \
+  --modes small_demo,block_profs,mixed_large,target_case \
+  --seeds 1,2 \
+  --room-modes cp_rooms,greedy \
+  --use-objective 1 \
+  --retry-without-objective 1 \
+  --cp-rooms-fallback-to-greedy 1 \
+  --strict-seconds 15 \
+  --time-limit 45 \
+  --workers 4 \
+  --ls-iters 0 \
+  --out paper/results.jsonl
 
+python scripts/jsonl_to_latex_table.py \
+  --in paper/results.jsonl \
+  --out paper/sections/07_experiments_table.tex \
+  --aggregate
+
+python scripts/jsonl_to_latex_table.py \
+  --in paper/results.jsonl \
+  --out paper/sections/07_experiments_runs.tex
+\end{verbatim}
+
+If TeX tooling is installed, build with:
+\begin{verbatim}
+cd paper
+latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
+\end{verbatim}

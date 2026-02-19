@@ -9,7 +9,8 @@ Our contributions are:
   \item A CP-SAT feasibility model with optional weighted soft penalties, implemented in OR-Tools CP-SAT~\cite{cpsatlp,ortools,ortools_cite,perron_didier_gay_cpsatlp_2023}.
   \item A room-assignment strategy supporting both integrated CP rooming and a faster post-processing assignment.
   \item A local-search improver that reduces a composite penalty while maintaining feasibility.
-  \item An end-to-end software system (CLI and desktop UI) with exports (DOCX/CSV/ICS/PDF) and reproducibility hooks.
+  \item A phased anytime solve mode for UI use (feasibility first, then iterative improvement under a fixed budget).
+  \item An end-to-end software system (CLI and desktop UI) with exports (DOCX/CSV/ICS/PDF), diagnostics, and reproducibility hooks.
 \end{itemize}
 
 All non-trivial solver claims in this paper are tied directly to the implementation and/or cited references.

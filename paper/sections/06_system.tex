@@ -1,15 +1,34 @@
-The system is organized into modular components:
+The codebase is organized around a feasibility-first architecture with explicit runtime controls.
+
+\subsection{Module Structure}
 \begin{itemize}[leftmargin=*]
-  \item \textbf{Data model} (\texttt{utils/domain.py}): dataclasses for programs, groups, courses, staff, rooms, activities, and instances.
-  \item \textbf{Instance generator} (\texttt{utils/generator.py}, \texttt{utils/target\_profile.py}): generates synthetic scenarios; normalizes away Sunday; checks basic sanity conditions.
-  \item \textbf{CP-SAT solver} (\texttt{core/solver\_cp\_sat.py}): constructs and solves the feasibility model, optionally with a soft objective, and supports two rooming modes.
-  \item \textbf{Heuristic improver} (\texttt{core/metaheuristics.py}): local search to improve soft penalty.
-  \item \textbf{UI worker} (\texttt{core/engine\_cli.py}): executes CP-SAT in a separate process for the desktop UI; reports structured failures.
-  \item \textbf{Desktop UI} (\texttt{ui/window.py}): scenario generation, solve/improve, manual edits + locks, export, and project persistence.
-  \item \textbf{I/O and exports} (\texttt{utils/io.py}, \texttt{utils/exporter.py}): project save/load, schedule/instance import, and exports to DOCX/CSV/ICS/PDF.
+  \item \textbf{Domain and data contracts} (\texttt{utils/domain.py}): dataclasses for programs, groups, courses, staff, rooms, activities, and full instances.
+  \item \textbf{Instance generation} (\texttt{utils/generator.py}, \texttt{utils/target\_profile.py}): synthetic scenario construction with sanity/normalization steps.
+  \item \textbf{Core solver} (\texttt{core/solver\_cp\_sat.py}): CP-SAT model construction, solving, and schedule extraction; supports \texttt{cp\_rooms} and \texttt{greedy} room modes.
+  \item \textbf{Local search} (\texttt{core/metaheuristics.py}): simulated-annealing-style neighborhood search over a feasible schedule.
+  \item \textbf{UI worker process} (\texttt{core/engine\_cli.py}): isolated solver execution with structured status/meta payloads.
+  \item \textbf{Desktop UI} (\texttt{ui/window.py}, \texttt{ui/app.py}): generate/load, solve/re-solve with locks, compare, and export workflows.
+  \item \textbf{I/O and exporters} (\texttt{utils/io.py}, \texttt{utils/exporter.py}): project snapshots and DOCX/CSV/ICS/PDF/report outputs.
 \end{itemize}
 
-\paragraph{Reproducibility and provenance.}
-To avoid untraceable results, all experiments in this paper should record:
-code version, random seeds, solver parameters (time limit, workers, objective on/off), and instance metadata.
+\subsection{Solve Pipeline}
+The runtime flow is:
+\begin{enumerate}[leftmargin=*]
+  \item build/load an instance and validate against hard structural rules;
+  \item run CP-SAT with chosen room mode and objective setting;
+  \item if configured, apply reliability retries (objective-off retry and optional \texttt{cp\_rooms} \(\rightarrow\) \texttt{greedy} fallback);
+  \item extract schedule; when enabled, apply local-search improvement rounds;
+  \item emit diagnostics (attempt history, status codes, rooming-failure reason) to UI/CLI.
+\end{enumerate}
 
+\subsection{Anytime UI Behavior}
+For interactive use, the UI exposes a phased mode:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Phase 1}: prioritize finding any feasible schedule within a feasibility budget.
+  \item \textbf{Phase 2}: spend remaining budget on iterative improvement slices.
+\end{itemize}
+This avoids spending the entire UI budget on objective optimization before a valid schedule exists.
+
+\subsection{Operational Controls}
+Key exposed controls are room mode, objective toggle, time limit, worker count, and local-search effort.
+These settings are translated into environment variables consumed by the worker process, ensuring that UI and scripted runs use the same solver backend.

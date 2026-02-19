@@ -1,0 +1,8 @@
+We presented a practical university timetabling system that combines CP-SAT feasibility search, configurable room assignment, and optional local-search improvement.
+The project is implemented as a reproducible software stack (CLI + desktop UI) with import/export support and diagnostic feedback for non-feasible runs.
+
+Empirically, the current solver pipeline is robust on the generated benchmark suite used in this project: all reported runs are feasible with the configured retry/fallback policy.
+The main operational trade-off is clear: strict CP rooming can be slower and may consume budget before fallback, while fast greedy rooming reaches feasible solutions faster on larger instances.
+
+Overall, this work demonstrates that a feasibility-first architecture with explicit runtime controls is a strong baseline for shipping timetabling software.
+Future progress should prioritize stronger neighborhood design for quality improvement, richer real-world constraints, and standardized benchmark ingestion.

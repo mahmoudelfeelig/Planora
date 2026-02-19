@@ -1,9 +1,15 @@
-Key limitations:
+Key limitations and threats to validity:
 \begin{itemize}[leftmargin=*]
-  \item Greedy rooming does not influence time assignment (when \texttt{room\_mode=greedy}); feasibility may fail at room assignment time if the calendar is too tight.
-  \item The generator produces synthetic instances; real-world instances may include additional constraints (e.g., travel time, precedence, multi-room activities).
-  \item The local search is intentionally lightweight and does not guarantee improvement.
+  \item \textbf{Synthetic data bias.} Most results are on generated instances; real institutional datasets may require additional constraints (travel times, precedence chains, split rooms, instructor preferences beyond current model).
+  \item \textbf{Short strict budgets.} The strict-room attempt budget in our reported batch is intentionally short, which favors fallback behavior on larger scenarios.
+  \item \textbf{Greedy-room decoupling.} In \texttt{room\_mode=greedy}, room constraints do not guide CP time assignment; room infeasibility can still appear at extraction time in tightly constrained cases.
+  \item \textbf{Local-search maturity.} The local search is intentionally lightweight and may plateau; stronger neighborhood families and adaptive reheating are not yet implemented.
+  \item \textbf{Small seed set.} Two seeds per scenario are sufficient for regression checks, but not for strong statistical claims.
 \end{itemize}
 
-Future work directions include richer benchmark ingestion, improved neighborhood design for local search, and explanations for infeasibility beyond heuristic checks.
-
+Planned next steps are:
+\begin{itemize}[leftmargin=*]
+  \item ingestion of public/real datasets with explicit schema mapping,
+  \item stronger quality optimization neighborhoods and ablation studies,
+  \item richer infeasibility explanations derived from unsatisfied core constraints.
+\end{itemize}
