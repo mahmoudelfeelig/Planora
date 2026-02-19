@@ -1,0 +1,30 @@
+release_version=v0.2.0
+generated_at_utc=2026-02-19T17:53:44Z
+git_sha=8f9022f304d88ea5483a5673ae7cba657719aded
+git_sha_short=8f9022f
+python_bin=.venv/bin/python
+Python 3.12.3
+
+[platform]
+Linux elfeel 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+
+[packages]
+absl-py==2.4.0
+immutabledict==4.3.1
+iniconfig==2.3.0
+lxml==6.0.2
+numpy==2.4.2
+ortools==9.15.6755
+packaging==26.0
+pandas==3.0.1
+pluggy==1.6.0
+protobuf==6.33.5
+Pygments==2.19.2
+PyQt6==6.10.2
+PyQt6-Qt6==6.10.2
+PyQt6_sip==13.11.0
+pytest==9.0.2
+python-dateutil==2.9.0.post0
+python-docx==1.2.0
+six==1.17.0
+typing_extensions==4.15.0
