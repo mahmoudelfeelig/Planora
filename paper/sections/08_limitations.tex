@@ -1,0 +1,9 @@
+Key limitations:
+\begin{itemize}[leftmargin=*]
+  \item Greedy rooming does not influence time assignment (when \texttt{room\_mode=greedy}); feasibility may fail at room assignment time if the calendar is too tight.
+  \item The generator produces synthetic instances; real-world instances may include additional constraints (e.g., travel time, precedence, multi-room activities).
+  \item The local search is intentionally lightweight and does not guarantee improvement.
+\end{itemize}
+
+Future work directions include richer benchmark ingestion, improved neighborhood design for local search, and explanations for infeasibility beyond heuristic checks.
+

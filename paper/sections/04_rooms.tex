@@ -1,0 +1,27 @@
+Room assignment is supported in two modes:
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Integrated rooming} (\texttt{room\_mode=cp\_rooms}): CP-SAT selects rooms and enforces per-room non-overlap, eligibility, and room availability.
+  \item \textbf{Post-processing rooming} (\texttt{room\_mode=greedy}): CP-SAT assigns times only; rooms are assigned afterward by a greedy algorithm.
+\end{enumerate}
+
+\subsection{Eligibility}
+Eligibility is based on:
+\begin{itemize}[leftmargin=*]
+  \item room type (lecture/tutorial/lab),
+  \item capacity $\mathrm{cap}(r)\ge \sum_{g\in\mathcal{G}(a)} \mathrm{size}(g)$,
+  \item for specialized labs: required tag $\mathrm{tag}(a)$ must be present in the room's specialization tags.
+\end{itemize}
+
+\subsection{Integrated CP Rooming}
+When rooming is integrated, each activity selects one room from its eligible set and the schedule enforces non-overlap for each room (week-wise).
+Room availability constraints are enforced by forbidding time/room combinations that would occupy unavailable slots.
+
+\subsection{Greedy Rooming}
+The greedy rooming algorithm iterates through each week/day/slot, assigning rooms for activities that occupy that slot.
+It prioritizes:
+\begin{itemize}[leftmargin=*]
+  \item co-locating clustered activities in a single room,
+  \item smallest-capacity eligible room that fits (to preserve large rooms).
+\end{itemize}
+If rooming fails, the implementation raises a structured error with a reason code (e.g., capacity, availability, tag mismatch) for debugging and UI display.
+

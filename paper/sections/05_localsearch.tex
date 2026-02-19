@@ -1,0 +1,24 @@
+After a feasible timetable is produced by CP-SAT, an optional local-search improver attempts to reduce a composite soft penalty.
+The improver is implemented in \texttt{core/metaheuristics.py}.
+
+\subsection{Neighborhood}
+At each iteration, the algorithm samples an activity (or a cluster of co-start activities) and proposes one of:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Time move}: change $(d,s)$ within the same week, respecting hard constraints checked by incremental occupancy tables.
+  \item \textbf{Room move}: change room assignment to another eligible room (when room assignments exist), respecting room eligibility and availability.
+\end{itemize}
+
+\subsection{Feasibility Preservation}
+Candidate moves are filtered by:
+\begin{itemize}[leftmargin=*]
+  \item group and staff non-overlap in the affected slots,
+  \item staff availability, and optional load caps,
+  \item room non-overlap and eligibility (if a room is assigned),
+  \item lock constraints (locked activities cannot be moved).
+\end{itemize}
+
+\subsection{Acceptance Rule}
+We use a simulated annealing style rule.
+Let $\Delta$ be the change in penalty.
+Moves with $\Delta\le 0$ are accepted; moves with $\Delta>0$ are accepted with probability $\exp(-\Delta/T)$ where $T$ follows an exponential cooling schedule from $T_0$ to $T_1$.
+

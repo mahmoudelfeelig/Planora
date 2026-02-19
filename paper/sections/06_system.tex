@@ -1,0 +1,15 @@
+The system is organized into modular components:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Data model} (\texttt{utils/domain.py}): dataclasses for programs, groups, courses, staff, rooms, activities, and instances.
+  \item \textbf{Instance generator} (\texttt{utils/generator.py}, \texttt{utils/target\_profile.py}): generates synthetic scenarios; normalizes away Sunday; checks basic sanity conditions.
+  \item \textbf{CP-SAT solver} (\texttt{core/solver\_cp\_sat.py}): constructs and solves the feasibility model, optionally with a soft objective, and supports two rooming modes.
+  \item \textbf{Heuristic improver} (\texttt{core/metaheuristics.py}): local search to improve soft penalty.
+  \item \textbf{UI worker} (\texttt{core/engine\_cli.py}): executes CP-SAT in a separate process for the desktop UI; reports structured failures.
+  \item \textbf{Desktop UI} (\texttt{ui/window.py}): scenario generation, solve/improve, manual edits + locks, export, and project persistence.
+  \item \textbf{I/O and exports} (\texttt{utils/io.py}, \texttt{utils/exporter.py}): project save/load, schedule/instance import, and exports to DOCX/CSV/ICS/PDF.
+\end{itemize}
+
+\paragraph{Reproducibility and provenance.}
+To avoid untraceable results, all experiments in this paper should record:
+code version, random seeds, solver parameters (time limit, workers, objective on/off), and instance metadata.
+

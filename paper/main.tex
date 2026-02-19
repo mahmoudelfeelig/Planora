@@ -1,0 +1,60 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\title{A CP-SAT and Local-Search Approach to University Timetabling on a Weekly Grid}
+\author{Author Name \and Professor Name}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a university timetabling system that schedules lectures, tutorials, and labs over a fixed weekly grid.
+Our approach combines a constraint-programming feasibility model solved with Google's OR-Tools CP-SAT solver, optional soft-constraint optimization, and a post-processing local-search improver.
+We describe the mathematical model, key hard and soft constraints, and the overall software architecture.
+Experimental results are reported on generated instances and, optionally, public benchmarks.
+\end{abstract}
+
+\section{Introduction}
+\input{sections/01_introduction.tex}
+
+\section{Problem Definition and Notation}
+\input{sections/02_problem.tex}
+
+\section{CP-SAT Formulation}
+\input{sections/03_model.tex}
+
+\section{Room Assignment}
+\input{sections/04_rooms.tex}
+
+\section{Local Search Improvement Heuristic}
+\input{sections/05_localsearch.tex}
+
+\section{System Design and Implementation}
+\input{sections/06_system.tex}
+
+\section{Experimental Evaluation}
+\input{sections/07_experiments.tex}
+
+\section{Limitations and Future Work}
+\input{sections/08_limitations.tex}
+
+\bibliographystyle{plain}
+\bibliography{refs}
+
+\appendix
+\section{Reproducibility Notes}
+\input{sections/99_reproducibility.tex}
+
+\end{document}
+

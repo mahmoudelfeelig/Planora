@@ -1,0 +1,32 @@
+We consider a discrete-time timetabling problem on a weekly grid.
+
+\paragraph{Calendar.}
+Let $\mathcal{W}$ be the set of teaching weeks, $\mathcal{D}$ the set of teaching days, and $\mathcal{S}=\{0,\dots,S-1\}$ the set of within-day time slots.
+We assume a fixed set of teaching days (Monday--Saturday) and exclude Sunday.
+
+\paragraph{Entities.}
+We are given:
+\begin{itemize}[leftmargin=*]
+  \item groups $g \in \mathcal{G}$ (student cohorts), each with a size $\mathrm{size}(g)$,
+  \item staff $p \in \mathcal{P}$ (professors and TAs), each with an availability set $\mathrm{AvailDays}(p)\subseteq \mathcal{D}$,
+  \item rooms $r \in \mathcal{R}$ with type $\mathrm{type}(r)$ and capacity $\mathrm{cap}(r)$,
+  \item activities $a \in \mathcal{A}$, each with:
+    \begin{itemize}[leftmargin=*]
+      \item week $\mathrm{week}(a)\in\mathcal{W}$,
+      \item kind $\mathrm{kind}(a)\in\{\mathrm{LEC},\mathrm{TUT},\mathrm{LAB}\}$,
+      \item duration $\mathrm{dur}(a)\in\{1,2,3\}$ (number of consecutive slots),
+      \item participating groups $\mathcal{G}(a)\subseteq \mathcal{G}$,
+      \item assigned staff $\mathrm{staff}(a)\in\mathcal{P}$,
+      \item optional specialization tag requirement $\mathrm{tag}(a)$ for specialized labs.
+    \end{itemize}
+\end{itemize}
+
+\paragraph{Decision.}
+For each activity $a$, choose a start day and start slot $(d,s)$ in week $\mathrm{week}(a)$; optionally choose a room $r$.
+
+\paragraph{Feasibility.}
+Hard constraints include resource non-overlap (groups, staff, rooms), staff availability, room eligibility, and several rule-based constraints such as ``week 1 is lectures-only'' and optional staff load caps.
+
+\paragraph{Quality.}
+We also consider soft constraints (e.g., free days, gaps, late starts, stability) expressed as a weighted penalty.
+

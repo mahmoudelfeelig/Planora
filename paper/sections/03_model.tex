@@ -1,0 +1,61 @@
+This section summarizes the CP-SAT formulation implemented in \texttt{core/solver\_cp\_sat.py}.
+We present the model in a standard mixed 0--1 form for clarity, noting that CP-SAT internally supports integer and interval variables.
+
+\subsection{Time Encoding and Start Variables}
+For each week, index time within the week by $t \in \{0,\dots,|\mathcal{D}|S-1\}$ where
+$t = \mathrm{dayIndex}(d)\cdot S + s$.
+
+Each activity $a$ has a set of allowed start indices $T_a$ derived from staff availability, duration feasibility, and optional locks.
+Introduce binary variables $x_{a,t}\in\{0,1\}$ for $t\in T_a$ indicating that activity $a$ starts at time $t$.
+\begin{align}
+\sum_{t\in T_a} x_{a,t} &= 1 \qquad \forall a\in\mathcal{A}. \label{eq:oneStart}
+\end{align}
+
+\subsection{Interval Non-Overlap Constraints}
+Let $\mathrm{Occ}(a,t,\tau)$ be 1 iff slot $\tau$ is covered when activity $a$ starts at $t$, i.e.,
+$\tau \in [t, t+\mathrm{dur}(a)-1]$.
+
+\paragraph{Group conflicts.}
+For each group $g$, week $w$, and time slot $\tau$:
+\begin{align}
+\sum_{\substack{a\in\mathcal{A}:\\ g\in\mathcal{G}(a),\,\mathrm{week}(a)=w}}
+\;\sum_{t\in T_a:\,\mathrm{Occ}(a,t,\tau)=1} x_{a,t} \;\le\; 1.
+\end{align}
+
+\paragraph{Staff conflicts.}
+Analogously, for each staff member $p$, week $w$, and time slot $\tau$:
+\begin{align}
+\sum_{\substack{a\in\mathcal{A}:\\ \mathrm{staff}(a)=p,\,\mathrm{week}(a)=w}}
+\;\sum_{t\in T_a:\,\mathrm{Occ}(a,t,\tau)=1} x_{a,t} \;\le\; 1.
+\end{align}
+
+The implementation uses CP-SAT interval variables and \texttt{AddNoOverlap} for these constraints.
+
+\subsection{Rule Constraints}
+\paragraph{Week-1 lectures-only.}
+If $w_0=\min(\mathcal{W})$, then activities of kind TUT/LAB are forbidden in week $w_0$.
+The implementation rejects such instances during model construction.
+
+\paragraph{Load caps (optional).}
+If $\mathrm{MaxWeek}(p)$ is specified, enforce:
+\begin{align}
+\sum_{\substack{a:\,\mathrm{staff}(a)=p,\,\mathrm{week}(a)=w}} \mathrm{dur}(a) \le \mathrm{MaxWeek}(p) \qquad \forall p,w.
+\end{align}
+Similarly, if $\mathrm{MaxDay}(p)$ is specified, enforce per-day caps.
+
+\paragraph{Block-only professors.}
+For staff with a \emph{block-only} flag, lectures for a given course in a given week must form a single contiguous block of length 2--3 on one day.
+The implementation encodes this via per-slot occupancy indicators and a ``single block-start'' constraint.
+
+\subsection{Clustering (Co-Location)}
+Certain activity sets are designated as clusters (e.g., shared lectures across groups, cross-major clusters).
+For each cluster $C$ with leader $\ell$, enforce equal start times:
+\begin{align}
+\mathrm{start}(a) = \mathrm{start}(\ell) \qquad \forall a\in C.
+\end{align}
+
+\subsection{Soft Objective (Optional)}
+The CP objective is a weighted sum of linear penalties approximating schedule quality:
+free-day shortfalls, gaps, late starts, stability, and (when rooming in CP) room-consistency.
+Weights are configurable at the instance level.
+
