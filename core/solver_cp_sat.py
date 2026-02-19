@@ -6,6 +6,13 @@ from ortools.sat.python import cp_model
 from utils.domain import Instance
 
 
+class GreedyRoomingError(ValueError):
+    def __init__(self, message: str, *, reason: str, activity_id: int | None = None):
+        super().__init__(message)
+        self.reason = reason
+        self.activity_id = activity_id
+
+
 class TimetableSolver:
     """
     CP-SAT feasibility model with generalized co-location clusters and room-count guards.
@@ -99,6 +106,7 @@ class TimetableSolver:
         time_limit_seconds: Optional[float] = None,
         workers: Optional[int] = 8,
         random_seed: Optional[int] = None,
+        log_progress: bool = False,
     ):
         solver = cp_model.CpSolver()
         if time_limit_seconds is not None:
@@ -108,6 +116,9 @@ class TimetableSolver:
         if random_seed is not None:
             solver.parameters.random_seed = int(random_seed)
         solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH
+        if log_progress:
+            solver.parameters.log_search_progress = True
+            solver.parameters.log_to_stdout = True
         status = solver.Solve(self.m)
         return solver, status
 
@@ -805,11 +816,12 @@ class TimetableSolver:
             "stud_free_mf": 5,
             "stud_gaps": 5,
             "staff_free_day": 6,
-            "active_days": 3,
-            "early_start": 2,
-            "balance": 2,
+            "active_days": 5,
+            "late_start": 3,
+            "thin_day": 3,
             "stability": 1,
             "room_consistency": 1,
+            "single_slot": 6,
         }
         overrides = getattr(inst, "soft_weights", None)
         if isinstance(overrides, dict):
@@ -939,16 +951,29 @@ class TimetableSolver:
                 m.Add(slack_active >= active - 3)
                 penalties.append(weights["active_days"] * slack_active)
 
-        # Student gaps, balance, early start (per day).
+        # Student gaps, day shape (per day).
         for g in group_ids:
             for w in weeks:
                 for d_idx in range(D):
                     occs = [g_occ[(g, w, d_idx, s)] for s in range(S)]
+                    load_var = m.NewIntVar(0, S, f"g_load[{g},{w},{d_idx}]")
+                    m.Add(load_var == sum(occs))
 
-                    load = sum(occs)
-                    slack_load = m.NewIntVar(0, S, f"slack_load[{g},{w},{d_idx}]")
-                    m.Add(slack_load >= load - 3)
-                    penalties.append(weights["balance"] * slack_load)
+                    # thin day (exactly two slots)
+                    thin = m.NewBoolVar(f"thin_day[{g},{w},{d_idx}]")
+                    m.Add(load_var == 2).OnlyEnforceIf(thin)
+                    m.Add(load_var != 2).OnlyEnforceIf(thin.Not())
+                    penalties.append(weights["thin_day"] * thin)
+
+                    # penalize single-slot presence days to avoid lonely days on campus
+                    diff = m.NewIntVar(-S, S, f"single_diff[{g},{w},{d_idx}]")
+                    abs_diff = m.NewIntVar(0, S, f"single_abs[{g},{w},{d_idx}]")
+                    m.Add(diff == load_var - 1)
+                    m.AddAbsEquality(abs_diff, diff)
+                    is_single = m.NewBoolVar(f"single_day[{g},{w},{d_idx}]")
+                    m.Add(abs_diff == 0).OnlyEnforceIf(is_single)
+                    m.Add(abs_diff >= 1).OnlyEnforceIf(is_single.Not())
+                    penalties.append(weights["single_slot"] * is_single)
 
                     # blocks: count starts of occupied segments
                     starts = [m.NewBoolVar(f"g_block[{g},{w},{d_idx},0]")]
@@ -966,19 +991,19 @@ class TimetableSolver:
                     m.Add(slack_gaps >= blocks - 1)
                     penalties.append(weights["stud_gaps"] * slack_gaps)
 
-                    # early start: slot-0 occupied and any later slot occupied
+                    # late start: day active but nothing in the first two slots
                     if S >= 2:
-                        any_rest = m.NewBoolVar(f"g_any_rest[{g},{w},{d_idx}]")
-                        rest = occs[1:]
-                        for o in rest:
-                            m.Add(any_rest >= o)
-                        m.Add(sum(rest) >= any_rest)
+                        early_first2 = m.NewBoolVar(f"early_first2[{g},{w},{d_idx}]")
+                        m.Add(early_first2 >= occs[0])
+                        m.Add(early_first2 >= occs[1])
+                        m.Add(early_first2 <= occs[0] + occs[1])
 
-                        early = m.NewBoolVar(f"g_early[{g},{w},{d_idx}]")
-                        m.Add(early <= occs[0])
-                        m.Add(early <= any_rest)
-                        m.Add(early >= occs[0] + any_rest - 1)
-                        penalties.append(weights["early_start"] * early)
+                        late = m.NewBoolVar(f"late_start[{g},{w},{d_idx}]")
+                        day_active = g_day[(g, w, d_idx)]
+                        m.Add(late >= day_active - early_first2)
+                        m.Add(late <= day_active)
+                        m.Add(late <= 1 - early_first2)
+                        penalties.append(weights["late_start"] * late)
 
         # Staff: require at least one free day per week (soft penalty).
         for sid in staff_ids:
@@ -1108,7 +1133,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
 
     Policy:
       - Co-locate clustered activities onto one room for that kind.
-      - Specialized labs prefer matching SPECIALIZED_LAB; may fall back to any lab room.
+      - Specialized labs require matching SPECIALIZED_LAB rooms with the right tag.
       - LEC use LECTURE rooms only.
       - TUT use TUTORIAL rooms first, then LECTURE overflow.
       - Room selection is capacity-aware (based on sum of involved group sizes).
@@ -1119,7 +1144,9 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
 
     lecture_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE"]
     tutorial_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "TUTORIAL"]
-    lab_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("SPECIALIZED_LAB", "COMPUTER_LAB")]
+    specialized_lab_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "SPECIALIZED_LAB"]
+    computer_lab_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "COMPUTER_LAB"]
+    lab_rooms = specialized_lab_rooms + computer_lab_rooms
     spec_rooms_by_tag: Dict[str, List[int]] = {}
     for r_id, room in inst.rooms.items():
         if room.room_type == "SPECIALIZED_LAB":
@@ -1182,6 +1209,62 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
         candidates.sort(key=lambda r_id: inst.rooms[r_id].capacity)
         return candidates[0] if candidates else None
 
+    def _diagnose_room_failure(room_ids: List[int], occupied: set[int], required_capacity: int, day: str, slot: int, dur: int) -> str:
+        if not room_ids:
+            return "room_type_missing"
+        cap_ok = [r_id for r_id in room_ids if inst.rooms[r_id].capacity >= required_capacity]
+        if not cap_ok:
+            return "capacity"
+        avail_ok = [r_id for r_id in cap_ok if _room_available(r_id, day, slot, dur)]
+        if not avail_ok:
+            return "availability"
+        free_ok = [r_id for r_id in avail_ok if r_id not in occupied]
+        if not free_ok:
+            return "occupied"
+        return "unknown"
+
+    def _reserved_specialized_rooms(
+        *,
+        week: int,
+        day: str,
+        start_slot: int,
+        dur: int,
+    ) -> set[int]:
+        """Rooms that should be reserved for tagged labs overlapping this time span."""
+        reserved: set[int] = set()
+        for off in range(dur):
+            slot = start_slot + off
+            for a_id in slot_acts.get((week, day, slot), []):
+                if schedule[a_id].get("room_id") is not None:
+                    continue
+                act = inst.activities[a_id]
+                if act.kind != "LAB":
+                    continue
+                tag = getattr(act, "requires_specialization", None)
+                if tag:
+                    reserved.update(spec_rooms_by_tag.get(tag, []))
+        return reserved
+
+    def _pick_generic_lab_room(
+        *,
+        week: int,
+        day: str,
+        start_slot: int,
+        dur: int,
+        occupied: set[int],
+        required_capacity: int,
+    ) -> int | None:
+        # Prefer computer labs, then specialized labs not needed by overlapping tagged labs.
+        room_id = _pick_room(computer_lab_rooms, occupied, required_capacity, day, start_slot, dur)
+        if room_id is not None:
+            return room_id
+        reserved = _reserved_specialized_rooms(week=week, day=day, start_slot=start_slot, dur=dur)
+        non_reserved_spec = [r for r in specialized_lab_rooms if r not in reserved]
+        room_id = _pick_room(non_reserved_spec, occupied, required_capacity, day, start_slot, dur)
+        if room_id is not None:
+            return room_id
+        return _pick_room(specialized_lab_rooms, occupied, required_capacity, day, start_slot, dur)
+
     for w in weeks:
         for d in days:
             for s in range(S):
@@ -1212,7 +1295,12 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     req = _required_capacity_for_members(members)
                     room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
                     if room_id is None:
-                        raise ValueError(f"No LECTURE room fits LEC cluster at {w}-{d}-{s} (need cap {req})")
+                        reason = _diagnose_room_failure(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                        raise GreedyRoomingError(
+                            f"No lecture room fits LEC cluster at {w}-{d}-{s} (need cap {req}, reason={reason})",
+                            reason=reason,
+                            activity_id=members[0],
+                        )
                     for a_id in members:
                         schedule[a_id]["room_id"] = room_id
                     occupied.add(room_id)
@@ -1230,7 +1318,12 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     if room_id is None:
                         room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
                     if room_id is None:
-                        raise ValueError(f"No room fits TUT cluster at {w}-{d}-{s} (need cap {req})")
+                        reason = _diagnose_room_failure(tutorial_rooms + lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                        raise GreedyRoomingError(
+                            f"No room fits TUT cluster at {w}-{d}-{s} (need cap {req}, reason={reason})",
+                            reason=reason,
+                            activity_id=members[0],
+                        )
                     for a_id in members:
                         schedule[a_id]["room_id"] = room_id
                     occupied.add(room_id)
@@ -1244,9 +1337,43 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         clusters_here_lab.append(members)
                 for members in clusters_here_lab:
                     req = _required_capacity_for_members(members)
-                    room_id = _pick_room(lab_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                    dur = schedule[members[0]]["duration"]
+                    req_tags = {
+                        getattr(inst.activities[a_id], "requires_specialization", None)
+                        for a_id in members
+                        if getattr(inst.activities[a_id], "requires_specialization", None)
+                    }
+                    if len(req_tags) > 1:
+                        raise GreedyRoomingError(
+                            f"Conflicting specialisation tags in LAB cluster at {w}-{d}-{s}: {sorted(req_tags)}",
+                            reason="tag_mismatch",
+                            activity_id=members[0],
+                        )
+                    if req_tags:
+                        tag = next(iter(req_tags))
+                        candidates = spec_rooms_by_tag.get(str(tag), [])
+                        room_id = _pick_room(candidates, occupied, req, d, s, dur)
+                    else:
+                        room_id = _pick_generic_lab_room(
+                            week=w,
+                            day=d,
+                            start_slot=s,
+                            dur=dur,
+                            occupied=occupied,
+                            required_capacity=req,
+                        )
                     if room_id is None:
-                        raise ValueError(f"No LAB room fits LAB cluster at {w}-{d}-{s} (need cap {req})")
+                        if req_tags:
+                            tag = next(iter(req_tags))
+                            candidates = spec_rooms_by_tag.get(str(tag), [])
+                            reason = "tag_mismatch" if not candidates else _diagnose_room_failure(candidates, occupied, req, d, s, dur)
+                        else:
+                            reason = _diagnose_room_failure(lab_rooms, occupied, req, d, s, dur)
+                        raise GreedyRoomingError(
+                            f"No lab room fits LAB cluster at {w}-{d}-{s} (need cap {req}, reason={reason})",
+                            reason=reason,
+                            activity_id=members[0],
+                        )
                     for a_id in members:
                         schedule[a_id]["room_id"] = room_id
                     occupied.add(room_id)
@@ -1274,20 +1401,38 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                 for tag, acts_tag in labs_spec_by_tag.items():
                     for a_id in acts_tag:
                         req = _required_capacity_for_activity(a_id)
-                        preferred = [r for r in spec_rooms_by_tag.get(tag, []) if r not in occupied]
-                        room_id = _pick_room(preferred, occupied, req, d, s, schedule[a_id]["duration"])
+                        tag_rooms = spec_rooms_by_tag.get(tag, [])
+                        room_id = _pick_room(tag_rooms, occupied, req, d, s, schedule[a_id]["duration"])
                         if room_id is None:
-                            room_id = _pick_room(lab_rooms, occupied, req, d, s, schedule[a_id]["duration"])
-                        if room_id is None:
-                            raise ValueError(f"No lab room fits specialised lab a{a_id} (need cap {req})")
+                            if not tag_rooms:
+                                reason = "tag_mismatch"
+                            else:
+                                reason = _diagnose_room_failure(tag_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                            raise GreedyRoomingError(
+                                f"No lab room fits specialised lab a{a_id} (need cap {req}, tag={tag}, reason={reason})",
+                                reason=reason,
+                                activity_id=a_id,
+                            )
                         schedule[a_id]["room_id"] = room_id
                         occupied.add(room_id)
 
                 for a_id in labs_generic:
                     req = _required_capacity_for_activity(a_id)
-                    room_id = _pick_room(lab_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                    room_id = _pick_generic_lab_room(
+                        week=w,
+                        day=d,
+                        start_slot=s,
+                        dur=schedule[a_id]["duration"],
+                        occupied=occupied,
+                        required_capacity=req,
+                    )
                     if room_id is None:
-                        raise ValueError(f"No lab room fits lab a{a_id} (need cap {req})")
+                        reason = _diagnose_room_failure(lab_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        raise GreedyRoomingError(
+                            f"No lab room fits lab a{a_id} (need cap {req}, reason={reason})",
+                            reason=reason,
+                            activity_id=a_id,
+                        )
                     schedule[a_id]["room_id"] = room_id
                     occupied.add(room_id)
 
@@ -1296,7 +1441,12 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     req = _required_capacity_for_activity(a_id)
                     room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
                     if room_id is None:
-                        raise ValueError(f"No lecture room fits a{a_id} (need cap {req})")
+                        reason = _diagnose_room_failure(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        raise GreedyRoomingError(
+                            f"No lecture room fits a{a_id} (need cap {req}, reason={reason})",
+                            reason=reason,
+                            activity_id=a_id,
+                        )
                     schedule[a_id]["room_id"] = room_id
                     occupied.add(room_id)
 
@@ -1307,6 +1457,11 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     if room_id is None:
                         room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
                     if room_id is None:
-                        raise ValueError(f"No tutorial/lecture room fits a{a_id} (need cap {req})")
+                        reason = _diagnose_room_failure(tutorial_rooms + lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        raise GreedyRoomingError(
+                            f"No tutorial/lecture room fits a{a_id} (need cap {req}, reason={reason})",
+                            reason=reason,
+                            activity_id=a_id,
+                        )
                     schedule[a_id]["room_id"] = room_id
                     occupied.add(room_id)

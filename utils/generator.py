@@ -75,6 +75,7 @@ def generate_instance(mode: str = "small_demo") -> Instance:
             num_programs=20,
             groups_per_program=(1, 2),
             courses_per_program=(4, 7),
+            block_prof_extra_days=("THU",),
         )
 
     if mode == "labs_only":
@@ -96,13 +97,8 @@ def generate_instance(mode: str = "small_demo") -> Instance:
         )
 
     if mode == "target_case":
-        # main realistic target
-        return _generate_university(
-            seed=42,
-            num_programs=20,
-            groups_per_program=(1, 2),
-            courses_per_program=(4, 7),
-        )
+        from utils.target_profile import generate_target_profile
+        return generate_target_profile(seed=42)
 
     raise ValueError(f"Unknown generation mode: {mode}")
 
@@ -118,6 +114,9 @@ def _generate_university(
     *,
     ensure_labs_only: bool = False,
     ensure_block_course: bool = False,
+    target_profile: bool = False,
+    max_group_load_slots: int | None = None,
+    block_prof_extra_days: tuple[str, ...] = (),
 ) -> Instance:
     """
     Generic builder for all modes.
@@ -247,6 +246,9 @@ def _generate_university(
         staff=staff,
         rng=rng,
         total_courses=total_courses,
+        target_profile=target_profile,
+        programs=num_programs,
+        block_prof_extra_days=block_prof_extra_days,
     )
 
     prof_load = {sid: 0 for sid in prof_ids}
@@ -257,7 +259,7 @@ def _generate_university(
 
     # ----- rooms -----
 
-    rooms.update(_build_target_case_rooms())  # includes LECTURE + TUTORIAL + LAB rooms
+    rooms.update(_build_target_case_rooms(rng, target_profile=target_profile))  # includes LECTURE + TUTORIAL + LAB rooms
 
     # Default: all rooms available for all (day,slot) pairs (used by the solver if provided)
     for r in rooms.values():
@@ -309,9 +311,13 @@ def _generate_university(
                 c.lab_weeks = 12
                 c.lab_duration = 2
             else:
-                # Keep patterns feasible at the repo's target scale: prefer 12/18, keep 24 rare.
-                lecture_total = rng.choices([12, 18, 24], weights=[0.75, 0.20, 0.05])[0]
-                tutorial_total = rng.choices([0, 12, 18, 24], weights=[0.10, 0.75, 0.12, 0.03])[0]
+                if target_profile:
+                    lecture_total = 12
+                    tutorial_total = rng.choices([0, 12], weights=[0.15, 0.85])[0]
+                else:
+                    # Keep patterns feasible at the repo's target scale: prefer 12/18, keep 24 rare.
+                    lecture_total = rng.choices([12, 18, 24], weights=[0.75, 0.20, 0.05])[0]
+                    tutorial_total = rng.choices([0, 12, 18, 24], weights=[0.10, 0.75, 0.12, 0.03])[0]
 
                 if is_block_course:
                     # Block lecture courses: 4×3-slot blocks (slot-total 12) in fixed weeks.
@@ -323,7 +329,25 @@ def _generate_university(
                     weights=[0.15, 0.70, 0.15],
                 )[0]
 
-                if structure == "LEC_ONLY":
+                if target_profile:
+                    # favor clustered lectures; ensure share_lecture_group_ids already set
+                    structure_weights = [0.05, 0.75, 0.20]
+                    structure = rng.choices(["LEC_ONLY", "LEC_TUT", "LEC_TUT_LAB"], weights=structure_weights)[0]
+                    if structure == "LEC_ONLY":
+                        tutorial_total = 0
+                        lab_weeks = 0
+                        lab_duration = 0
+                    elif structure == "LEC_TUT":
+                        lab_weeks = 0
+                        lab_duration = 0
+                        if tutorial_total == 0:
+                            tutorial_total = 12
+                    else:
+                        if tutorial_total == 0:
+                            tutorial_total = 12
+                        lab_weeks = 12
+                        lab_duration = 2
+                elif structure == "LEC_ONLY":
                     tutorial_total = 0
                     lab_weeks = 0
                     lab_duration = 0
@@ -429,7 +453,7 @@ def _generate_university(
                         )
 
     # rare cross-major clusters for TUT and LAB
-    _inject_cross_major_clusters(activities, groups, courses, rng)
+    _inject_cross_major_clusters(activities, groups, courses, rng, target_profile=target_profile)
 
     inst = Instance(
         days=list(DAYS),
@@ -443,7 +467,7 @@ def _generate_university(
         activities=activities,
     )
 
-    _check_group_week_load(inst)
+    _check_group_week_load(inst, hard_cap=max_group_load_slots)
     return inst
 
 
@@ -454,6 +478,10 @@ def _build_staff_pool(
     staff: Dict[int, StaffMember],
     rng: random.Random,
     total_courses: int,
+    *,
+    target_profile: bool = False,
+    programs: int = 0,
+    block_prof_extra_days: tuple[str, ...] = (),
 ) -> tuple[List[int], List[int], List[int]]:
     """
     Professors and TAs. No daily caps; optional weekly cap for block professors.
@@ -463,8 +491,13 @@ def _build_staff_pool(
     ta_ids: List[int] = []
     block_prof_ids: List[int] = []
 
-    num_profs = max(8, total_courses // 3)
-    num_block = rng.randint(0, min(3, num_profs))
+    if target_profile:
+        num_profs = max(30, total_courses // 4)
+        # aim for 0–2 block profs per program (capped by total profs)
+        num_block = min(num_profs, rng.randint(0, 2 * max(1, programs)))
+    else:
+        num_profs = max(8, total_courses // 3)
+        num_block = rng.randint(0, min(3, num_profs))
     num_regular = num_profs - num_block
 
     next_staff_id = 1
@@ -472,7 +505,12 @@ def _build_staff_pool(
     # block professors
     for _ in range(num_block):
         s_id = next_staff_id; next_staff_id += 1
-        days = {"SAT"} if rng.random() < 0.5 else {"FRI", "SAT"}
+        if block_prof_extra_days:
+            # Keep the block-prof pattern constrained but avoid systematic infeasibility
+            # in larger block-heavy modes by adding one extra teaching day.
+            days = {"FRI", "SAT"} | set(block_prof_extra_days)
+        else:
+            days = {"SAT"} if rng.random() < 0.5 else {"FRI", "SAT"}
         staff[s_id] = StaffMember(
             id=s_id, name=f"Prof-{s_id}", is_prof=True,
             available_days=days,
@@ -495,68 +533,119 @@ def _build_staff_pool(
         prof_ids.append(s_id)
 
     # TAs
-    num_tas = max(8, total_courses // 4)
-    for _ in range(num_tas):
-        s_id = next_staff_id; next_staff_id += 1
-        staff[s_id] = StaffMember(
-            id=s_id, name=f"TA-{s_id}", is_prof=False,
-            available_days=set(DAYS),
-            max_slots_per_day=None, max_slots_per_week=None,
-            can_teach_courses=set(),
-            prefers_block=False, blocks_only=False,
-        )
-        ta_ids.append(s_id)
+    if target_profile:
+        # Enough TAs to keep ~3–4 courses per TA; each TA has one fixed off-day
+        num_tas = max(10, (total_courses + 3) // 4)
+        days_list = list(DAYS)
+        for _ in range(num_tas):
+            s_id = next_staff_id; next_staff_id += 1
+            off_day = rng.choice(days_list)
+            avail = set(DAYS) - {off_day}
+            staff[s_id] = StaffMember(
+                id=s_id,
+                name=f"TA-{s_id}",
+                is_prof=False,
+                available_days=avail,
+                max_slots_per_day=None,
+                max_slots_per_week=None,
+                can_teach_courses=set(),
+                prefers_block=False,
+                blocks_only=False,
+            )
+            ta_ids.append(s_id)
+    else:
+        num_tas = max(8, total_courses // 4)
+        for _ in range(num_tas):
+            s_id = next_staff_id; next_staff_id += 1
+            staff[s_id] = StaffMember(
+                id=s_id, name=f"TA-{s_id}", is_prof=False,
+                available_days=set(DAYS),
+                max_slots_per_day=None, max_slots_per_week=None,
+                can_teach_courses=set(),
+                prefers_block=False, blocks_only=False,
+            )
+            ta_ids.append(s_id)
 
     return prof_ids, ta_ids, block_prof_ids
 
 
-def _build_target_case_rooms() -> Dict[int, Room]:
+def _build_target_case_rooms(rng: random.Random, target_profile: bool = False) -> Dict[int, Room]:
     """
-    25 rooms total, uniform capacity assumption for LEC/TUT:
+    Target profile: mixed big/small rooms and dedicated/specific labs.
 
-      - 15 LECTURE rooms
-      - 5 TUTORIAL rooms
-      - 3 SPECIALIZED_LAB rooms (LAB1–LAB3)
-      - 2 COMPUTER_LAB rooms
+      - Lecture rooms: 10 big (cap=500) + 5 small (cap=150) usable for LEC/TUT.
+      - Tutorial rooms: 10 small (cap=100).
+      - Specialized labs: 4 specific (LABA–LABD) tied to specific courses.
+      - PC labs: 5–7 general labs usable for labs/tutorials.
     """
 
     rooms: Dict[int, Room] = {}
     next_room_id = 1
 
-    # uniform capacity for simplicity; solver ignores capacity anyway
-    CAP = 200
-
-    # lecture rooms
-    for i in range(15):
-        r_id = next_room_id; next_room_id += 1
-        rooms[r_id] = Room(
-            id=r_id, name=f"Lec-{i+1}",
-            capacity=CAP, room_type="LECTURE", specialization_tags=set(),
-        )
-
-    # tutorial rooms
-    for i in range(5):
-        r_id = next_room_id; next_room_id += 1
-        rooms[r_id] = Room(
-            id=r_id, name=f"Tut-{i+1}",
-            capacity=CAP, room_type="TUTORIAL", specialization_tags=set(),
-        )
-
-    # specialised labs
-    for tag in ["LAB1", "LAB2", "LAB3"]:
-        r_id = next_room_id; next_room_id += 1
-        rooms[r_id] = Room(
-            id=r_id, name=f"SpecLab-{tag[-1]}",
-            capacity=CAP, room_type="SPECIALIZED_LAB", specialization_tags={tag},
-        )
-
-    # computer labs
-    for i in range(2):
-        r_id = next_room_id; next_room_id += 1
-        rooms[r_id] = Room(
-            id=r_id, name=f"CompLab-{i+1}",
-            capacity=CAP, room_type="COMPUTER_LAB", specialization_tags=set(),
-        )
+    if target_profile:
+        # Big lecture rooms
+        for i in range(10):
+            r_id = next_room_id; next_room_id += 1
+            rooms[r_id] = Room(
+                id=r_id, name=f"BigLec-{i+1}",
+                capacity=500, room_type="LECTURE", specialization_tags=set(),
+            )
+        # Small lecture rooms (can host tutorials as overflow)
+        for i in range(5):
+            r_id = next_room_id; next_room_id += 1
+            rooms[r_id] = Room(
+                id=r_id, name=f"SmallLec-{i+1}",
+                capacity=150, room_type="LECTURE", specialization_tags=set(),
+            )
+        # Tutorial rooms
+        for i in range(10):
+            r_id = next_room_id; next_room_id += 1
+            rooms[r_id] = Room(
+                id=r_id, name=f"Tut-{i+1}",
+                capacity=100, room_type="TUTORIAL", specialization_tags=set(),
+            )
+        # Specialized labs for specific courses
+        for tag in ["LABA", "LABB", "LABC", "LABD"]:
+            r_id = next_room_id; next_room_id += 1
+            rooms[r_id] = Room(
+                id=r_id, name=f"Spec-{tag}",
+                capacity=60, room_type="SPECIALIZED_LAB", specialization_tags={tag},
+            )
+        # General computer labs
+        num_pc = rng.randint(5, 7)
+        for i in range(num_pc):
+            r_id = next_room_id; next_room_id += 1
+            rooms[r_id] = Room(
+                id=r_id, name=f"PC-Lab-{i+1}",
+                capacity=120, room_type="COMPUTER_LAB", specialization_tags=set(),
+            )
+    else:
+        # legacy/default setup
+        CAP = 400
+        for i in range(15):
+            r_id = next_room_id; next_room_id += 1
+            rooms[r_id] = Room(
+                id=r_id, name=f"Lec-{i+1}",
+                capacity=CAP, room_type="LECTURE", specialization_tags=set(),
+            )
+        for i in range(5):
+            r_id = next_room_id; next_room_id += 1
+            rooms[r_id] = Room(
+                id=r_id, name=f"Tut-{i+1}",
+                capacity=CAP, room_type="TUTORIAL", specialization_tags=set(),
+            )
+        for tag in ["LAB1", "LAB2", "LAB3"]:
+            r_id = next_room_id; next_room_id += 1
+            rooms[r_id] = Room(
+                id=r_id, name=f"SpecLab-{tag[-1]}",
+                capacity=CAP, room_type="SPECIALIZED_LAB", specialization_tags={tag},
+            )
+        for i in range(2):
+            r_id = next_room_id; next_room_id += 1
+            rooms[r_id] = Room(
+                id=r_id, name=f"CompLab-{i+1}",
+                capacity=CAP, room_type="COMPUTER_LAB", specialization_tags=set(),
+            )
 
     return rooms
 
@@ -566,6 +655,8 @@ def _inject_cross_major_clusters(
     groups: Dict[int, Group],
     courses: Dict[int, Course],
     rng: random.Random,
+    *,
+    target_profile: bool = False,
 ) -> None:
     """
     Occasionally co-locate tutorials or labs across different programs in the same week.
@@ -586,6 +677,8 @@ def _inject_cross_major_clusters(
     for a_id, a in activities.items():
         if a.kind in ("TUT", "LAB") and a.week != 1:
             tag = getattr(a, "requires_specialization", None) if a.kind == "LAB" else "ANY"
+            if target_profile and a.kind == "LAB" and tag and tag.startswith("LAB"):
+                continue  # keep specific labs unclustered across programs
             by_bucket[(a.week, a.kind, str(tag))].append(a_id)
 
     # choose a few clusters with low probability
@@ -623,7 +716,7 @@ def _inject_cross_major_clusters(
             cluster_budget += 1
 
 
-def _check_group_week_load(inst: Instance) -> None:
+def _check_group_week_load(inst: Instance, hard_cap: int | None = None) -> None:
     """
     Sanity check: ensure we don't exceed the *physical* weekly capacity.
     Free days are handled as soft constraints by the improver.
@@ -641,10 +734,11 @@ def _check_group_week_load(inst: Instance) -> None:
         if used > soft_target:
             # soft warning only (kept as a log line, not an error)
             print(f"[WARN] Group {g_id} week {w}: load {used} slots > soft target {soft_target}")
-        if used > max_slots_allowed:
+        cap = hard_cap if hard_cap is not None else max_slots_allowed
+        if used > cap:
             raise ValueError(
                 f"Generator bug: group {g_id} in week {w} uses "
-                f"{used} slots (> {max_slots_allowed})"
+                f"{used} slots (> {cap})"
             )
 
 

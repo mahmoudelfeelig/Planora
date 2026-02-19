@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Dict
 
+import pytest
+
 from utils.domain import Activity, Course, Group, Instance, Room, StaffMember
+from core.solver_cp_sat import GreedyRoomingError
 from core.solver_cp_sat import assign_rooms_greedily
 
 
@@ -40,7 +43,7 @@ def base_schedule_entry(activity: Activity):
     }
 
 
-def test_specialized_labs_use_tagged_rooms_before_falling_back():
+def test_specialized_labs_require_matching_tagged_rooms():
     groups = {
         1: Group(id=1, name="G1", program_id=1, size=30, course_ids=[1]),
         2: Group(id=2, name="G2", program_id=1, size=30, course_ids=[2]),
@@ -100,10 +103,84 @@ def test_specialized_labs_use_tagged_rooms_before_falling_back():
     inst = make_instance(groups=groups, rooms=rooms, activities=activities, courses=courses)
     schedule = {a_id: base_schedule_entry(act) for a_id, act in activities.items()}
 
+    with pytest.raises(GreedyRoomingError):
+        assign_rooms_greedily(inst, schedule)
+
+
+def test_generic_lab_does_not_block_future_tagged_lab_room():
+    groups = {
+        1: Group(id=1, name="G1", program_id=1, size=30, course_ids=[1]),
+        2: Group(id=2, name="G2", program_id=1, size=30, course_ids=[2]),
+    }
+    rooms = {
+        1: Room(id=1, name="SpecLab2", capacity=40, room_type="SPECIALIZED_LAB", specialization_tags={"LAB2"}),
+        2: Room(id=2, name="CompLab", capacity=40, room_type="COMPUTER_LAB", specialization_tags=set()),
+    }
+    courses = {
+        1: Course(
+            id=1,
+            code="C1",
+            name="Generic Lab",
+            structure_type="LAB_ONLY",
+            lecture_count=0,
+            tutorial_count=0,
+            lab_weeks=12,
+            lab_duration=2,
+            share_lecture_group_ids=[],
+        ),
+        2: Course(
+            id=2,
+            code="C2",
+            name="Tagged Lab",
+            structure_type="LAB_ONLY",
+            lecture_count=0,
+            tutorial_count=0,
+            lab_weeks=12,
+            lab_duration=2,
+            share_lecture_group_ids=[],
+        ),
+    }
+    activities = {
+        1: Activity(
+            id=1,
+            course_id=1,
+            week=1,
+            kind="LAB",
+            duration=2,
+            group_ids=[1],
+            prof_id=0,
+            ta_id=0,
+            requires_specialization=None,
+        ),
+        2: Activity(
+            id=2,
+            course_id=2,
+            week=1,
+            kind="LAB",
+            duration=1,
+            group_ids=[2],
+            prof_id=0,
+            ta_id=0,
+            requires_specialization="LAB2",
+        ),
+    }
+    inst = make_instance(groups=groups, rooms=rooms, activities=activities, courses=courses)
+    inst.slots_per_day = 4
+    schedule = {
+        1: {
+            **base_schedule_entry(activities[1]),
+            "slot": 0,
+        },
+        2: {
+            **base_schedule_entry(activities[2]),
+            "slot": 1,
+        },
+    }
+
     assign_rooms_greedily(inst, schedule)
 
-    assigned = {schedule[1]["room_id"], schedule[2]["room_id"]}
-    assert assigned == {1, 2}
+    assert schedule[1]["room_id"] == 2
+    assert schedule[2]["room_id"] == 1
 
 
 def test_big_lecture_prefers_large_room():

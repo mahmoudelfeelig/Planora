@@ -28,9 +28,9 @@ The generated JSONL output was converted to LaTeX rows using \texttt{scripts/jso
 Observed trends:
 \begin{itemize}[leftmargin=*]
   \item \texttt{small\_demo}: 100\% feasible in both requested modes with low median runtime (\(\approx 15\)s).
-  \item \texttt{target\_case}: 100\% feasible under the retry/fallback strategy; requesting \texttt{greedy} is faster than requesting \texttt{cp\_rooms} because strict-room attempts often consume budget before fallback.
-  \item \texttt{block\_profs}: 0\% feasible for both requested modes under this configuration.
-  \item \texttt{mixed\_large}: timing can be found but room assignment fails in the studied seeds (reported as rooming failure with missing room-type capacity for some activities).
+  \item \texttt{block\_profs} and \texttt{mixed\_large}: both are now 100\% feasible in the tested seeds under the retry/fallback pipeline.
+  \item \texttt{target\_case}: 100\% feasible under the same pipeline; requesting \texttt{greedy} remains substantially faster than requesting \texttt{cp\_rooms}.
+  \item For requested \texttt{cp\_rooms} on the larger scenarios, final extraction often uses the \texttt{greedy} fallback mode after strict-room attempts consume the initial budget.
 \end{itemize}
 
 \subsection{Public Benchmarks (Optional)}
