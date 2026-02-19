@@ -56,9 +56,18 @@ def validate_schedule_against_instance(inst: Instance, schedule: dict[int, dict]
     Validate a full schedule against hard constraints. Returns a list of errors.
     """
     errors: list[str] = []
+    flags = getattr(inst, "hard_constraints", {}) or {}
+
+    def _flag(name: str, default: bool = True) -> bool:
+        raw = flags.get(name, default) if isinstance(flags, dict) else default
+        if isinstance(raw, bool):
+            return raw
+        if raw is None:
+            return default
+        return str(raw).strip().lower() not in ("0", "false", "no")
 
     # Week-1 lectures only
-    if inst.weeks:
+    if _flag("week1_lectures_only", True) and inst.weeks:
         first_week = min(int(w) for w in inst.weeks)
         for a_id, info in schedule.items():
             if int(info.get("week")) == first_week and info.get("kind") in ("TUT", "LAB"):
@@ -124,7 +133,7 @@ def validate_schedule_against_instance(inst: Instance, schedule: dict[int, dict]
                         errors.append(f"A{a_id} requires lab tag {tag} but room {room_id} not matching")
                 # Availability
                 avail = getattr(room, "availability", None)
-                if isinstance(avail, set):
+                if _flag("enforce_room_availability", True) and isinstance(avail, set):
                     for off in range(dur):
                         if (day, slot + off) not in avail:
                             errors.append(f"A{a_id} room {room_id} unavailable at {day} slot {slot + off}")
@@ -163,75 +172,79 @@ def validate_schedule_against_instance(inst: Instance, schedule: dict[int, dict]
                     errors.append(f"Room overlap at week {w} {d} slot {s} (A{a_id})")
                 room_occ[key] = a_id
 
-    # Block staff: at most two teaching days per week
-    for s_id, staff in inst.staff.items():
-        if not (getattr(staff, "blocks_only", False) or getattr(staff, "prefers_block", False)):
-            continue
-        for w in inst.weeks:
-            days_used = set()
-            for a_id, info in schedule.items():
-                if info.get("staff_id") == s_id and int(info.get("week")) == int(w):
-                    days_used.add(info.get("day"))
-            if len(days_used) > 2:
-                errors.append(f"Staff {s_id} exceeds 2 teaching days in week {w}")
-
-    # Block-only professors: single contiguous 2–3 slot block per course/week
-    for s_id, staff in inst.staff.items():
-        if not getattr(staff, "blocks_only", False):
-            continue
-        for w in inst.weeks:
-            courses_here = {
-                inst.activities[a_id].course_id
-                for a_id, info in schedule.items()
-                if int(info.get("week")) == int(w)
-                and inst.activities[a_id].kind == "LEC"
-                and inst.activities[a_id].prof_id == s_id
-            }
-            for c_id in courses_here:
-                slots_by_day: dict[str, list[int]] = {}
-                total = 0
+    if _flag("enforce_block_professor_rules", True):
+        # Block staff: at most two teaching days per week
+        for s_id, staff in inst.staff.items():
+            if not (getattr(staff, "blocks_only", False) or getattr(staff, "prefers_block", False)):
+                continue
+            for w in inst.weeks:
+                days_used = set()
                 for a_id, info in schedule.items():
-                    act = inst.activities.get(a_id)
-                    if act is None:
-                        continue
-                    if act.week != int(w) or act.kind != "LEC" or act.prof_id != s_id or act.course_id != c_id:
-                        continue
-                    d = info.get("day")
-                    s0 = int(info.get("slot"))
-                    dur = int(info.get("duration"))
-                    total += dur
-                    for off in range(dur):
-                        slots_by_day.setdefault(d, []).append(s0 + off)
-                if total and not (2 <= total <= 3):
-                    errors.append(f"Block prof {s_id} course {c_id} week {w}: total {total} not in [2,3]")
-                if len(slots_by_day) > 1:
-                    errors.append(f"Block prof {s_id} course {c_id} week {w}: lectures span multiple days")
-                for d, slots in slots_by_day.items():
-                    slots_sorted = sorted(set(slots))
-                    for i in range(1, len(slots_sorted)):
-                        if slots_sorted[i] != slots_sorted[i - 1] + 1:
-                            errors.append(f"Block prof {s_id} course {c_id} week {w}: non-contiguous slots on {d}")
+                    if info.get("staff_id") == s_id and int(info.get("week")) == int(w):
+                        days_used.add(info.get("day"))
+                if len(days_used) > 2:
+                    errors.append(f"Staff {s_id} exceeds 2 teaching days in week {w}")
+
+        # Block-only professors: single contiguous 2–3 slot block per course/week
+        for s_id, staff in inst.staff.items():
+            if not getattr(staff, "blocks_only", False):
+                continue
+            for w in inst.weeks:
+                courses_here = {
+                    inst.activities[a_id].course_id
+                    for a_id, info in schedule.items()
+                    if int(info.get("week")) == int(w)
+                    and inst.activities[a_id].kind == "LEC"
+                    and inst.activities[a_id].prof_id == s_id
+                }
+                for c_id in courses_here:
+                    slots_by_day: dict[str, list[int]] = {}
+                    total = 0
+                    for a_id, info in schedule.items():
+                        act = inst.activities.get(a_id)
+                        if act is None:
+                            continue
+                        if act.week != int(w) or act.kind != "LEC" or act.prof_id != s_id or act.course_id != c_id:
+                            continue
+                        d = info.get("day")
+                        s0 = int(info.get("slot"))
+                        dur = int(info.get("duration"))
+                        total += dur
+                        for off in range(dur):
+                            slots_by_day.setdefault(d, []).append(s0 + off)
+                    if total and not (2 <= total <= 3):
+                        errors.append(f"Block prof {s_id} course {c_id} week {w}: total {total} not in [2,3]")
+                    if len(slots_by_day) > 1:
+                        errors.append(f"Block prof {s_id} course {c_id} week {w}: lectures span multiple days")
+                    for d, slots in slots_by_day.items():
+                        slots_sorted = sorted(set(slots))
+                        for i in range(1, len(slots_sorted)):
+                            if slots_sorted[i] != slots_sorted[i - 1] + 1:
+                                errors.append(f"Block prof {s_id} course {c_id} week {w}: non-contiguous slots on {d}")
 
     # Load caps
-    for s_id, staff in inst.staff.items():
-        max_week = getattr(staff, "max_slots_per_week", None)
-        max_day = getattr(staff, "max_slots_per_day", None)
-        if max_week is None and max_day is None:
-            continue
-        for w in inst.weeks:
-            week_load = 0
-            day_loads = {d: 0 for d in inst.days}
-            for a_id, info in schedule.items():
-                if info.get("staff_id") != s_id or int(info.get("week")) != int(w):
-                    continue
-                dur = int(info.get("duration"))
-                week_load += dur
-                day_loads[info.get("day")] += dur
-            if max_week is not None and week_load > int(max_week):
-                errors.append(f"Staff {s_id} week {w} exceeds weekly cap {max_week}")
-            if max_day is not None:
-                for d, load in day_loads.items():
-                    if load > int(max_day):
-                        errors.append(f"Staff {s_id} day {d} week {w} exceeds daily cap {max_day}")
+    enforce_weekly = _flag("enforce_staff_weekly_caps", True)
+    enforce_daily = _flag("enforce_staff_daily_caps", True)
+    if enforce_weekly or enforce_daily:
+        for s_id, staff in inst.staff.items():
+            max_week = getattr(staff, "max_slots_per_week", None) if enforce_weekly else None
+            max_day = getattr(staff, "max_slots_per_day", None) if enforce_daily else None
+            if max_week is None and max_day is None:
+                continue
+            for w in inst.weeks:
+                week_load = 0
+                day_loads = {d: 0 for d in inst.days}
+                for a_id, info in schedule.items():
+                    if info.get("staff_id") != s_id or int(info.get("week")) != int(w):
+                        continue
+                    dur = int(info.get("duration"))
+                    week_load += dur
+                    day_loads[info.get("day")] += dur
+                if max_week is not None and week_load > int(max_week):
+                    errors.append(f"Staff {s_id} week {w} exceeds weekly cap {max_week}")
+                if max_day is not None:
+                    for d, load in day_loads.items():
+                        if load > int(max_day):
+                            errors.append(f"Staff {s_id} day {d} week {w} exceeds daily cap {max_day}")
 
     return errors

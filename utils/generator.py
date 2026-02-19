@@ -6,7 +6,7 @@ import random
 from collections import defaultdict
 from dataclasses import is_dataclass
 from pathlib import Path
-from typing import Any, DefaultDict, Dict, List, Tuple
+from typing import Any, DefaultDict, Dict, List, Tuple, Set
 
 from utils.domain import Activity, Course, Group, Instance, Program, Room, StaffMember
 
@@ -14,6 +14,7 @@ from utils.domain import Activity, Course, Group, Instance, Program, Room, Staff
 DAYS: List[str] = ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
 WEEKS: List[int] = list(range(1, 12 + 1))  # 12-week semester
 SLOTS_PER_DAY: int = 5
+ROOM_CATEGORY_CAPACITY: Dict[str, int] = {"SMALL": 80, "MEDIUM": 150, "BIG": 300}
 
 
 def _distribute_sessions(total_sessions: int, weeks: List[int], rng: random.Random | None = None) -> Dict[int, int]:
@@ -101,6 +102,185 @@ def generate_instance(mode: str = "small_demo") -> Instance:
         return generate_target_profile(seed=42)
 
     raise ValueError(f"Unknown generation mode: {mode}")
+
+
+def _normalize_days(raw_days: List[str] | Set[str] | None) -> Set[str]:
+    if not raw_days:
+        return set(DAYS)
+    out = {str(d).strip().upper() for d in raw_days}
+    valid = {d for d in out if d in set(DAYS)}
+    return valid or set(DAYS)
+
+
+def _build_course_owner_map(
+    *,
+    course_ids: List[int],
+    staff_count: int,
+    staff_course_map: Dict[int, List[int]] | None,
+) -> Dict[int, int]:
+    if staff_count <= 0:
+        raise ValueError("staff_count must be >= 1")
+    owners: Dict[int, int] = {}
+    valid_courses = set(course_ids)
+    if isinstance(staff_course_map, dict):
+        for raw_idx, raw_courses in sorted(staff_course_map.items()):
+            idx = int(raw_idx)
+            if idx < 1 or idx > staff_count:
+                continue
+            for raw_c in raw_courses or []:
+                c_id = int(raw_c)
+                if c_id in valid_courses and c_id not in owners:
+                    owners[c_id] = idx
+    rr = 1
+    for c_id in course_ids:
+        if c_id not in owners:
+            owners[c_id] = rr
+            rr += 1
+            if rr > staff_count:
+                rr = 1
+    return owners
+
+
+def _room_capacity_from_spec(spec: Dict[str, Any]) -> int:
+    if spec.get("capacity") is not None:
+        return max(1, int(spec["capacity"]))
+    category = str(spec.get("category", "MEDIUM")).strip().upper()
+    return ROOM_CATEGORY_CAPACITY.get(category, ROOM_CATEGORY_CAPACITY["MEDIUM"])
+
+
+def _build_custom_rooms(room_specs: List[Dict[str, Any]]) -> Dict[int, Room]:
+    if not room_specs:
+        raise ValueError("room_specs must contain at least one room")
+    rooms: Dict[int, Room] = {}
+    full_availability = {(d, s) for d in DAYS for s in range(SLOTS_PER_DAY)}
+    valid_types = {"LECTURE", "TUTORIAL", "COMPUTER_LAB", "SPECIALIZED_LAB"}
+    for idx, raw in enumerate(room_specs, start=1):
+        room_type = str(raw.get("room_type", "LECTURE")).strip().upper()
+        if room_type not in valid_types:
+            raise ValueError(f"Unsupported room type '{room_type}' in room_specs row {idx}")
+        tags_raw = raw.get("tags", []) or []
+        tags = {str(t).strip().upper() for t in tags_raw if str(t).strip()}
+        name = str(raw.get("name") or f"Room-{idx}")
+        rooms[idx] = Room(
+            id=idx,
+            name=name,
+            capacity=_room_capacity_from_spec(raw),
+            room_type=room_type,
+            specialization_tags=tags,
+            availability=set(full_availability),
+        )
+    return rooms
+
+
+def generate_custom_instance(
+    *,
+    num_programs: int,
+    groups_per_program: int,
+    courses_per_program: int,
+    num_professors: int,
+    num_tas: int,
+    professor_course_map: Dict[int, List[int]] | None = None,
+    ta_course_map: Dict[int, List[int]] | None = None,
+    professor_days: Dict[int, List[str]] | None = None,
+    ta_days: Dict[int, List[str]] | None = None,
+    room_specs: List[Dict[str, Any]] | None = None,
+    seed: int = 42,
+) -> Instance:
+    """
+    Build an instance from explicit UI-provided counts/mappings.
+
+    Notes:
+      - course maps use 1-based local staff indexes (1..num_professors / 1..num_tas)
+      - all courses are assigned exactly one professor and one TA
+      - when maps are partial/empty, remaining courses are assigned round-robin
+    """
+    if num_programs < 1:
+        raise ValueError("num_programs must be >= 1")
+    if groups_per_program < 1:
+        raise ValueError("groups_per_program must be >= 1")
+    if courses_per_program < 1:
+        raise ValueError("courses_per_program must be >= 1")
+    if num_professors < 1:
+        raise ValueError("num_professors must be >= 1")
+    if num_tas < 1:
+        raise ValueError("num_tas must be >= 1")
+
+    inst = _generate_university(
+        seed=seed,
+        num_programs=int(num_programs),
+        groups_per_program=(int(groups_per_program), int(groups_per_program)),
+        courses_per_program=(int(courses_per_program), int(courses_per_program)),
+    )
+
+    # Optional custom room set.
+    if room_specs is not None:
+        inst.rooms = _build_custom_rooms(room_specs)
+
+    # Build custom staff set.
+    staff: Dict[int, StaffMember] = {}
+    prof_staff_ids: List[int] = []
+    ta_staff_ids: List[int] = []
+    next_staff_id = 1
+    for idx in range(1, int(num_professors) + 1):
+        sid = next_staff_id
+        next_staff_id += 1
+        prof_staff_ids.append(sid)
+        staff[sid] = StaffMember(
+            id=sid,
+            name=f"Prof-{idx}",
+            is_prof=True,
+            available_days=_normalize_days((professor_days or {}).get(idx)),
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses=set(),
+            prefers_block=False,
+            blocks_only=False,
+        )
+    for idx in range(1, int(num_tas) + 1):
+        sid = next_staff_id
+        next_staff_id += 1
+        ta_staff_ids.append(sid)
+        staff[sid] = StaffMember(
+            id=sid,
+            name=f"TA-{idx}",
+            is_prof=False,
+            available_days=_normalize_days((ta_days or {}).get(idx)),
+            max_slots_per_day=None,
+            max_slots_per_week=None,
+            can_teach_courses=set(),
+            prefers_block=False,
+            blocks_only=False,
+        )
+
+    # Assign each course to one professor and one TA.
+    course_ids = sorted(inst.courses.keys())
+    prof_owner_idx = _build_course_owner_map(
+        course_ids=course_ids,
+        staff_count=len(prof_staff_ids),
+        staff_course_map=professor_course_map,
+    )
+    ta_owner_idx = _build_course_owner_map(
+        course_ids=course_ids,
+        staff_count=len(ta_staff_ids),
+        staff_course_map=ta_course_map,
+    )
+
+    for c_id in course_ids:
+        prof_sid = prof_staff_ids[prof_owner_idx[c_id] - 1]
+        ta_sid = ta_staff_ids[ta_owner_idx[c_id] - 1]
+        inst.courses[c_id].prof_id = prof_sid
+        inst.courses[c_id].ta_id = ta_sid
+        staff[prof_sid].can_teach_courses.add(c_id)
+        staff[ta_sid].can_teach_courses.add(c_id)
+
+    # Activity-level assignment mirrors course-level assignment.
+    for act in inst.activities.values():
+        course = inst.courses[act.course_id]
+        act.prof_id = int(course.prof_id)
+        act.ta_id = int(course.ta_id)
+
+    inst.staff = staff
+    return inst
 
 
 # ---------- core generator ----------
@@ -768,6 +948,9 @@ def instance_to_json(inst: Instance) -> Dict[str, Any]:
         "staff": _conv(inst.staff),
         "rooms": _conv(inst.rooms),
         "activities": _conv(inst.activities),
+        "locked_activities": _conv(getattr(inst, "locked_activities", {}) or {}),
+        "soft_weights": _conv(getattr(inst, "soft_weights", {}) or {}),
+        "hard_constraints": _conv(getattr(inst, "hard_constraints", {}) or {}),
     }
 
 def write_instance(inst: Instance, out_path: str | Path) -> None:

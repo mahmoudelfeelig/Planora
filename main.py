@@ -161,14 +161,33 @@ def compute_group_penalties(inst: Instance, schedule: Dict[int, Dict[str, Any]])
     weeks = inst.weeks
     S = inst.slots_per_day
 
-    W_STUD_FREE_DAYS = 10
-    W_STUD_FREE_MF = 5
-    W_STUD_GAPS = 5
-    W_ACTIVE_DAYS = 5
-    W_LATE_START = 3
-    W_THIN_DAY = 3
-    W_STABILITY = 1
-    W_SINGLE_SLOT = 6
+    weights = {
+        "stud_free_days": 10,
+        "stud_free_mf": 5,
+        "stud_gaps": 5,
+        "active_days": 5,
+        "late_start": 3,
+        "thin_day": 3,
+        "stability": 1,
+        "single_slot": 6,
+    }
+    overrides = getattr(inst, "soft_weights", None)
+    if isinstance(overrides, dict):
+        for k, v in overrides.items():
+            if k in weights:
+                try:
+                    weights[k] = int(v)
+                except Exception:
+                    pass
+
+    W_STUD_FREE_DAYS = weights["stud_free_days"]
+    W_STUD_FREE_MF = weights["stud_free_mf"]
+    W_STUD_GAPS = weights["stud_gaps"]
+    W_ACTIVE_DAYS = weights["active_days"]
+    W_LATE_START = weights["late_start"]
+    W_THIN_DAY = weights["thin_day"]
+    W_STABILITY = weights["stability"]
+    W_SINGLE_SLOT = weights["single_slot"]
 
     group_occ: Dict[tuple, int] = {}
     for g_id in inst.groups.keys():

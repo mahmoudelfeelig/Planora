@@ -173,6 +173,17 @@ class TimetableSolver:
     def _is_block_prof(self, staff) -> bool:
         return bool(getattr(staff, "blocks_only", False) or getattr(staff, "prefers_block", False) or getattr(staff, "is_block_prof", False))
 
+    def _hard_flag(self, name: str, default: bool = True) -> bool:
+        flags = getattr(self.inst, "hard_constraints", {}) or {}
+        if not isinstance(flags, dict):
+            return default
+        raw = flags.get(name, default)
+        if isinstance(raw, bool):
+            return raw
+        if raw is None:
+            return default
+        return str(raw).strip().lower() not in ("0", "false", "no")
+
     def _validate_staff_assignments(self) -> None:
         inst = self.inst
         errs: list[str] = []
@@ -201,6 +212,8 @@ class TimetableSolver:
             raise ValueError("Invalid staff assignment/competency: " + "; ".join(errs))
 
     def _validate_block_professor_rules(self) -> None:
+        if not self._hard_flag("enforce_block_professor_rules", True):
+            return
         inst = self.inst
         errs: list[str] = []
 
@@ -281,8 +294,8 @@ class TimetableSolver:
         if errs:
             raise ValueError("Instance violates course totals: " + "; ".join(errs))
 
-        # Enforce: week-1 contains lectures only
-        if first_week is not None:
+        # Enforce: week-1 contains lectures only (configurable).
+        if self._hard_flag("week1_lectures_only", True) and first_week is not None:
             bad_first = [
                 (a.id, a.course_id, a.kind) for a in inst.activities.values()
                 if a.week == first_week and a.kind in ("TUT", "LAB")
@@ -505,127 +518,130 @@ class TimetableSolver:
             if len(ivs) > 1:
                 m.AddNoOverlap(ivs)
 
-        # Block staff: at most two distinct days per week
-        for s_id, staff in inst.staff.items():
-            if not self._is_block_prof(staff):
-                continue
-            for w in self.weeks:
-                y_day: Dict[int, cp_model.BoolVar] = {d: m.NewBoolVar(f"workday[{s_id},{w},{d}]")
-                                                      for d in range(self.D)}
-                for a_id, act in inst.activities.items():
-                    if act.week != w or self.activity_staff[a_id] != s_id:
-                        continue
-                    for t in self.allowed_starts[a_id]:
-                        d_idx = t // self.S
-                        m.Add(y_day[d_idx] >= self.x[(a_id, t)])
-                m.Add(sum(y_day.values()) <= 2)
+        if self._hard_flag("enforce_block_professor_rules", True):
+            # Block staff: at most two distinct days per week
+            for s_id, staff in inst.staff.items():
+                if not self._is_block_prof(staff):
+                    continue
+                for w in self.weeks:
+                    y_day: Dict[int, cp_model.BoolVar] = {d: m.NewBoolVar(f"workday[{s_id},{w},{d}]")
+                                                          for d in range(self.D)}
+                    for a_id, act in inst.activities.items():
+                        if act.week != w or self.activity_staff[a_id] != s_id:
+                            continue
+                        for t in self.allowed_starts[a_id]:
+                            d_idx = t // self.S
+                            m.Add(y_day[d_idx] >= self.x[(a_id, t)])
+                    m.Add(sum(y_day.values()) <= 2)
 
-        # Block-only professor lecture blocks (per course/week): single 2–3-slot contiguous block on one day.
-        for s_id, staff in inst.staff.items():
-            if not getattr(staff, "blocks_only", False):
-                continue
-            for w in self.weeks:
-                # courses with lectures taught by this professor in this week
-                courses_here = {
-                    act.course_id
-                    for act in inst.activities.values()
-                    if act.week == w and act.kind == "LEC" and act.prof_id == s_id
-                }
-                for c_id in courses_here:
-                    lec_ids = [
-                        a_id for a_id, act in inst.activities.items()
-                        if act.week == w and act.kind == "LEC" and act.prof_id == s_id and act.course_id == c_id
-                    ]
-                    if not lec_ids:
-                        continue
-
-                    occ: Dict[Tuple[int, int], cp_model.BoolVar] = {
-                        (d, s): m.NewBoolVar(f"blk_occ[{s_id},{c_id},{w},{d},{s}]")
-                        for d in range(self.D) for s in range(self.S)
+            # Block-only professor lecture blocks (per course/week): single 2–3-slot contiguous block on one day.
+            for s_id, staff in inst.staff.items():
+                if not getattr(staff, "blocks_only", False):
+                    continue
+                for w in self.weeks:
+                    # courses with lectures taught by this professor in this week
+                    courses_here = {
+                        act.course_id
+                        for act in inst.activities.values()
+                        if act.week == w and act.kind == "LEC" and act.prof_id == s_id
                     }
-                    for (d, s), b in occ.items():
-                        terms: List[cp_model.BoolVar] = []
+                    for c_id in courses_here:
+                        lec_ids = [
+                            a_id for a_id, act in inst.activities.items()
+                            if act.week == w and act.kind == "LEC" and act.prof_id == s_id and act.course_id == c_id
+                        ]
+                        if not lec_ids:
+                            continue
+
+                        occ: Dict[Tuple[int, int], cp_model.BoolVar] = {
+                            (d, s): m.NewBoolVar(f"blk_occ[{s_id},{c_id},{w},{d},{s}]")
+                            for d in range(self.D) for s in range(self.S)
+                        }
+                        for (d, s), b in occ.items():
+                            terms: List[cp_model.BoolVar] = []
+                            for a_id in lec_ids:
+                                act = inst.activities[a_id]
+                                for t in self.allowed_starts[a_id]:
+                                    d_idx = t // self.S
+                                    s0 = t % self.S
+                                    if d_idx != d:
+                                        continue
+                                    if s0 <= s < s0 + act.duration:
+                                        terms.append(self.x[(a_id, t)])
+                                        m.Add(b >= self.x[(a_id, t)])
+                            if terms:
+                                m.Add(sum(terms) >= b)
+                            else:
+                                m.Add(b == 0)
+
+                        day_used = {d: m.NewBoolVar(f"blk_day[{s_id},{c_id},{w},{d}]") for d in range(self.D)}
+                        for d in range(self.D):
+                            day_terms = [occ[(d, s)] for s in range(self.S)]
+                            for s in range(self.S):
+                                m.Add(day_used[d] >= occ[(d, s)])
+                            m.Add(sum(day_terms) >= day_used[d])
+                        m.Add(sum(day_used.values()) == 1)
+
+                        total_slots_terms: List[cp_model.LinearExpr] = []
                         for a_id in lec_ids:
                             act = inst.activities[a_id]
                             for t in self.allowed_starts[a_id]:
-                                d_idx = t // self.S
-                                s0 = t % self.S
-                                if d_idx != d:
-                                    continue
-                                if s0 <= s < s0 + act.duration:
-                                    terms.append(self.x[(a_id, t)])
-                                    m.Add(b >= self.x[(a_id, t)])
-                        if terms:
-                            m.Add(sum(terms) >= b)
-                        else:
-                            m.Add(b == 0)
+                                total_slots_terms.append(act.duration * self.x[(a_id, t)])
+                        total_slots = sum(total_slots_terms)
+                        m.Add(total_slots >= 2)
+                        m.Add(total_slots <= 3)
+                        m.Add(sum(occ.values()) == total_slots)
 
-                    day_used = {d: m.NewBoolVar(f"blk_day[{s_id},{c_id},{w},{d}]") for d in range(self.D)}
-                    for d in range(self.D):
-                        day_terms = [occ[(d, s)] for s in range(self.S)]
-                        for s in range(self.S):
-                            m.Add(day_used[d] >= occ[(d, s)])
-                        m.Add(sum(day_terms) >= day_used[d])
-                    m.Add(sum(day_used.values()) == 1)
-
-                    total_slots_terms: List[cp_model.LinearExpr] = []
-                    for a_id in lec_ids:
-                        act = inst.activities[a_id]
-                        for t in self.allowed_starts[a_id]:
-                            total_slots_terms.append(act.duration * self.x[(a_id, t)])
-                    total_slots = sum(total_slots_terms)
-                    m.Add(total_slots >= 2)
-                    m.Add(total_slots <= 3)
-                    m.Add(sum(occ.values()) == total_slots)
-
-                    start_block: Dict[Tuple[int, int], cp_model.BoolVar] = {
-                        (d, s): m.NewBoolVar(f"blk_start[{s_id},{c_id},{w},{d},{s}]")
-                        for d in range(self.D) for s in range(self.S)
-                    }
-                    for d in range(self.D):
-                        # slot 0
-                        m.Add(start_block[(d, 0)] <= occ[(d, 0)])
-                        m.Add(start_block[(d, 0)] >= occ[(d, 0)])
-                        for s in range(1, self.S):
-                            cur = occ[(d, s)]
-                            prev = occ[(d, s - 1)]
-                            sb = start_block[(d, s)]
-                            m.Add(sb <= cur)
-                            m.Add(sb + prev <= 1)
-                            m.Add(sb + prev >= cur)
-                    m.Add(sum(start_block.values()) == 1)
+                        start_block: Dict[Tuple[int, int], cp_model.BoolVar] = {
+                            (d, s): m.NewBoolVar(f"blk_start[{s_id},{c_id},{w},{d},{s}]")
+                            for d in range(self.D) for s in range(self.S)
+                        }
+                        for d in range(self.D):
+                            # slot 0
+                            m.Add(start_block[(d, 0)] <= occ[(d, 0)])
+                            m.Add(start_block[(d, 0)] >= occ[(d, 0)])
+                            for s in range(1, self.S):
+                                cur = occ[(d, s)]
+                                prev = occ[(d, s - 1)]
+                                sb = start_block[(d, s)]
+                                m.Add(sb <= cur)
+                                m.Add(sb + prev <= 1)
+                                m.Add(sb + prev >= cur)
+                        m.Add(sum(start_block.values()) == 1)
 
         # Optional weekly load cap
-        for s_id, staff in inst.staff.items():
-            cap = getattr(staff, "max_slots_per_week", None)
-            if cap is None:
-                continue
-            for w in self.weeks:
-                terms: List[cp_model.LinearExpr] = []
-                for a_id, act in inst.activities.items():
-                    if act.week != w or self.activity_staff[a_id] != s_id:
-                        continue
-                    for t in self.allowed_starts[a_id]:
-                        terms.append(act.duration * self.x[(a_id, t)])
-                if terms:
-                    m.Add(sum(terms) <= int(cap))
-
-        # Optional daily load cap
-        for s_id, staff in inst.staff.items():
-            cap = getattr(staff, "max_slots_per_day", None)
-            if cap is None:
-                continue
-            for w in self.weeks:
-                for d_idx in range(self.D):
+        if self._hard_flag("enforce_staff_weekly_caps", True):
+            for s_id, staff in inst.staff.items():
+                cap = getattr(staff, "max_slots_per_week", None)
+                if cap is None:
+                    continue
+                for w in self.weeks:
                     terms: List[cp_model.LinearExpr] = []
                     for a_id, act in inst.activities.items():
                         if act.week != w or self.activity_staff[a_id] != s_id:
                             continue
                         for t in self.allowed_starts[a_id]:
-                            if (t // self.S) == d_idx:
-                                terms.append(act.duration * self.x[(a_id, t)])
+                            terms.append(act.duration * self.x[(a_id, t)])
                     if terms:
                         m.Add(sum(terms) <= int(cap))
+
+        # Optional daily load cap
+        if self._hard_flag("enforce_staff_daily_caps", True):
+            for s_id, staff in inst.staff.items():
+                cap = getattr(staff, "max_slots_per_day", None)
+                if cap is None:
+                    continue
+                for w in self.weeks:
+                    for d_idx in range(self.D):
+                        terms: List[cp_model.LinearExpr] = []
+                        for a_id, act in inst.activities.items():
+                            if act.week != w or self.activity_staff[a_id] != s_id:
+                                continue
+                            for t in self.allowed_starts[a_id]:
+                                if (t // self.S) == d_idx:
+                                    terms.append(act.duration * self.x[(a_id, t)])
+                        if terms:
+                            m.Add(sum(terms) <= int(cap))
 
         # Cluster equal-start constraints
         for w in self.weeks:
@@ -699,6 +715,7 @@ class TimetableSolver:
         # Optional CP rooming with cluster co-location
         if self.room_mode == "cp_rooms":
             room_intervals_by_week: Dict[Tuple[int, int], List[cp_model.IntervalVar]] = {}
+            enforce_room_availability = self._hard_flag("enforce_room_availability", True)
 
             # Locked rooms (partial re-solve support)
             locks = getattr(inst, "locked_activities", {}) or {}
@@ -786,7 +803,7 @@ class TimetableSolver:
                     for r in self.allowed_rooms.get(a_id, []):
                         room = inst.rooms[r]
                         avail = getattr(room, "availability", None)
-                        if avail is None:
+                        if (not enforce_room_availability) or avail is None:
                             continue
                         if isinstance(avail, set) and avail.issuperset(full_pairs):
                             continue
@@ -1141,6 +1158,8 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
     days = inst.days
     weeks = sorted(inst.weeks)
     S = inst.slots_per_day
+    hard_flags = getattr(inst, "hard_constraints", {}) or {}
+    enforce_room_availability = bool(hard_flags.get("enforce_room_availability", True))
 
     lecture_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE"]
     tutorial_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "TUTORIAL"]
@@ -1154,6 +1173,8 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                 spec_rooms_by_tag.setdefault(tag, []).append(r_id)
 
     def _room_available(room_id: int, day: str, start_slot: int, dur: int) -> bool:
+        if not enforce_room_availability:
+            return True
         avail = getattr(inst.rooms[room_id], "availability", None)
         if avail is None:
             return True

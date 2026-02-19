@@ -121,6 +121,7 @@ def instance_from_json(data: Dict[str, Any]) -> Instance:
         activities=activities,
         locked_activities=data.get("locked_activities", {}) or {},
         soft_weights=data.get("soft_weights", {}) or {},
+        hard_constraints=data.get("hard_constraints", {}) or {},
     )
 
     # Restore optional time labeling fields when present.
@@ -196,6 +197,7 @@ def write_scenario(path: str | Path, inst: Instance, schedule: Dict[int, Dict[st
         data = instance_to_json(inst)
         data["locked_activities"] = getattr(inst, "locked_activities", {}) or {}
         data["soft_weights"] = getattr(inst, "soft_weights", {}) or {}
+        data["hard_constraints"] = getattr(inst, "hard_constraints", {}) or {}
         for key in ("day_start_time", "slot_minutes", "slot_break_minutes", "time_labels"):
             if hasattr(inst, key):
                 data[key] = getattr(inst, key)

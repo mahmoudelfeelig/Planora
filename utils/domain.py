@@ -94,3 +94,6 @@ class Instance:
 
     # Optional: global soft constraint weights for CP objective (when used).
     soft_weights: Dict[str, int] = field(default_factory=dict)
+
+    # Optional: hard-constraint toggles consumed by solver/validators.
+    hard_constraints: Dict[str, bool] = field(default_factory=dict)
