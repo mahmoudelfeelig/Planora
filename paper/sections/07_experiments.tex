@@ -80,7 +80,14 @@ The full per-run rows are included in \texttt{sections/07\_experiments\_runs.tex
 \toprule
 Scenario & Req. mode & Runs & Feasible (\%) & Median CP (s) & Median base penalty & Median LS penalty & Objective retries \\
 \midrule
-\input{sections/07_experiments_table.tex}
+block\_profs & cp\_rooms & 3 & 100.00 & 87.48 & 13220.00 & - & 3 \\
+block\_profs & greedy & 3 & 100.00 & 47.59 & 13220.00 & - & 3 \\
+mixed\_large & cp\_rooms & 3 & 100.00 & 103.28 & 12920.00 & - & 3 \\
+mixed\_large & greedy & 3 & 100.00 & 65.12 & 12920.00 & - & 3 \\
+small\_demo & cp\_rooms & 3 & 100.00 & 20.17 & 55.00 & - & 0 \\
+small\_demo & greedy & 3 & 100.00 & 20.03 & 46.00 & - & 0 \\
+target\_case & cp\_rooms & 3 & 100.00 & 98.34 & 11691.00 & - & 3 \\
+target\_case & greedy & 3 & 100.00 & 49.59 & 11691.00 & - & 3 \\
 \bottomrule
 \end{tabular}
 \caption{Aggregated reliability/runtime metrics (Batch A).}
@@ -94,7 +101,10 @@ Scenario & Req. mode & Runs & Feasible (\%) & Median CP (s) & Median base penalt
 \toprule
 Scenario & Runs & Median base penalty & Median LS penalty & Median delta & Median improvement (\%) \\
 \midrule
-\input{sections/07_experiments_ls_table.tex}
+block\_profs & 3 & 13220.00 & 13071.00 & 149.00 & 1.13 \\
+mixed\_large & 3 & 12920.00 & 12886.00 & 34.00 & 0.26 \\
+small\_demo & 3 & 49.00 & 49.00 & 0.00 & 0.00 \\
+target\_case & 3 & 11691.00 & 11633.00 & 58.00 & 0.50 \\
 \bottomrule
 \end{tabular}
 \caption{Local-search ablation metrics (Batch B).}

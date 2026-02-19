@@ -1,4 +1,36 @@
 {
+    "terminal.integrated.env.windows": {
+        "PATH": "C:\\dev\\strawberry_perl\\perl\\bin;C:\\dev\\strawberry_perl\\c\\bin;C:\\Users\\mahmo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64;${env:PATH}",
+        "Path": "C:\\dev\\strawberry_perl\\perl\\bin;C:\\dev\\strawberry_perl\\c\\bin;C:\\Users\\mahmo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64;${env:Path}"
+    },
+
+    "latex-workshop.linting.chktex.enabled": false,
+    "latex-workshop.linting.chktex.exec.path": "C:/Users/mahmo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/chktex.exe",
+    "latex-workshop.latex.tools": [
+        {
+            "name": "latexmk",
+            "command": "C:\\Users\\mahmo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\latexmk.exe",
+            "args": [
+                "-synctex=1",
+                "-interaction=nonstopmode",
+                "-file-line-error",
+                "-pdf",
+                "%DOC%"
+            ],
+            "env": {
+                "PATH": "C:\\dev\\strawberry_perl\\perl\\bin;C:\\dev\\strawberry_perl\\c\\bin;C:\\Users\\mahmo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64;${env:PATH}"
+            }
+        }
+    ],
+    "latex-workshop.latex.recipes": [
+        {
+            "name": "latexmk",
+            "tools": [
+                "latexmk"
+            ]
+        }
+    ],
+
     "python.testing.pytestArgs": [
         "."
     ],
