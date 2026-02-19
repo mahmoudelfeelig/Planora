@@ -337,6 +337,70 @@ class MainWindow(QMainWindow):
         self.table.setColumnCount(0)
         self.quality_label.setText("")
 
+    def _format_solver_attempts(self, res: Dict[str, Any]) -> list[str]:
+        meta = res.get("meta")
+        if not isinstance(meta, dict):
+            return []
+        attempts = meta.get("attempts")
+        if not isinstance(attempts, list):
+            return []
+        lines: list[str] = []
+        for i, attempt in enumerate(attempts, start=1):
+            if not isinstance(attempt, dict):
+                continue
+            mode = attempt.get("room_mode", "?")
+            objective = "on" if attempt.get("use_objective", False) else "off"
+            limit = attempt.get("time_limit_seconds")
+            limit_txt = "none" if limit in (None, "") else str(limit)
+            raw_status = attempt.get("status", "?")
+            lines.append(
+                f"Attempt {i}: mode={mode}, objective={objective}, "
+                f"limit={limit_txt}s, raw_status={raw_status}"
+            )
+        return lines
+
+    def _build_no_feasible_message(self, res: Dict[str, Any], status: int) -> str:
+        if res.get("error"):
+            msg = str(res.get("error"))
+            if res.get("reason"):
+                msg += f"\nReason: {res.get('reason')}"
+            return msg
+
+        lines: list[str] = [
+            f"No feasible schedule found (status {status}).",
+            "",
+            "Solver settings:",
+            f"- Room mode: {'cp_rooms' if self.room_mode_combo.currentIndex() == 0 else 'greedy'}",
+            f"- Objective: {'on' if self.objective_cb.isChecked() else 'off'}",
+            f"- Time limit: {self.time_limit_spin.value()}s",
+            f"- Workers: {self.workers_spin.value()}",
+        ]
+        attempts = self._format_solver_attempts(res)
+        if attempts:
+            lines.extend(["", "Attempt details:"])
+            lines.extend(f"- {line}" for line in attempts[:6])
+
+        if self.inst is not None:
+            reasons = explain_infeasibility(self.inst)
+            if reasons:
+                lines.extend(["", "Likely causes:"])
+                lines.extend(f"- {r}" for r in reasons[:8])
+            else:
+                lines.extend(
+                    [
+                        "",
+                        "No specific structural conflict was detected.",
+                        "Try increasing time limit or disabling objective for a feasibility-first solve.",
+                    ]
+                )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _top_counts(values: Dict[int, int], limit: int = 3) -> list[tuple[int, int]]:
+        items = [(int(k), int(v)) for k, v in values.items()]
+        items.sort(key=lambda kv: (-kv[1], kv[0]))
+        return items[:limit]
+
     # ----- actions -----
 
     def on_generate(self):
@@ -518,21 +582,8 @@ class MainWindow(QMainWindow):
             self.current_schedule = {}
             self.clear_table()
             self.set_status(f"No feasible schedule (status {status})")
-            if res.get("error"):
-                msg = res.get("error")
-                if res.get("reason"):
-                    msg += f"\nReason: {res.get('reason')}"
-                QMessageBox.information(self, "Solver error", msg)
-            elif self.inst is not None:
-                reasons = explain_infeasibility(self.inst)
-                if reasons:
-                    msg = "Likely causes:\n" + "\n".join(f"- {r}" for r in reasons)
-                else:
-                    msg = (
-                        "No specific conflicts detected. "
-                        "Try increasing the time limit or relaxing constraints."
-                    )
-                QMessageBox.information(self, "No feasible schedule", msg)
+            msg = self._build_no_feasible_message(res, int(status))
+            QMessageBox.information(self, "No feasible schedule", msg)
             return
 
         self.base_schedule = res.get("schedule", {})
@@ -813,9 +864,25 @@ class MainWindow(QMainWindow):
             f"Missing in other: {len(summary['missing_in_other'])}",
             f"Missing in current: {len(summary['missing_in_base'])}",
             f"Changed time: {summary['changed_time']}",
+            f"  - Changed day: {summary['changed_day']}",
+            f"  - Changed slot: {summary['changed_slot']}",
             f"Changed room: {summary['changed_room']}",
             f"Changed staff: {summary['changed_staff']}",
         ]
+        top_groups = self._top_counts(summary.get("group_move_counts", {}))
+        if top_groups:
+            labels: list[str] = []
+            for g_id, count in top_groups:
+                g = self.inst.groups.get(g_id) if self.inst else None
+                labels.append(f"{g.name if g else g_id} ({count})")
+            lines.append("Top moved groups: " + ", ".join(labels))
+        top_staff = self._top_counts(summary.get("staff_move_counts", {}))
+        if top_staff:
+            labels = []
+            for s_id, count in top_staff:
+                s = self.inst.staff.get(s_id) if self.inst else None
+                labels.append(f"{s.name if s else s_id} ({count})")
+            lines.append("Top moved staff: " + ", ".join(labels))
         if summary["missing_in_other"] or summary["missing_in_base"]:
             lines.append("Note: schedules are not based on identical activity sets.")
         if inst.weeks != getattr(self.inst, "weeks", []):

@@ -44,6 +44,13 @@ def _read_int_env(name: str) -> int | None:
     return value
 
 
+def _read_bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in ("", "0", "false", "no")
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print(
@@ -69,12 +76,31 @@ def main() -> int:
         room_mode = os.getenv("TT_ROOM_MODE", "cp_rooms")
         use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
         use_objective = use_objective_env not in ("0", "false", "False", "no")
+        retry_without_objective = _read_bool_env("TT_RETRY_NO_OBJECTIVE", True)
         log_progress_env = os.getenv("TT_CP_LOG", "").strip().lower()
         log_progress = log_progress_env not in ("", "0", "false", "no")
         workers = _read_int_env("TT_CP_WORKERS")
+        attempts: list[dict[str, object]] = []
 
-        # CP-rooming defaults to enforcing capacity/availability; override via env for speed trade-offs.
-        solver_model = TimetableSolver(inst, room_mode=room_mode, use_objective=use_objective)
+        from ortools.sat.python import cp_model
+
+        def _solve_attempt(mode: str, objective: bool, limit: float | None):
+            nonlocal attempts
+            model = TimetableSolver(inst, room_mode=mode, use_objective=objective)
+            sat_solver, sat_status = model.solve(
+                time_limit_seconds=limit,
+                workers=workers,
+                log_progress=log_progress,
+            )
+            attempts.append(
+                {
+                    "room_mode": mode,
+                    "use_objective": objective,
+                    "time_limit_seconds": limit,
+                    "status": int(sat_status),
+                }
+            )
+            return model, sat_solver, sat_status
 
         # Optional time limit via env var (seconds). Keep defaults if unset.
         tl = os.getenv("TT_TIME_LIMIT")
@@ -82,21 +108,19 @@ def main() -> int:
         time_limit = float(tl) if tl else None
         strict_limit = float(strict_tl) if strict_tl else (min(time_limit, 30.0) if time_limit else 30.0)
 
-        sat, status = solver_model.solve(
-            time_limit_seconds=strict_limit,
-            workers=workers,
-            log_progress=log_progress,
-        )
+        solver_model, sat, status = _solve_attempt(room_mode, use_objective, strict_limit)
 
-        # Fallback: if strict mode times out/unknown, retry with greedy rooming and no objective for feasibility.
-        from ortools.sat.python import cp_model
+        # Retry in the same room mode without objective when objective search times out/returns unknown.
+        if (
+            retry_without_objective
+            and use_objective
+            and status not in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        ):
+            solver_model, sat, status = _solve_attempt(room_mode, False, time_limit)
+
+        # Fallback: if strict mode still fails, retry with greedy rooming and no objective for feasibility.
         if room_mode == "cp_rooms" and status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            solver_model = TimetableSolver(inst, room_mode="greedy", use_objective=False)
-            sat, status = solver_model.solve(
-                time_limit_seconds=time_limit,
-                workers=workers,
-                log_progress=log_progress,
-            )
+            solver_model, sat, status = _solve_attempt("greedy", False, time_limit)
     except Exception as e:
         print(f"[error] CP build/solve failed: {e}", file=sys.stderr)
         traceback.print_exc()
@@ -108,7 +132,7 @@ def main() -> int:
     if ui_status not in (0, 4):
         try:
             with open(out_path, "wb") as f:
-                pickle.dump({"status": ui_status, "schedule": {}}, f)
+                pickle.dump({"status": ui_status, "schedule": {}, "meta": {"attempts": attempts}}, f)
         except Exception as e:
             print(f"[error] failed to write result pickle: {e}", file=sys.stderr)
             traceback.print_exc()
@@ -135,7 +159,7 @@ def main() -> int:
     # Persist exactly what the UI expects
     try:
         with open(out_path, "wb") as f:
-            pickle.dump({"status": ui_status, "schedule": schedule}, f)
+            pickle.dump({"status": ui_status, "schedule": schedule, "meta": {"attempts": attempts}}, f)
     except Exception as e:
         print(f"[error] failed to write result pickle: {e}", file=sys.stderr)
         traceback.print_exc()
