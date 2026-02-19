@@ -6,10 +6,12 @@ Generates and edits 12-week university timetables (lectures, tutorials, and labs
 
 - `utils/`: dataclasses (`domain.py`), generator (`generator.py`), exporter (`exporter.py`).
 - `core/`: CP-SAT solver (`solver_cp_sat.py`), local search (`metaheuristics.py`), solver worker (`engine_cli.py`).
-- `ui/`: PyQt6 desktop UI (`app.py`, `dialogs.py`, `styles.py`) with a thin `ui_desktop.py` launcher.
+- `ui/`: PyQt6 desktop UI (`app.py`, `window.py`, `dialogs.py`, `styles.py`).
 - `main.py`: CLI entry point (generate → solve → optional local search → export).
 - `tests/`: pytest suite that checks key behaviors and constraints.
 - `SPECS.md`: unified program + schedule spec checklist (replaces PROGRAM/SCHEDULE_SPECS).
+ - Projects: save/load JSON/PKL snapshots (instance + schedule + locks) via the UI.
+ - Imports: load raw instances (JSON/PKL) and schedules (CSV) from the UI.
 
 ## Performance / Quality knobs
 
@@ -34,8 +36,8 @@ The desktop UI exposes these toggles: room mode (Strict/Fast), objective on/off,
 1. **CP-SAT feasibility** (`solver_cp_sat.py`):
    - Picks a start time (day/slot) for each activity subject to hard constraints (no overlaps for staff/groups; staff availability; week-1 “lectures only”; and several modeled rules used by the project).
 2. **Room assignment**:
-   - `room_mode="greedy"` (default): assign rooms after CP timing with `assign_rooms_greedily`.
-   - `room_mode="cp_rooms"`: CP also chooses rooms with per-room no-overlap (slower).
+   - `room_mode="cp_rooms"` (default): CP also chooses rooms with per-room no-overlap (slower).
+   - `room_mode="greedy"` (fast mode): assign rooms after CP timing with `assign_rooms_greedily`.
 3. **Optional improvement** (`metaheuristics.py`):
    - Local search attempts to reduce soft penalties (free days, gaps, early starts, stability, room consistency) while keeping schedules feasible for the constraints it checks.
 
@@ -61,6 +63,8 @@ Install dependencies (example):
 
 `py main.py`
 
+Exports include DOCX, ICS, CSV schedule, PDF group listings, and CSV summary reports.
+
 `main.py` generates an instance (default `MODE="target_case"`), runs the CP-SAT solver, optionally runs local search, and exports:
 
 - Group schedules to `timetable_<mode>.docx` (requires `python-docx`)
@@ -68,7 +72,7 @@ Install dependencies (example):
 
 ### Desktop UI
 
-`py ui_desktop.py`
+`py ui/app.py`
 
 Workflow:
 
@@ -76,12 +80,17 @@ Workflow:
 - **Solve** (runs `engine_cli.py` via `QProcess`)
 - **Improve** (runs local search)
 - **Export DOCX** (group schedules; requires `python-docx`)
+ - **Export CSV/ICS** (schedule CSV; per-entity ICS)
+ - **Save/Load Project** (JSON/PKL snapshots)
+ - **Compare** (diff current schedule vs a saved project; optional report export)
+ - **Load Instance / Load Schedule** (bring in external data)
 
 Optional solver time limit (seconds) for the UI worker:
 
-- `TT_TIME_LIMIT=60`
+- `TT_TIME_LIMIT=300`
 
 ## Notes / current limitations
 
 - The built-in generator focuses on `LEC_TUT` and `LAB_ONLY` course patterns; other structure types can be added by extending `generator.py`.
-- Some features commonly found in full timetabling products (data import/edit screens, scenario persistence, multi-scenario comparison, detailed constraint explanation) are not implemented here.
+- Data import is file-based (JSON/PKL/CSV); schedules are validated against hard rules on load.
+- Comparison reporting is summary-only (no side-by-side visualization).
