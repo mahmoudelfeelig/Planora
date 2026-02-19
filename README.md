@@ -120,6 +120,20 @@ This executes:
 - non-slow tests (`pytest -m "not slow"`)
 - slow/integration/UI tests (`pytest -m "slow"`)
 
+### Publication experiment pipeline
+
+Reproduce the expanded experiment batches and regenerate paper tables:
+
+```bash
+PYTHON_BIN=.venv/bin/python ./scripts/run_experiment_batches.sh
+```
+
+Freeze a release artifact bundle (commit + environment + checksums + paper inputs):
+
+```bash
+PYTHON_BIN=.venv/bin/python ./scripts/freeze_release_artifacts.sh v0.2.0
+```
+
 ## Notes / current limitations
 
 - The built-in generator focuses on `LEC_TUT` and `LAB_ONLY` course patterns; other structure types can be added by extending `generator.py`.

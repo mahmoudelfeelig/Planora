@@ -1,0 +1,42 @@
+name: Paper
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "paper/**"
+      - ".github/workflows/paper.yml"
+  pull_request:
+    paths:
+      - "paper/**"
+      - ".github/workflows/paper.yml"
+
+jobs:
+  build-paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install TeX tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            chktex \
+            latexmk \
+            texlive-bibtex-extra \
+            texlive-fonts-recommended \
+            texlive-latex-base \
+            texlive-latex-extra \
+            texlive-latex-recommended \
+            texlive-science
+
+      - name: Lint with chktex
+        working-directory: paper
+        run: chktex -q -n1 -n8 main.tex
+
+      - name: Build PDF
+        working-directory: paper
+        run: latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex

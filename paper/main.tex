@@ -1,6 +1,5 @@
-\documentclass[11pt]{article}
+\documentclass[conference]{IEEEtran}
 
-\usepackage[margin=1in]{geometry}
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{mathtools}
 \usepackage{booktabs}
@@ -11,9 +10,15 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 
-\title{A CP-SAT and Local-Search Approach to University Timetabling on a Weekly Grid}
-\author{Author Name \and Professor Name}
-\date{\today}
+\input{metadata.tex}
+\title{\PaperTitle}
+\author{
+\IEEEauthorblockN{\PaperAuthor}
+\IEEEauthorblockA{
+\textit{\PaperAffiliation} \\
+\PaperEmail
+}
+}
 
 \begin{document}
 \maketitle
@@ -22,9 +27,12 @@
 We present an end-to-end university timetabling system that schedules lectures, tutorials, and labs over a fixed weekly grid.
 The solver combines a CP-SAT feasibility model (OR-Tools), two room-assignment modes (integrated CP rooming and fast greedy rooming), and an optional local-search post-improver.
 The implementation also includes a phased solve pipeline for UI use: feasibility-first search under a time budget followed by iterative improvement rounds.
-On generated scenarios (\texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, \texttt{target\_case}), 16/16 runs were feasible under retry/fallback settings.
-For larger scenarios, requesting fast greedy rooming was consistently faster than requesting strict CP rooming (median speedup about \(1.8\times\) to \(2.1\times\)).
-We provide model details, system architecture, reproducible experiment commands, and implementation-grounded limitations.
+On generated scenarios (\texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, \texttt{target\_case}),
+24/24 reliability runs are feasible under retry/fallback settings.
+For larger scenarios, requested fast greedy rooming is consistently faster than requested strict CP rooming
+(about \(1.59\times\) to \(1.98\times\) in this batch).
+Local-search ablations show additional quality gains after feasibility (up to \(1.13\%\) median penalty reduction on \texttt{block\_profs}).
+We provide model details, system architecture, release-ready reproducibility tooling, and implementation-grounded limitations.
 \end{abstract}
 
 \section{Introduction}
@@ -54,7 +62,7 @@ We provide model details, system architecture, reproducible experiment commands,
 \section{Conclusion}
 \input{sections/09_conclusion.tex}
 
-\bibliographystyle{plain}
+\bibliographystyle{IEEEtran}
 \bibliography{refs}
 
 \appendix
