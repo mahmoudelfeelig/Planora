@@ -122,7 +122,7 @@ class MainWindow(QMainWindow):
         self.objective_cb.setChecked(True)
 
         self.time_limit_spin = QSpinBox()
-        self.time_limit_spin.setRange(5, 600)
+        self.time_limit_spin.setRange(5, 3600)
         self.time_limit_spin.setValue(DEFAULT_TIME_LIMIT)
         self.time_limit_spin.setSuffix(" s")
 
@@ -390,7 +390,7 @@ class MainWindow(QMainWindow):
                     [
                         "",
                         "No specific structural conflict was detected.",
-                        "Try increasing time limit or disabling objective for a feasibility-first solve.",
+                        "Try increasing Limit, switching Room mode to Fast (Greedy), or disabling Use CP objective.",
                     ]
                 )
         return "\n".join(lines)
@@ -400,6 +400,20 @@ class MainWindow(QMainWindow):
         items = [(int(k), int(v)) for k, v in values.items()]
         items.sort(key=lambda kv: (-kv[1], kv[0]))
         return items[:limit]
+
+    @staticmethod
+    def _split_phased_budget(total_seconds: float) -> tuple[float, float]:
+        """
+        Split solve budget for phased mode.
+        Prioritize feasibility first, then reserve a smaller tail for iterative improvement.
+        """
+        if total_seconds <= 0:
+            return 30.0, 0.0
+        if total_seconds <= 60:
+            return float(total_seconds), 0.0
+        improve = min(90.0, float(total_seconds) * 0.20)
+        feasibility = max(30.0, float(total_seconds) - improve)
+        return feasibility, max(0.0, float(total_seconds) - feasibility)
 
     # ----- actions -----
 
@@ -479,8 +493,7 @@ class MainWindow(QMainWindow):
         env_map["TT_USE_OBJECTIVE"] = "1" if objective_on else "0"
         if objective_on:
             # Feasibility-first then iterative improvement within the total solve budget.
-            feasibility_seconds = min(30.0, time_limit_seconds) if time_limit_seconds > 0 else 30.0
-            improve_budget_seconds = max(0.0, time_limit_seconds - feasibility_seconds)
+            feasibility_seconds, improve_budget_seconds = self._split_phased_budget(time_limit_seconds)
             env_map["TT_PHASED_SOLVE"] = "1"
             env_map["TT_FEASIBILITY_SECONDS"] = f"{feasibility_seconds:g}"
             env_map["TT_IMPROVE_TOTAL_SECONDS"] = f"{improve_budget_seconds:g}"

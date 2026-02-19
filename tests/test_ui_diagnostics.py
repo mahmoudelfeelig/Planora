@@ -42,3 +42,17 @@ def test_build_no_feasible_message_includes_attempts(qt_app):
     finally:
         win.close()
         win.deleteLater()
+
+
+def test_split_phased_budget_prioritizes_feasibility():
+    assert ui_window.MainWindow._split_phased_budget(45.0) == (45.0, 0.0)
+
+    feas_120, improve_120 = ui_window.MainWindow._split_phased_budget(120.0)
+    assert feas_120 == pytest.approx(96.0)
+    assert improve_120 == pytest.approx(24.0)
+    assert feas_120 > improve_120
+
+    feas_300, improve_300 = ui_window.MainWindow._split_phased_budget(300.0)
+    assert feas_300 == pytest.approx(240.0)
+    assert improve_300 == pytest.approx(60.0)
+    assert feas_300 > improve_300
