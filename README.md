@@ -80,8 +80,13 @@ Exports include DOCX, ICS, CSV schedule, PDF group listings, and CSV summary rep
 Workflow:
 
 - Pick a generation mode → **Generate**
+- For `custom` mode, use the **Generator** tab to set:
+  - programs / groups-per-program / courses-per-program
+  - professor/TA counts, per-staff course responsibilities, and available teaching days
+  - per-room type/category/capacity/tags
 - **Solve** (runs `engine_cli.py` via `QProcess`)
 - **Improve** (runs local search)
+- Use the **Constraints** tab to tune hard-constraint toggles and soft weights before solving.
 - **Export DOCX** (group schedules; requires `python-docx`)
  - **Export CSV/ICS** (schedule CSV; per-entity ICS)
  - **Save/Load Project** (JSON/PKL snapshots)
@@ -95,6 +100,12 @@ Optional solver time limit (seconds) for the UI worker:
   - solve without objective up to `TT_FEASIBILITY_SECONDS`
   - then run iterative local-search improvement slices for up to `TT_IMPROVE_TOTAL_SECONDS`
   - tune rounds via `TT_IMPROVE_SLICE_SECONDS`, `TT_IMPROVE_ITERS_PER_SLICE`, and `TT_IMPROVE_MAX_ROUNDS`
+- Optional hard toggles carried inside the instance (`inst.hard_constraints`):
+  - `week1_lectures_only`
+  - `enforce_block_professor_rules`
+  - `enforce_staff_daily_caps`
+  - `enforce_staff_weekly_caps`
+  - `enforce_room_availability`
 
 ### Test and CI commands
 

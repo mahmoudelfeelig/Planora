@@ -18,6 +18,12 @@ This document merges the program- and schedule-level specs. All modes must respe
 - Week-1 LEC-only rule.
 - Rooms: in strict mode (`room_mode=cp_rooms`), per-room NoOverlap with eligibility (type/tag/capacity) and optional availability; specialized labs require matching tags or fail generation/solve.
 - Locking: activities may be fixed (day/slot/room) via `Instance.locked_activities`.
+- Hard constraints can be toggled per instance via `Instance.hard_constraints`:
+  - `week1_lectures_only`
+  - `enforce_block_professor_rules`
+  - `enforce_staff_daily_caps`
+  - `enforce_staff_weekly_caps`
+  - `enforce_room_availability`
 
 ## Room Assignment
 - Strict (default): CP picks rooms with NoOverlap, eligibility, availability, and cluster co-location.
@@ -44,6 +50,9 @@ This document merges the program- and schedule-level specs. All modes must respe
 - `TT_IMPROVE_SLICE_SECONDS`, `TT_IMPROVE_ITERS_PER_SLICE`, `TT_IMPROVE_MAX_ROUNDS`: per-round local-search controls.
 - `TT_LS_ITERATIONS`, `TT_LS_MAX_SECONDS`: local-search effort.
 - Desktop UI exposes these toggles (room mode, objective, time limit, workers, LS iters/time).
+- Desktop UI also exposes:
+  - custom instance generation controls (size/staff/rooms/days/course ownership),
+  - hard-constraint toggles and soft-weight editing.
 
 ## Known Limitations
 - No Sunday scheduling without code changes.

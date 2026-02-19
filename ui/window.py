@@ -20,7 +20,10 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QWidget,
     QVBoxLayout,
+    QHBoxLayout,
     QGridLayout,
+    QFormLayout,
+    QGroupBox,
     QPushButton,
     QComboBox,
     QTableWidget,
@@ -36,6 +39,7 @@ from PyQt6.QtWidgets import (
     QMenu,
     QSizePolicy,
     QHeaderView,
+    QTabWidget,
 )
 
 from ui.constants import (
@@ -47,7 +51,7 @@ from ui.constants import (
 )
 from ui.dialogs import EditActivityDialog
 from ui.styles import DARK_STYLE
-from utils.generator import generate_instance
+from utils.generator import generate_instance, generate_custom_instance, ROOM_CATEGORY_CAPACITY
 from core.metaheuristics import LocalSearchImprover
 from utils.exporter import (
     export_group_schedules_to_docx,
@@ -84,6 +88,7 @@ class MainWindow(QMainWindow):
         self.proc: QProcess | None = None
         self.tmp_inst_path: str | None = None
         self.tmp_res_path: str | None = None
+        self._room_table_internal_change = False
 
         self._build_ui()
         self._connect_signals()
@@ -105,6 +110,7 @@ class MainWindow(QMainWindow):
                 "mixed_large",
                 "random",
                 "target_case",
+                "custom",
             ]
         )
 
@@ -214,16 +220,27 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+        self.workspace_tabs = QTabWidget()
+        schedule_tab = QWidget()
+        schedule_layout = QVBoxLayout(schedule_tab)
+        schedule_layout.addWidget(self.table)
+        schedule_layout.addWidget(self.quality_label)
+        self.workspace_tabs.addTab(schedule_tab, "Schedule")
+        self.workspace_tabs.addTab(self._build_generator_tab(), "Generator")
+        self.workspace_tabs.addTab(self._build_constraints_tab(), "Constraints")
+
         central = QWidget()
         main_layout = QVBoxLayout(central)
         main_layout.addWidget(top_widget)
-        main_layout.addWidget(self.table)
-        main_layout.addWidget(self.quality_label)
+        main_layout.addWidget(self.workspace_tabs)
         self.setCentralWidget(central)
 
         self.setStyleSheet(DARK_STYLE)
 
         self._build_menus()
+        self._reset_custom_staff_table()
+        self._reset_custom_room_table()
+        self._load_constraint_controls_from_instance(None)
 
     def _connect_signals(self):
         self.generate_button.clicked.connect(self.on_generate)
@@ -231,6 +248,11 @@ class MainWindow(QMainWindow):
         self.resolve_button.clicked.connect(self.on_resolve)
         self.clear_locks_button.clicked.connect(self.on_clear_locks)
         self.improve_button.clicked.connect(self.on_improve)
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        self.custom_reset_staff_btn.clicked.connect(self._reset_custom_staff_table)
+        self.custom_reset_rooms_btn.clicked.connect(self._reset_custom_room_table)
+        self.custom_room_table.itemChanged.connect(self._on_room_table_item_changed)
+        self.apply_constraints_btn.clicked.connect(self.on_apply_constraints_to_instance)
         self.view_type_combo.currentIndexChanged.connect(self.update_entities)
         self.entity_combo.currentIndexChanged.connect(self.update_table)
         self.week_combo.currentIndexChanged.connect(self.update_table)
@@ -276,6 +298,363 @@ class MainWindow(QMainWindow):
         self.project_menu.addAction(act_load_inst)
         self.project_menu.addAction(act_load_sched)
 
+    def _build_generator_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        counts_box = QGroupBox("Scenario Size")
+        counts_form = QFormLayout(counts_box)
+        self.custom_programs_spin = QSpinBox()
+        self.custom_programs_spin.setRange(1, 200)
+        self.custom_programs_spin.setValue(20)
+        self.custom_groups_per_program_spin = QSpinBox()
+        self.custom_groups_per_program_spin.setRange(1, 20)
+        self.custom_groups_per_program_spin.setValue(2)
+        self.custom_courses_per_program_spin = QSpinBox()
+        self.custom_courses_per_program_spin.setRange(1, 20)
+        self.custom_courses_per_program_spin.setValue(6)
+        counts_form.addRow("Programs", self.custom_programs_spin)
+        counts_form.addRow("Groups per program", self.custom_groups_per_program_spin)
+        counts_form.addRow("Courses per program", self.custom_courses_per_program_spin)
+        layout.addWidget(counts_box)
+
+        staff_box = QGroupBox("Staff Mapping")
+        staff_layout = QVBoxLayout(staff_box)
+        staff_controls = QHBoxLayout()
+        self.custom_num_profs_spin = QSpinBox()
+        self.custom_num_profs_spin.setRange(1, 500)
+        self.custom_num_profs_spin.setValue(40)
+        self.custom_num_tas_spin = QSpinBox()
+        self.custom_num_tas_spin.setRange(1, 500)
+        self.custom_num_tas_spin.setValue(30)
+        self.custom_reset_staff_btn = QPushButton("Reset Staff Rows")
+        staff_controls.addWidget(QLabel("Professors"))
+        staff_controls.addWidget(self.custom_num_profs_spin)
+        staff_controls.addWidget(QLabel("TAs"))
+        staff_controls.addWidget(self.custom_num_tas_spin)
+        staff_controls.addWidget(self.custom_reset_staff_btn)
+        staff_controls.addStretch(1)
+        staff_layout.addLayout(staff_controls)
+        self.custom_staff_table = QTableWidget(0, 4)
+        self.custom_staff_table.setHorizontalHeaderLabels(
+            ["Staff", "Role", "Course IDs (csv)", "Available Days (csv)"]
+        )
+        self.custom_staff_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.custom_staff_table.verticalHeader().setVisible(False)
+        staff_layout.addWidget(self.custom_staff_table)
+        layout.addWidget(staff_box)
+
+        room_box = QGroupBox("Room Definitions")
+        room_layout = QVBoxLayout(room_box)
+        room_controls = QHBoxLayout()
+        self.custom_room_count_spin = QSpinBox()
+        self.custom_room_count_spin.setRange(1, 500)
+        self.custom_room_count_spin.setValue(30)
+        self.custom_reset_rooms_btn = QPushButton("Reset Room Rows")
+        room_controls.addWidget(QLabel("Total rooms"))
+        room_controls.addWidget(self.custom_room_count_spin)
+        room_controls.addWidget(self.custom_reset_rooms_btn)
+        room_controls.addWidget(QLabel("Category defaults: SMALL/MEDIUM/BIG"))
+        room_controls.addStretch(1)
+        room_layout.addLayout(room_controls)
+        self.custom_room_table = QTableWidget(0, 5)
+        self.custom_room_table.setHorizontalHeaderLabels(
+            ["Name", "Type", "Category", "Capacity", "Tags (csv for specialized labs)"]
+        )
+        self.custom_room_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.custom_room_table.verticalHeader().setVisible(False)
+        room_layout.addWidget(self.custom_room_table)
+        layout.addWidget(room_box)
+
+        hint = QLabel(
+            "Use mode 'custom' to generate from these tables.\n"
+            "Room category and capacity are interchangeable: either can drive the other."
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        return tab
+
+    def _build_constraints_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        hard_box = QGroupBox("Hard Constraints")
+        hard_layout = QVBoxLayout(hard_box)
+        self.hard_week1_cb = QCheckBox("Week 1 is lectures-only")
+        self.hard_block_prof_cb = QCheckBox("Enforce block professor rules")
+        self.hard_staff_daily_cb = QCheckBox("Enforce staff daily caps")
+        self.hard_staff_weekly_cb = QCheckBox("Enforce staff weekly caps")
+        self.hard_room_availability_cb = QCheckBox("Enforce room availability")
+        hard_layout.addWidget(self.hard_week1_cb)
+        hard_layout.addWidget(self.hard_block_prof_cb)
+        hard_layout.addWidget(self.hard_staff_daily_cb)
+        hard_layout.addWidget(self.hard_staff_weekly_cb)
+        hard_layout.addWidget(self.hard_room_availability_cb)
+        layout.addWidget(hard_box)
+
+        soft_box = QGroupBox("Soft Constraint Weights")
+        soft_form = QFormLayout(soft_box)
+        self.soft_weight_spins: Dict[str, QSpinBox] = {}
+        soft_defs = [
+            ("stud_free_days", "Student free days", 10),
+            ("stud_free_mf", "Student Mon-Fri free days", 5),
+            ("stud_gaps", "Student gaps", 5),
+            ("staff_free_day", "Staff free day", 6),
+            ("active_days", "Active-day minimization", 5),
+            ("late_start", "Late start", 3),
+            ("thin_day", "Thin day", 3),
+            ("single_slot", "Single-slot day", 6),
+            ("stability", "Week-to-week stability", 1),
+            ("room_consistency", "Room consistency", 1),
+        ]
+        for key, label, default in soft_defs:
+            spin = QSpinBox()
+            spin.setRange(0, 200)
+            spin.setValue(default)
+            self.soft_weight_spins[key] = spin
+            soft_form.addRow(label, spin)
+        layout.addWidget(soft_box)
+
+        self.apply_constraints_btn = QPushButton("Apply Constraints To Current Instance")
+        layout.addWidget(self.apply_constraints_btn)
+        layout.addStretch(1)
+        return tab
+
+    @staticmethod
+    def _infer_room_category(capacity: int) -> str:
+        if capacity <= 80:
+            return "SMALL"
+        if capacity <= 180:
+            return "MEDIUM"
+        return "BIG"
+
+    def _reset_custom_staff_table(self) -> None:
+        rows = int(self.custom_num_profs_spin.value()) + int(self.custom_num_tas_spin.value())
+        self.custom_staff_table.blockSignals(True)
+        self.custom_staff_table.setRowCount(rows)
+        row = 0
+        for idx in range(1, int(self.custom_num_profs_spin.value()) + 1):
+            name_item = QTableWidgetItem(f"Prof-{idx}")
+            role_item = QTableWidgetItem("PROF")
+            role_item.setFlags(role_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.custom_staff_table.setItem(row, 0, name_item)
+            self.custom_staff_table.setItem(row, 1, role_item)
+            self.custom_staff_table.setItem(row, 2, QTableWidgetItem(""))
+            self.custom_staff_table.setItem(row, 3, QTableWidgetItem(",".join(self.inst.days if self.inst else ["MON", "TUE", "WED", "THU", "FRI", "SAT"])))
+            row += 1
+        for idx in range(1, int(self.custom_num_tas_spin.value()) + 1):
+            name_item = QTableWidgetItem(f"TA-{idx}")
+            role_item = QTableWidgetItem("TA")
+            role_item.setFlags(role_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.custom_staff_table.setItem(row, 0, name_item)
+            self.custom_staff_table.setItem(row, 1, role_item)
+            self.custom_staff_table.setItem(row, 2, QTableWidgetItem(""))
+            self.custom_staff_table.setItem(row, 3, QTableWidgetItem(",".join(self.inst.days if self.inst else ["MON", "TUE", "WED", "THU", "FRI", "SAT"])))
+            row += 1
+        self.custom_staff_table.blockSignals(False)
+
+    def _reset_custom_room_table(self) -> None:
+        self.custom_room_table.blockSignals(True)
+        self.custom_room_table.setRowCount(int(self.custom_room_count_spin.value()))
+        defaults = ["LECTURE", "LECTURE", "TUTORIAL", "COMPUTER_LAB", "SPECIALIZED_LAB"]
+        for row in range(self.custom_room_table.rowCount()):
+            rtype = defaults[row % len(defaults)]
+            cat = "MEDIUM"
+            cap = ROOM_CATEGORY_CAPACITY[cat]
+            self.custom_room_table.setItem(row, 0, QTableWidgetItem(f"{rtype.title()}-{row + 1}"))
+            self.custom_room_table.setItem(row, 1, QTableWidgetItem(rtype))
+            self.custom_room_table.setItem(row, 2, QTableWidgetItem(cat))
+            self.custom_room_table.setItem(row, 3, QTableWidgetItem(str(cap)))
+            self.custom_room_table.setItem(row, 4, QTableWidgetItem("" if rtype != "SPECIALIZED_LAB" else "LAB1"))
+        self.custom_room_table.blockSignals(False)
+
+    def _on_room_table_item_changed(self, item: QTableWidgetItem) -> None:
+        if self._room_table_internal_change:
+            return
+        if item is None:
+            return
+        row = item.row()
+        col = item.column()
+        cat_item = self.custom_room_table.item(row, 2)
+        cap_item = self.custom_room_table.item(row, 3)
+        if cat_item is None or cap_item is None:
+            return
+        self._room_table_internal_change = True
+        try:
+            if col == 2:
+                cat = str(cat_item.text()).strip().upper()
+                if cat in ROOM_CATEGORY_CAPACITY:
+                    cap_item.setText(str(ROOM_CATEGORY_CAPACITY[cat]))
+            elif col == 3:
+                try:
+                    cap = max(1, int(str(cap_item.text()).strip()))
+                except Exception:
+                    cap = ROOM_CATEGORY_CAPACITY["MEDIUM"]
+                    cap_item.setText(str(cap))
+                cat_item.setText(self._infer_room_category(cap))
+        finally:
+            self._room_table_internal_change = False
+
+    @staticmethod
+    def _parse_csv_ints(raw: str) -> List[int]:
+        out: List[int] = []
+        for token in str(raw).split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                out.append(int(token))
+            except Exception:
+                continue
+        return out
+
+    @staticmethod
+    def _parse_csv_days(raw: str) -> List[str]:
+        valid = {"MON", "TUE", "WED", "THU", "FRI", "SAT"}
+        out: List[str] = []
+        for token in str(raw).split(","):
+            day = token.strip().upper()
+            if day in valid:
+                out.append(day)
+        return out
+
+    def _collect_custom_generation_config(self) -> Dict[str, Any]:
+        prof_course_map: Dict[int, List[int]] = {}
+        ta_course_map: Dict[int, List[int]] = {}
+        prof_days: Dict[int, List[str]] = {}
+        ta_days: Dict[int, List[str]] = {}
+        prof_idx = 0
+        ta_idx = 0
+        for row in range(self.custom_staff_table.rowCount()):
+            role_item = self.custom_staff_table.item(row, 1)
+            courses_item = self.custom_staff_table.item(row, 2)
+            days_item = self.custom_staff_table.item(row, 3)
+            role = str(role_item.text()).strip().upper() if role_item else ""
+            courses = self._parse_csv_ints(courses_item.text() if courses_item else "")
+            days = self._parse_csv_days(days_item.text() if days_item else "")
+            if role == "PROF":
+                prof_idx += 1
+                if courses:
+                    prof_course_map[prof_idx] = courses
+                prof_days[prof_idx] = days
+            elif role == "TA":
+                ta_idx += 1
+                if courses:
+                    ta_course_map[ta_idx] = courses
+                ta_days[ta_idx] = days
+
+        room_specs: List[Dict[str, Any]] = []
+        for row in range(self.custom_room_table.rowCount()):
+            name_item = self.custom_room_table.item(row, 0)
+            type_item = self.custom_room_table.item(row, 1)
+            cat_item = self.custom_room_table.item(row, 2)
+            cap_item = self.custom_room_table.item(row, 3)
+            tags_item = self.custom_room_table.item(row, 4)
+            name = str(name_item.text()).strip() if name_item else f"Room-{row + 1}"
+            room_type = str(type_item.text()).strip().upper() if type_item else "LECTURE"
+            category = str(cat_item.text()).strip().upper() if cat_item else "MEDIUM"
+            try:
+                capacity = max(1, int(str(cap_item.text()).strip())) if cap_item else ROOM_CATEGORY_CAPACITY.get(category, 150)
+            except Exception:
+                capacity = ROOM_CATEGORY_CAPACITY.get(category, 150)
+            tags = [t.strip().upper() for t in str(tags_item.text()).split(",") if t.strip()] if tags_item else []
+            room_specs.append(
+                {
+                    "name": name,
+                    "room_type": room_type,
+                    "category": category,
+                    "capacity": capacity,
+                    "tags": tags,
+                }
+            )
+
+        return {
+            "num_programs": int(self.custom_programs_spin.value()),
+            "groups_per_program": int(self.custom_groups_per_program_spin.value()),
+            "courses_per_program": int(self.custom_courses_per_program_spin.value()),
+            "num_professors": int(self.custom_num_profs_spin.value()),
+            "num_tas": int(self.custom_num_tas_spin.value()),
+            "professor_course_map": prof_course_map,
+            "ta_course_map": ta_course_map,
+            "professor_days": prof_days,
+            "ta_days": ta_days,
+            "room_specs": room_specs,
+            "seed": 42,
+        }
+
+    def _collect_constraint_settings(self) -> tuple[Dict[str, bool], Dict[str, int]]:
+        hard = {
+            "week1_lectures_only": self.hard_week1_cb.isChecked(),
+            "enforce_block_professor_rules": self.hard_block_prof_cb.isChecked(),
+            "enforce_staff_daily_caps": self.hard_staff_daily_cb.isChecked(),
+            "enforce_staff_weekly_caps": self.hard_staff_weekly_cb.isChecked(),
+            "enforce_room_availability": self.hard_room_availability_cb.isChecked(),
+        }
+        soft = {k: int(spin.value()) for k, spin in self.soft_weight_spins.items()}
+        return hard, soft
+
+    def _apply_constraint_settings(self, inst: Instance | None) -> None:
+        if inst is None:
+            return
+        hard, soft = self._collect_constraint_settings()
+        inst.hard_constraints = hard
+        inst.soft_weights = soft
+
+    def _load_constraint_controls_from_instance(self, inst: Instance | None) -> None:
+        hard_defaults = {
+            "week1_lectures_only": True,
+            "enforce_block_professor_rules": True,
+            "enforce_staff_daily_caps": True,
+            "enforce_staff_weekly_caps": True,
+            "enforce_room_availability": True,
+        }
+        soft_defaults = {
+            "stud_free_days": 10,
+            "stud_free_mf": 5,
+            "stud_gaps": 5,
+            "staff_free_day": 6,
+            "active_days": 5,
+            "late_start": 3,
+            "thin_day": 3,
+            "single_slot": 6,
+            "stability": 1,
+            "room_consistency": 1,
+        }
+        hard = hard_defaults
+        soft = soft_defaults
+        if inst is not None:
+            raw_hard = getattr(inst, "hard_constraints", {}) or {}
+            if isinstance(raw_hard, dict):
+                hard = {k: bool(raw_hard.get(k, v)) for k, v in hard_defaults.items()}
+            raw_soft = getattr(inst, "soft_weights", {}) or {}
+            if isinstance(raw_soft, dict):
+                soft = dict(soft_defaults)
+                for k in soft.keys():
+                    if k in raw_soft:
+                        try:
+                            soft[k] = int(raw_soft[k])
+                        except Exception:
+                            pass
+        self.hard_week1_cb.setChecked(hard["week1_lectures_only"])
+        self.hard_block_prof_cb.setChecked(hard["enforce_block_professor_rules"])
+        self.hard_staff_daily_cb.setChecked(hard["enforce_staff_daily_caps"])
+        self.hard_staff_weekly_cb.setChecked(hard["enforce_staff_weekly_caps"])
+        self.hard_room_availability_cb.setChecked(hard["enforce_room_availability"])
+        for key, spin in self.soft_weight_spins.items():
+            spin.setValue(int(soft.get(key, spin.value())))
+
+    def on_apply_constraints_to_instance(self) -> None:
+        if self.inst is None:
+            self.set_status("Generate or load an instance first")
+            return
+        self._apply_constraint_settings(self.inst)
+        self.update_quality_summary()
+        self.set_status("Constraint settings applied to current instance")
+
+    def _on_mode_changed(self) -> None:
+        if self.mode_combo.currentText() == "custom":
+            self.workspace_tabs.setCurrentIndex(1)
+
     # ----- helpers -----
 
     def set_status(self, text: str):
@@ -300,6 +679,10 @@ class MainWindow(QMainWindow):
         self.objective_cb.setEnabled(enable)
         self.time_limit_spin.setEnabled(enable)
         self.workers_spin.setEnabled(enable)
+        self.workspace_tabs.setEnabled(enable)
+        self.custom_reset_staff_btn.setEnabled(enable)
+        self.custom_reset_rooms_btn.setEnabled(enable)
+        self.apply_constraints_btn.setEnabled(enable)
 
     def populate_weeks(self):
         self.week_combo.blockSignals(True)
@@ -424,7 +807,10 @@ class MainWindow(QMainWindow):
 
         mode = self.mode_combo.currentText()
         try:
-            inst = generate_instance(mode=mode)
+            if mode == "custom":
+                inst = generate_custom_instance(**self._collect_custom_generation_config())
+            else:
+                inst = generate_instance(mode=mode)
             normalize_instance_for_spec(inst)
             stamp_instance_time(
                 inst,
@@ -432,6 +818,7 @@ class MainWindow(QMainWindow):
                 DEFAULT_SLOT_MINUTES,
                 DEFAULT_BREAK_MINUTES,
             )
+            self._apply_constraint_settings(inst)
             check_staff_weekly_capacity(inst)  # logs warnings to stdout
             self.inst = inst
         except Exception as e:
@@ -446,6 +833,7 @@ class MainWindow(QMainWindow):
         self.populate_weeks()
         self.update_entities()
         self.clear_table()
+        self._load_constraint_controls_from_instance(self.inst)
 
     def _start_solver_process(self, *, keep_locks: bool) -> None:
         if self.inst is None:
@@ -460,6 +848,7 @@ class MainWindow(QMainWindow):
 
         # Push locks into the instance so the worker can fix them.
         self.inst.locked_activities = dict(self.locked_activities)
+        self._apply_constraint_settings(self.inst)
 
         tmp_dir = tempfile.gettempdir()
         inst_name = f"tt_inst_{uuid.uuid4().hex}.pkl"
@@ -857,6 +1246,7 @@ class MainWindow(QMainWindow):
         self.locked_activities = dict(getattr(inst, "locked_activities", {}) or {})
         self.base_schedule = schedule
         self.current_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
+        self._load_constraint_controls_from_instance(self.inst)
 
         self.populate_weeks()
         self.update_entities()
@@ -964,6 +1354,7 @@ class MainWindow(QMainWindow):
         self.locked_activities = dict(getattr(inst, "locked_activities", {}) or {})
         self.base_schedule = {}
         self.current_schedule = {}
+        self._load_constraint_controls_from_instance(self.inst)
         self.populate_weeks()
         self.update_entities()
         self.update_table()
@@ -1174,14 +1565,33 @@ class MainWindow(QMainWindow):
         weeks = inst.weeks
         S = inst.slots_per_day
 
-        W_STUD_FREE_DAYS = 10
-        W_STUD_FREE_MF = 5
-        W_STUD_GAPS = 5
-        W_ACTIVE_DAYS = 5
-        W_LATE_START = 3
-        W_THIN_DAY = 3
-        W_STABILITY = 1
-        W_SINGLE_SLOT = 6
+        weights = {
+            "stud_free_days": 10,
+            "stud_free_mf": 5,
+            "stud_gaps": 5,
+            "active_days": 5,
+            "late_start": 3,
+            "thin_day": 3,
+            "stability": 1,
+            "single_slot": 6,
+        }
+        overrides = getattr(inst, "soft_weights", None)
+        if isinstance(overrides, dict):
+            for k, v in overrides.items():
+                if k in weights:
+                    try:
+                        weights[k] = int(v)
+                    except Exception:
+                        pass
+
+        W_STUD_FREE_DAYS = weights["stud_free_days"]
+        W_STUD_FREE_MF = weights["stud_free_mf"]
+        W_STUD_GAPS = weights["stud_gaps"]
+        W_ACTIVE_DAYS = weights["active_days"]
+        W_LATE_START = weights["late_start"]
+        W_THIN_DAY = weights["thin_day"]
+        W_STABILITY = weights["stability"]
+        W_SINGLE_SLOT = weights["single_slot"]
 
         group_occ: Dict[Tuple[int, int, str, int], int] = {}
         for g_id in inst.groups.keys():
@@ -1398,6 +1808,15 @@ class MainWindow(QMainWindow):
         w = info["week"]
         dur = info["duration"]
         groups = info["group_ids"]
+        hard_flags = getattr(inst, "hard_constraints", {}) or {}
+
+        def _flag(name: str, default: bool = True) -> bool:
+            raw = hard_flags.get(name, default) if isinstance(hard_flags, dict) else default
+            if isinstance(raw, bool):
+                return raw
+            if raw is None:
+                return default
+            return str(raw).strip().lower() not in ("0", "false", "no")
 
         if new_slot < 0 or new_slot + dur > inst.slots_per_day:
             return False, "Activity would overflow the day."
@@ -1430,16 +1849,16 @@ class MainWindow(QMainWindow):
         day_load += dur
         week_load += dur
 
-        if staff.max_slots_per_day is not None and day_load > staff.max_slots_per_day:
+        if _flag("enforce_staff_daily_caps", True) and staff.max_slots_per_day is not None and day_load > staff.max_slots_per_day:
             return False, "Staff daily load limit exceeded."
-        if staff.max_slots_per_week is not None and week_load > staff.max_slots_per_week:
+        if _flag("enforce_staff_weekly_caps", True) and staff.max_slots_per_week is not None and week_load > staff.max_slots_per_week:
             return False, "Staff weekly load limit exceeded."
 
         room = inst.rooms[new_room_id]
         total_students = sum(inst.groups[g].size for g in groups)
         if room.capacity < total_students:
             return False, "Room capacity too small."
-        if room.availability is not None:
+        if _flag("enforce_room_availability", True) and room.availability is not None:
             for s in range(new_slot, new_slot + dur):
                 if (new_day, s) not in room.availability:
                     return False, "Room unavailable at that day/slot."

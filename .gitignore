@@ -212,6 +212,8 @@ __marimo__/
 
 # Local presentation drafts
 paper/presentation_project_overview.md
+paper/presentation_professor.local.md
+docs/PROJECT_TECHNICAL_EXPLAINER.local.md
 
 # Generated timetable artifacts
 timetable_*.docx
