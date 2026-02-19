@@ -6,7 +6,7 @@ import uuid
 import pickle
 import tempfile
 import traceback
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, Set
 
 # Allow running directly (python ui/window.py) by ensuring repo root on sys.path
 ROOT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -40,6 +40,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QHeaderView,
     QTabWidget,
+    QInputDialog,
 )
 
 from ui.constants import (
@@ -49,7 +50,7 @@ from ui.constants import (
     DEFAULT_TIME_LIMIT,
     DEFAULT_CP_WORKERS,
 )
-from ui.dialogs import EditActivityDialog
+from ui.dialogs import EditActivityDialog, MoveConflictDialog, ConflictInspectorDialog
 from ui.styles import DARK_STYLE
 from utils.generator import generate_instance, generate_custom_instance, ROOM_CATEGORY_CAPACITY
 from core.metaheuristics import LocalSearchImprover
@@ -84,6 +85,10 @@ class MainWindow(QMainWindow):
         self.base_schedule: Dict[int, Dict[str, Any]] = {}
         self.current_schedule: Dict[int, Dict[str, Any]] = {}
         self.locked_activities: Dict[int, Dict[str, Any]] = {}
+        self.held_activity_id: int | None = None
+        self._cell_activity_map: Dict[Tuple[int, int], List[int]] = {}
+        self._undo_stack: List[Dict[str, Any]] = []
+        self._redo_stack: List[Dict[str, Any]] = []
 
         self.proc: QProcess | None = None
         self.tmp_inst_path: str | None = None
@@ -119,6 +124,10 @@ class MainWindow(QMainWindow):
         self.resolve_button = QPushButton("Re-solve")
         self.clear_locks_button = QPushButton("Clear Locks")
         self.improve_button = QPushButton("Improve")
+        self.undo_button = QPushButton("Undo")
+        self.redo_button = QPushButton("Redo")
+        self.revert_button = QPushButton("Revert Base")
+        self.conflicts_button = QPushButton("Conflicts")
 
         self.room_mode_combo = QComboBox()
         self.room_mode_combo.addItems(["Strict (CP rooms)", "Fast (Greedy rooms)"])
@@ -183,6 +192,10 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(self.improve_button, r, c); c += 1
         top_layout.addWidget(self.export_menu_btn, r, c); c += 1
         top_layout.addWidget(self.project_menu_btn, r, c); c += 1
+        top_layout.addWidget(self.undo_button, r, c); c += 1
+        top_layout.addWidget(self.redo_button, r, c); c += 1
+        top_layout.addWidget(self.revert_button, r, c); c += 1
+        top_layout.addWidget(self.conflicts_button, r, c); c += 1
 
         # Row 1: tuning
         r = 1
@@ -212,6 +225,7 @@ class MainWindow(QMainWindow):
 
         self.table = QTableWidget()
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.setAlternatingRowColors(False)
         self.table.verticalHeader().setVisible(True)
         self.table.horizontalHeader().setVisible(True)
@@ -241,6 +255,7 @@ class MainWindow(QMainWindow):
         self._reset_custom_staff_table()
         self._reset_custom_room_table()
         self._load_constraint_controls_from_instance(None)
+        self._refresh_history_buttons()
 
     def _connect_signals(self):
         self.generate_button.clicked.connect(self.on_generate)
@@ -248,6 +263,10 @@ class MainWindow(QMainWindow):
         self.resolve_button.clicked.connect(self.on_resolve)
         self.clear_locks_button.clicked.connect(self.on_clear_locks)
         self.improve_button.clicked.connect(self.on_improve)
+        self.undo_button.clicked.connect(self.on_undo)
+        self.redo_button.clicked.connect(self.on_redo)
+        self.revert_button.clicked.connect(self.on_revert_to_base)
+        self.conflicts_button.clicked.connect(self.on_show_conflicts)
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self.custom_reset_staff_btn.clicked.connect(self._reset_custom_staff_table)
         self.custom_reset_rooms_btn.clicked.connect(self._reset_custom_room_table)
@@ -257,6 +276,7 @@ class MainWindow(QMainWindow):
         self.entity_combo.currentIndexChanged.connect(self.update_table)
         self.week_combo.currentIndexChanged.connect(self.update_table)
         self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
+        self.table.customContextMenuRequested.connect(self.on_table_context_menu)
 
     def _build_menus(self):
         # Export menu
@@ -285,6 +305,14 @@ class MainWindow(QMainWindow):
         act_load.triggered.connect(self.on_load_project)
         act_compare = QAction("Compare", self)
         act_compare.triggered.connect(self.on_compare)
+        act_undo = QAction("Undo Edit", self)
+        act_undo.triggered.connect(self.on_undo)
+        act_redo = QAction("Redo Edit", self)
+        act_redo.triggered.connect(self.on_redo)
+        act_revert = QAction("Revert To Base", self)
+        act_revert.triggered.connect(self.on_revert_to_base)
+        act_conflicts = QAction("Show Conflicts", self)
+        act_conflicts.triggered.connect(self.on_show_conflicts)
         act_load_inst = QAction("Load Instance", self)
         act_load_inst.triggered.connect(self.on_load_instance)
         act_load_sched = QAction("Load Schedule (CSV)", self)
@@ -294,6 +322,10 @@ class MainWindow(QMainWindow):
         self.project_menu.addAction(act_load)
         self.project_menu.addSeparator()
         self.project_menu.addAction(act_compare)
+        self.project_menu.addAction(act_undo)
+        self.project_menu.addAction(act_redo)
+        self.project_menu.addAction(act_revert)
+        self.project_menu.addAction(act_conflicts)
         self.project_menu.addSeparator()
         self.project_menu.addAction(act_load_inst)
         self.project_menu.addAction(act_load_sched)
@@ -671,6 +703,10 @@ class MainWindow(QMainWindow):
             self.improve_button,
             self.export_menu_btn,
             self.project_menu_btn,
+            self.undo_button,
+            self.redo_button,
+            self.revert_button,
+            self.conflicts_button,
         ]:
             btn.setEnabled(enable)
         self.improve_runs_spin.setEnabled(enable)
@@ -683,6 +719,8 @@ class MainWindow(QMainWindow):
         self.custom_reset_staff_btn.setEnabled(enable)
         self.custom_reset_rooms_btn.setEnabled(enable)
         self.apply_constraints_btn.setEnabled(enable)
+        if enable:
+            self._refresh_history_buttons()
 
     def populate_weeks(self):
         self.week_combo.blockSignals(True)
@@ -718,7 +756,674 @@ class MainWindow(QMainWindow):
         self.table.clear()
         self.table.setRowCount(0)
         self.table.setColumnCount(0)
+        self._cell_activity_map = {}
         self.quality_label.setText("")
+
+    def _snapshot_state(self) -> Dict[str, Any]:
+        return {
+            "current_schedule": self._clone_schedule(),
+            "locked_activities": {
+                int(a_id): dict(lock) for a_id, lock in self.locked_activities.items()
+            },
+            "held_activity_id": self.held_activity_id,
+        }
+
+    def _restore_state(self, state: Dict[str, Any], status: str) -> None:
+        self.current_schedule = {
+            int(a_id): info.copy()
+            for a_id, info in (state.get("current_schedule") or {}).items()
+        }
+        self.locked_activities = {
+            int(a_id): dict(lock)
+            for a_id, lock in (state.get("locked_activities") or {}).items()
+        }
+        held = state.get("held_activity_id")
+        self.held_activity_id = int(held) if held is not None else None
+        self._sync_instance_staff_from_schedule(self.current_schedule)
+        self._sync_locks_to_instance()
+        self.update_table()
+        self.update_quality_summary()
+        self.set_status(status)
+
+    def _reset_history(self) -> None:
+        self._undo_stack = []
+        self._redo_stack = []
+        self._refresh_history_buttons()
+
+    def _push_undo_state(self) -> None:
+        if self.inst is None:
+            return
+        self._undo_stack.append(self._snapshot_state())
+        if len(self._undo_stack) > 120:
+            self._undo_stack.pop(0)
+        self._redo_stack = []
+        self._refresh_history_buttons()
+
+    def _refresh_history_buttons(self) -> None:
+        self.undo_button.setEnabled(bool(self._undo_stack))
+        self.redo_button.setEnabled(bool(self._redo_stack))
+        self.revert_button.setEnabled(bool(self.base_schedule))
+        self.conflicts_button.setEnabled(bool(self.current_schedule))
+
+    def _sync_locks_to_instance(self) -> None:
+        if self.inst is None:
+            return
+        self.inst.locked_activities = {
+            int(a_id): dict(lock) for a_id, lock in self.locked_activities.items()
+        }
+
+    def _collect_conflict_errors(self) -> List[str]:
+        if self.inst is None or not self.current_schedule:
+            return []
+        try:
+            return validate_schedule_against_instance(
+                self.inst, self.current_schedule, strict_rooms=False
+            )
+        except Exception:
+            return []
+
+    def _toggle_activity_lock(self, a_id: int, *, time_lock: bool) -> None:
+        if a_id not in self.current_schedule:
+            return
+        self._push_undo_state()
+        info = self.current_schedule[a_id]
+        fixed = dict(self.locked_activities.get(a_id, {}))
+        if time_lock:
+            if "day" in fixed and "slot" in fixed:
+                fixed.pop("day", None)
+                fixed.pop("slot", None)
+            else:
+                fixed["day"] = str(info["day"])
+                fixed["slot"] = int(info["slot"])
+        else:
+            if "room_id" in fixed:
+                fixed.pop("room_id", None)
+            else:
+                fixed["room_id"] = int(info["room_id"])
+        if fixed:
+            self.locked_activities[a_id] = fixed
+        else:
+            self.locked_activities.pop(a_id, None)
+        self._sync_locks_to_instance()
+        self.update_table()
+        self.update_quality_summary()
+        lock_name = "time" if time_lock else "room"
+        self.set_status(f"Toggled {lock_name} lock for A{a_id}")
+        self._refresh_history_buttons()
+
+    def _focus_activity(self, a_id: int, *, hold: bool = False) -> None:
+        if self.inst is None or a_id not in self.current_schedule:
+            return
+        info = self.current_schedule[a_id]
+        week = int(info["week"])
+        week_idx = self.week_combo.findData(week)
+        if week_idx >= 0:
+            self.week_combo.setCurrentIndex(week_idx)
+
+        # Prefer group view because it is usually the most interpretable.
+        self.view_type_combo.setCurrentText("Group")
+        group_ids = info.get("group_ids") or []
+        if group_ids:
+            ent_idx = self.entity_combo.findData(int(group_ids[0]))
+            if ent_idx >= 0:
+                self.entity_combo.setCurrentIndex(ent_idx)
+        self.update_table()
+
+        day = str(info["day"])
+        if day in self.inst.days:
+            row = self.inst.days.index(day)
+            col = int(info["slot"])
+            if 0 <= row < self.table.rowCount() and 0 <= col < self.table.columnCount():
+                self.table.setCurrentCell(row, col)
+        if hold:
+            self._set_held_activity(a_id)
+        else:
+            self.set_status(f"Focused {self._activity_title(a_id)}")
+
+    def _activity_title(
+        self,
+        a_id: int,
+        schedule: Dict[int, Dict[str, Any]] | None = None,
+    ) -> str:
+        inst = self.inst
+        if inst is None:
+            return f"A{a_id}"
+        info = None
+        if schedule is not None:
+            info = schedule.get(a_id)
+        elif self.current_schedule:
+            info = self.current_schedule.get(a_id)
+        course_code = ""
+        if info is not None:
+            course = inst.courses.get(int(info["course_id"]))
+            if course is not None:
+                course_code = f" {course.code}"
+            return f"A{a_id}{course_code} ({info['day']} S{int(info['slot']) + 1})"
+        return f"A{a_id}"
+
+    def _clone_schedule(
+        self, schedule: Dict[int, Dict[str, Any]] | None = None
+    ) -> Dict[int, Dict[str, Any]]:
+        source = self.current_schedule if schedule is None else schedule
+        return {a_id: info.copy() for a_id, info in source.items()}
+
+    def _sync_instance_staff_from_schedule(
+        self, schedule: Dict[int, Dict[str, Any]]
+    ) -> None:
+        if self.inst is None:
+            return
+        for a_id, info in schedule.items():
+            act = self.inst.activities.get(a_id)
+            if act is None:
+                continue
+            try:
+                sid = int(info["staff_id"])
+            except Exception:
+                continue
+            if act.kind == "LEC":
+                act.prof_id = sid
+            else:
+                act.ta_id = sid
+
+    def _touch_time_lock_if_present(self, a_id: int, day: str, slot: int) -> None:
+        fixed = self.locked_activities.get(int(a_id))
+        if not isinstance(fixed, dict):
+            return
+        if "day" in fixed and "slot" in fixed:
+            fixed["day"] = str(day)
+            fixed["slot"] = int(slot)
+            self.locked_activities[int(a_id)] = fixed
+
+    def _current_week(self) -> int | None:
+        week_data = self.week_combo.currentData()
+        if week_data is None:
+            return None
+        return int(week_data)
+
+    def _cell_activity_ids_for_view(self, day: str, slot: int, week: int) -> List[int]:
+        if self.inst is None or not self.current_schedule:
+            return []
+        data = self.entity_combo.currentData()
+        if data is None:
+            return []
+        entity_id = int(data)
+        view_type = self.view_type_combo.currentText()
+        act_ids: List[int] = []
+        for a_id, info in self.current_schedule.items():
+            if int(info["week"]) != int(week):
+                continue
+            if str(info["day"]) != str(day):
+                continue
+            s0 = int(info["slot"])
+            dur = int(info["duration"])
+            if slot < s0 or slot >= s0 + dur:
+                continue
+            if view_type == "Group" and entity_id not in info["group_ids"]:
+                continue
+            if view_type == "Staff" and entity_id != int(info["staff_id"]):
+                continue
+            if view_type == "Room" and entity_id != int(info["room_id"]):
+                continue
+            act_ids.append(int(a_id))
+        return act_ids
+
+    def _choose_activity_from_ids(self, act_ids: List[int], title: str) -> int | None:
+        if not act_ids:
+            return None
+        if len(act_ids) == 1:
+            return int(act_ids[0])
+        labels = [self._activity_title(a_id) for a_id in act_ids]
+        choice, ok = QInputDialog.getItem(
+            self,
+            title,
+            "Activity:",
+            labels,
+            0,
+            False,
+        )
+        if not ok:
+            return None
+        idx = labels.index(choice)
+        return int(act_ids[idx])
+
+    def _set_held_activity(self, a_id: int) -> None:
+        if a_id not in self.current_schedule:
+            return
+        self.held_activity_id = int(a_id)
+        held_week = int(self.current_schedule[a_id]["week"])
+        idx = self.week_combo.findData(held_week)
+        if idx >= 0:
+            self.week_combo.setCurrentIndex(idx)
+        self.update_table()
+        self.set_status(
+            f"Holding {self._activity_title(a_id)}. Right-click a target cell to move/swap."
+        )
+
+    def _clear_held_activity(self) -> None:
+        if self.held_activity_id is None:
+            return
+        held = self.held_activity_id
+        self.held_activity_id = None
+        self.update_table()
+        self.set_status(f"Released held activity A{held}")
+
+    def _collect_held_target_map(
+        self,
+        week: int,
+        schedule_override: Dict[int, Dict[str, Any]] | None = None,
+    ) -> Dict[Tuple[str, int], bool]:
+        inst = self.inst
+        if inst is None or self.held_activity_id is None:
+            return {}
+        schedule = self.current_schedule if schedule_override is None else schedule_override
+        a_id = int(self.held_activity_id)
+        info = schedule.get(a_id)
+        if info is None or int(info["week"]) != int(week):
+            return {}
+        room_id = int(info["room_id"])
+        staff_id = int(info["staff_id"])
+        target_map: Dict[Tuple[str, int], bool] = {}
+        for day in inst.days:
+            for slot in range(inst.slots_per_day):
+                ok, _ = self.check_move(
+                    a_id,
+                    str(day),
+                    int(slot),
+                    room_id,
+                    staff_id,
+                    schedule_override=schedule,
+                )
+                target_map[(str(day), int(slot))] = bool(ok)
+        return target_map
+
+    def _find_move_conflicts(
+        self,
+        a_id: int,
+        new_day: str,
+        new_slot: int,
+        new_room_id: int,
+        new_staff_id: int,
+        schedule_override: Dict[int, Dict[str, Any]] | None = None,
+    ) -> List[Dict[str, Any]]:
+        schedule = self.current_schedule if schedule_override is None else schedule_override
+        info = schedule.get(a_id)
+        if info is None:
+            return []
+        week = int(info["week"])
+        dur = int(info["duration"])
+        groups = set(int(g) for g in info["group_ids"])
+        target_slots = set(range(int(new_slot), int(new_slot) + dur))
+        conflicts: List[Dict[str, Any]] = []
+        for b_id, other in schedule.items():
+            if int(b_id) == int(a_id):
+                continue
+            if int(other["week"]) != week or str(other["day"]) != str(new_day):
+                continue
+            other_slots = set(
+                range(int(other["slot"]), int(other["slot"]) + int(other["duration"]))
+            )
+            if not (target_slots & other_slots):
+                continue
+            reasons: List[str] = []
+            if int(other["staff_id"]) == int(new_staff_id):
+                reasons.append("staff")
+            if int(other["room_id"]) == int(new_room_id):
+                reasons.append("room")
+            if groups & set(int(g) for g in other["group_ids"]):
+                reasons.append("group")
+            if reasons:
+                conflicts.append(
+                    {
+                        "activity_id": int(b_id),
+                        "reasons": reasons,
+                    }
+                )
+        conflicts.sort(key=lambda item: int(item["activity_id"]))
+        return conflicts
+
+    def _find_relocation_slots(
+        self,
+        a_id: int,
+        schedule_override: Dict[int, Dict[str, Any]] | None = None,
+        *,
+        limit: int = 20,
+        exclude_starts: Set[Tuple[str, int]] | None = None,
+    ) -> List[Tuple[str, int]]:
+        inst = self.inst
+        if inst is None:
+            return []
+        schedule = self.current_schedule if schedule_override is None else schedule_override
+        info = schedule.get(int(a_id))
+        if info is None:
+            return []
+        room_id = int(info["room_id"])
+        staff_id = int(info["staff_id"])
+        options: List[Tuple[str, int]] = []
+        excluded = set(exclude_starts or set())
+        for day in inst.days:
+            for slot in range(inst.slots_per_day):
+                key = (str(day), int(slot))
+                if key in excluded:
+                    continue
+                ok, _ = self.check_move(
+                    int(a_id),
+                    str(day),
+                    int(slot),
+                    room_id,
+                    staff_id,
+                    schedule_override=schedule,
+                )
+                if ok:
+                    options.append(key)
+                    if len(options) >= int(limit):
+                        return options
+        return options
+
+    def _commit_schedule(self, schedule: Dict[int, Dict[str, Any]], status: str) -> None:
+        self.current_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
+        self._sync_instance_staff_from_schedule(self.current_schedule)
+        self._sync_locks_to_instance()
+        self.update_table()
+        self.update_quality_summary()
+        self.set_status(status)
+        self._refresh_history_buttons()
+
+    def _attempt_swap_timeslots(self, a_id: int, b_id: int) -> Tuple[bool, str]:
+        if a_id not in self.current_schedule or b_id not in self.current_schedule:
+            return False, "Activity not found in schedule."
+        schedule = self._clone_schedule()
+        a = schedule[a_id]
+        b = schedule[b_id]
+        if int(a["week"]) != int(b["week"]):
+            return False, "Cross-week swap is not supported."
+        a_day, a_slot = str(a["day"]), int(a["slot"])
+        b_day, b_slot = str(b["day"]), int(b["slot"])
+        a["day"], a["slot"] = b_day, b_slot
+        b["day"], b["slot"] = a_day, a_slot
+
+        ok_a, reason_a = self.check_move(
+            int(a_id),
+            str(a["day"]),
+            int(a["slot"]),
+            int(a["room_id"]),
+            int(a["staff_id"]),
+            schedule_override=schedule,
+        )
+        if not ok_a:
+            return False, f"Swap invalid for A{a_id}: {reason_a}"
+        ok_b, reason_b = self.check_move(
+            int(b_id),
+            str(b["day"]),
+            int(b["slot"]),
+            int(b["room_id"]),
+            int(b["staff_id"]),
+            schedule_override=schedule,
+        )
+        if not ok_b:
+            return False, f"Swap invalid for A{b_id}: {reason_b}"
+        errors = validate_schedule_against_instance(self.inst, schedule, strict_rooms=False)
+        if errors:
+            return False, f"Swap leaves {len(errors)} hard conflicts."
+
+        self._push_undo_state()
+        self._touch_time_lock_if_present(a_id, str(a["day"]), int(a["slot"]))
+        self._touch_time_lock_if_present(b_id, str(b["day"]), int(b["slot"]))
+        self._commit_schedule(
+            schedule,
+            f"Swapped {self._activity_title(a_id, schedule)} and {self._activity_title(b_id, schedule)}",
+        )
+        return True, ""
+
+    def _attempt_relocate_conflict(
+        self,
+        held_id: int,
+        conflict_id: int,
+        held_day: str,
+        held_slot: int,
+        conflict_day: str,
+        conflict_slot: int,
+    ) -> Tuple[bool, str]:
+        if held_id not in self.current_schedule or conflict_id not in self.current_schedule:
+            return False, "Activity not found in schedule."
+        schedule = self._clone_schedule()
+        schedule[held_id]["day"] = str(held_day)
+        schedule[held_id]["slot"] = int(held_slot)
+        schedule[conflict_id]["day"] = str(conflict_day)
+        schedule[conflict_id]["slot"] = int(conflict_slot)
+
+        ok_held, reason_held = self.check_move(
+            held_id,
+            str(schedule[held_id]["day"]),
+            int(schedule[held_id]["slot"]),
+            int(schedule[held_id]["room_id"]),
+            int(schedule[held_id]["staff_id"]),
+            schedule_override=schedule,
+        )
+        if not ok_held:
+            return False, f"Held move still invalid: {reason_held}"
+        ok_conflict, reason_conflict = self.check_move(
+            conflict_id,
+            str(schedule[conflict_id]["day"]),
+            int(schedule[conflict_id]["slot"]),
+            int(schedule[conflict_id]["room_id"]),
+            int(schedule[conflict_id]["staff_id"]),
+            schedule_override=schedule,
+        )
+        if not ok_conflict:
+            return False, f"Conflict relocation invalid: {reason_conflict}"
+        errors = validate_schedule_against_instance(self.inst, schedule, strict_rooms=False)
+        if errors:
+            return False, f"Plan leaves {len(errors)} hard conflicts."
+
+        self._push_undo_state()
+        self._touch_time_lock_if_present(held_id, str(held_day), int(held_slot))
+        self._touch_time_lock_if_present(
+            conflict_id, str(conflict_day), int(conflict_slot)
+        )
+        self._commit_schedule(
+            schedule,
+            f"Moved {self._activity_title(held_id, schedule)} and relocated {self._activity_title(conflict_id, schedule)}",
+        )
+        return True, ""
+
+    def _attempt_move_held_to(self, target_day: str, target_slot: int) -> None:
+        if self.inst is None or self.held_activity_id is None:
+            return
+        held_id = int(self.held_activity_id)
+        if held_id not in self.current_schedule:
+            self._clear_held_activity()
+            return
+        info = self.current_schedule[held_id]
+        room_id = int(info["room_id"])
+        staff_id = int(info["staff_id"])
+        ok, reason = self.check_move(
+            held_id,
+            str(target_day),
+            int(target_slot),
+            room_id,
+            staff_id,
+        )
+        if ok:
+            schedule = self._clone_schedule()
+            schedule[held_id]["day"] = str(target_day)
+            schedule[held_id]["slot"] = int(target_slot)
+            self._push_undo_state()
+            self._touch_time_lock_if_present(held_id, str(target_day), int(target_slot))
+            self._commit_schedule(
+                schedule,
+                f"Moved {self._activity_title(held_id, schedule)}",
+            )
+            return
+
+        conflicts = self._find_move_conflicts(
+            held_id, str(target_day), int(target_slot), room_id, staff_id
+        )
+        if not conflicts:
+            QMessageBox.warning(self, "Move blocked", reason)
+            return
+
+        schedule_with_held = self._clone_schedule()
+        schedule_with_held[held_id]["day"] = str(target_day)
+        schedule_with_held[held_id]["slot"] = int(target_slot)
+        relocation_options: Dict[int, List[Tuple[str, int]]] = {}
+        for conflict in conflicts:
+            b_id = int(conflict["activity_id"])
+            current_b = self.current_schedule[b_id]
+            relocation_options[b_id] = self._find_relocation_slots(
+                b_id,
+                schedule_override=schedule_with_held,
+                exclude_starts={
+                    (str(current_b["day"]), int(current_b["slot"])),
+                    (str(target_day), int(target_slot)),
+                },
+            )
+
+        dlg = MoveConflictDialog(
+            self,
+            self.inst,
+            self.current_schedule,
+            held_id,
+            str(target_day),
+            int(target_slot),
+            conflicts,
+            relocation_options,
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        decision = dlg.get_decision()
+        if not decision:
+            return
+        kind = str(decision[0])
+        if kind == "swap":
+            b_id = int(decision[1])
+            ok_swap, reason_swap = self._attempt_swap_timeslots(held_id, b_id)
+            if not ok_swap:
+                QMessageBox.warning(self, "Swap blocked", reason_swap)
+        elif kind == "relocate":
+            b_id = int(decision[1])
+            b_day = str(decision[2])
+            b_slot = int(decision[3])
+            ok_move, reason_move = self._attempt_relocate_conflict(
+                held_id,
+                b_id,
+                str(target_day),
+                int(target_slot),
+                b_day,
+                b_slot,
+            )
+            if not ok_move:
+                QMessageBox.warning(self, "Plan blocked", reason_move)
+
+    def on_table_context_menu(self, pos) -> None:
+        if self.inst is None or not self.current_schedule:
+            return
+        item = self.table.itemAt(pos)
+        if item is None:
+            return
+        row = item.row()
+        col = item.column()
+        if row < 0 or col < 0:
+            return
+        week = self._current_week()
+        if week is None:
+            return
+        day = self.inst.days[row]
+        act_ids = list(self._cell_activity_map.get((row, col), []))
+
+        menu = QMenu(self.table)
+        act_hold = None
+        act_edit = None
+        act_focus = None
+        act_toggle_time_lock = None
+        act_toggle_room_lock = None
+        act_swap_here = None
+        if act_ids:
+            act_hold = menu.addAction("Hold activity...")
+            act_focus = menu.addAction("Focus activity...")
+            act_edit = menu.addAction("Edit activity...")
+            act_toggle_time_lock = menu.addAction("Toggle time lock...")
+            act_toggle_room_lock = menu.addAction("Toggle room lock...")
+        act_move_held = None
+        act_show_targets = None
+        act_clear_held = None
+        if self.held_activity_id is not None:
+            menu.addSeparator()
+            act_move_held = menu.addAction("Move held activity here")
+            act_show_targets = menu.addAction("Show held move targets")
+            if act_ids and int(self.held_activity_id) not in act_ids:
+                act_swap_here = menu.addAction("Swap held with activity here...")
+            act_clear_held = menu.addAction("Release held activity")
+        menu.addSeparator()
+        act_show_conflicts = menu.addAction("Open conflict inspector")
+
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen is None:
+            return
+        if chosen == act_hold:
+            a_id = self._choose_activity_from_ids(act_ids, "Hold activity")
+            if a_id is not None:
+                self._set_held_activity(a_id)
+            return
+        if chosen == act_focus:
+            a_id = self._choose_activity_from_ids(act_ids, "Focus activity")
+            if a_id is not None:
+                self._focus_activity(a_id, hold=False)
+            return
+        if chosen == act_edit:
+            self.on_cell_double_clicked(row, col)
+            return
+        if chosen == act_toggle_time_lock:
+            a_id = self._choose_activity_from_ids(act_ids, "Toggle time lock")
+            if a_id is not None:
+                self._toggle_activity_lock(a_id, time_lock=True)
+            return
+        if chosen == act_toggle_room_lock:
+            a_id = self._choose_activity_from_ids(act_ids, "Toggle room lock")
+            if a_id is not None:
+                self._toggle_activity_lock(a_id, time_lock=False)
+            return
+        if chosen == act_move_held:
+            self._attempt_move_held_to(str(day), int(col))
+            return
+        if chosen == act_swap_here:
+            other_ids = [a for a in act_ids if a != int(self.held_activity_id)]
+            b_id = self._choose_activity_from_ids(other_ids, "Swap with held activity")
+            if b_id is not None and self.held_activity_id is not None:
+                ok_swap, reason_swap = self._attempt_swap_timeslots(
+                    int(self.held_activity_id), int(b_id)
+                )
+                if not ok_swap:
+                    QMessageBox.warning(self, "Swap blocked", reason_swap)
+            return
+        if chosen == act_show_targets:
+            if self.held_activity_id is None:
+                return
+            target_map = self._collect_held_target_map(week)
+            valid_targets = [
+                f"{d} S{s + 1}"
+                for d in self.inst.days
+                for s in range(self.inst.slots_per_day)
+                if target_map.get((d, s), False)
+            ]
+            if not valid_targets:
+                QMessageBox.information(
+                    self,
+                    "Held activity targets",
+                    "No valid target slots for the held activity under current hard constraints.",
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Held activity targets",
+                    "Valid slots:\n" + "\n".join(valid_targets),
+                )
+            return
+        if chosen == act_clear_held:
+            self._clear_held_activity()
+            return
+        if chosen == act_show_conflicts:
+            self.on_show_conflicts()
+            return
 
     def _format_solver_attempts(self, res: Dict[str, Any]) -> list[str]:
         meta = res.get("meta")
@@ -829,10 +1534,13 @@ class MainWindow(QMainWindow):
         self.base_schedule = {}
         self.current_schedule = {}
         self.locked_activities = {}
+        self.held_activity_id = None
+        self._reset_history()
         self.set_status(f"Instance generated ({mode})")
         self.populate_weeks()
         self.update_entities()
-        self.clear_table()
+        self.update_table()
+        self.update_quality_summary()
         self._load_constraint_controls_from_instance(self.inst)
 
     def _start_solver_process(self, *, keep_locks: bool) -> None:
@@ -922,11 +1630,68 @@ class MainWindow(QMainWindow):
             return
         self._start_solver_process(keep_locks=True)
 
-    def on_clear_locks(self):
+    def on_undo(self) -> None:
+        if not self._undo_stack:
+            self.set_status("Nothing to undo")
+            return
+        current = self._snapshot_state()
+        prev = self._undo_stack.pop()
+        self._redo_stack.append(current)
+        self._restore_state(prev, "Undo applied")
+        self._refresh_history_buttons()
+
+    def on_redo(self) -> None:
+        if not self._redo_stack:
+            self.set_status("Nothing to redo")
+            return
+        current = self._snapshot_state()
+        nxt = self._redo_stack.pop()
+        self._undo_stack.append(current)
+        self._restore_state(nxt, "Redo applied")
+        self._refresh_history_buttons()
+
+    def on_revert_to_base(self) -> None:
+        if not self.base_schedule:
+            self.set_status("No base solution to revert to")
+            return
+        self._push_undo_state()
+        self.current_schedule = {a_id: info.copy() for a_id, info in self.base_schedule.items()}
         self.locked_activities = {}
-        if self.inst is not None:
-            self.inst.locked_activities = {}
+        self.held_activity_id = None
+        self._sync_instance_staff_from_schedule(self.current_schedule)
+        self._sync_locks_to_instance()
+        self.update_table()
+        self.update_quality_summary()
+        self.set_status("Reverted to base schedule")
+        self._refresh_history_buttons()
+
+    def on_show_conflicts(self) -> None:
+        errors = self._collect_conflict_errors()
+        if not errors:
+            QMessageBox.information(
+                self,
+                "Conflict Inspector",
+                "No hard conflicts detected in the current schedule.",
+            )
+            self.set_status("No hard conflicts")
+            return
+        dlg = ConflictInspectorDialog(self, errors)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            activity_id = dlg.selected_activity_id()
+            if activity_id is not None:
+                self._focus_activity(int(activity_id), hold=False)
+                return
+        self.set_status(f"Conflicts found: {len(errors)}")
+
+    def on_clear_locks(self):
+        if self.locked_activities:
+            self._push_undo_state()
+        self.locked_activities = {}
+        self._sync_locks_to_instance()
+        self.update_table()
+        self.update_quality_summary()
         self.set_status("Locks cleared")
+        self._refresh_history_buttons()
 
     def on_solver_error(self, error):
         self.set_busy(False)
@@ -997,6 +1762,8 @@ class MainWindow(QMainWindow):
         if status not in (0, 4):  # 0=FEASIBLE, 4=OPTIMAL
             self.base_schedule = {}
             self.current_schedule = {}
+            self.held_activity_id = None
+            self._reset_history()
             self.clear_table()
             self.set_status(f"No feasible schedule (status {status})")
             msg = self._build_no_feasible_message(res, int(status))
@@ -1007,6 +1774,8 @@ class MainWindow(QMainWindow):
         self.current_schedule = {
             a_id: info.copy() for a_id, info in self.base_schedule.items()
         }
+        self.held_activity_id = None
+        self._reset_history()
 
         try:
             if self.inst is not None and self.current_schedule:
@@ -1055,15 +1824,13 @@ class MainWindow(QMainWindow):
             improved = ls.improve(base_schedule, iterations=total_iters, max_seconds=max_seconds)
             best_pen = ls.compute_soft_penalty(improved)
 
-            self.current_schedule = {
-                a_id: info.copy() for a_id, info in improved.items()
-            }
-            self.set_status(
+            if improved != self.current_schedule:
+                self._push_undo_state()
+            self._commit_schedule(
+                improved,
                 f"Improved global penalty {base_pen} -> {best_pen} "
-                f"in {total_iters} iterations"
+                f"in {total_iters} iterations",
             )
-            self.update_table()
-            self.update_quality_summary()
 
         except Exception as e:
             traceback.print_exc()
@@ -1246,6 +2013,8 @@ class MainWindow(QMainWindow):
         self.locked_activities = dict(getattr(inst, "locked_activities", {}) or {})
         self.base_schedule = schedule
         self.current_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
+        self.held_activity_id = None
+        self._reset_history()
         self._load_constraint_controls_from_instance(self.inst)
 
         self.populate_weeks()
@@ -1354,6 +2123,8 @@ class MainWindow(QMainWindow):
         self.locked_activities = dict(getattr(inst, "locked_activities", {}) or {})
         self.base_schedule = {}
         self.current_schedule = {}
+        self.held_activity_id = None
+        self._reset_history()
         self._load_constraint_controls_from_instance(self.inst)
         self.populate_weeks()
         self.update_entities()
@@ -1427,6 +2198,8 @@ class MainWindow(QMainWindow):
 
         self.base_schedule = filtered
         self.current_schedule = {a_id: info.copy() for a_id, info in filtered.items()}
+        self.held_activity_id = None
+        self._reset_history()
         # Allow importing partially specified schedules (room_id may be blank).
         # Room consistency can still be repaired/validated after solving/exporting.
         errors = validate_schedule_against_instance(self.inst, self.current_schedule, strict_rooms=False)
@@ -1437,6 +2210,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Invalid schedule", msg)
             self.base_schedule = {}
             self.current_schedule = {}
+            self.held_activity_id = None
             self.clear_table()
             self.set_status("Load error")
             return
@@ -1454,19 +2228,12 @@ class MainWindow(QMainWindow):
     # ----- table rendering -----
 
     def update_table(self):
-        if self.inst is None or not self.current_schedule:
+        if self.inst is None:
             self.clear_table()
             return
-        if self.entity_combo.count() == 0 or self.week_combo.count() == 0:
+        if self.week_combo.count() == 0:
             self.clear_table()
             return
-
-        data = self.entity_combo.currentData()
-        if data is None:
-            self.clear_table()
-            return
-        entity_id = int(data)
-        view_type = self.view_type_combo.currentText()
 
         week_data = self.week_combo.currentData()
         if week_data is None:
@@ -1482,9 +2249,42 @@ class MainWindow(QMainWindow):
         self.table.setVerticalHeaderLabels(days)
         self.table.setHorizontalHeaderLabels([f"S{idx + 1}" for idx in range(S)])
 
-        cell_content: Dict[Tuple[str, int], List[str]] = {
+        # Render an empty calendar right after generation/loading even before solving.
+        if not self.current_schedule:
+            self._cell_activity_map = {}
+            for row in range(len(days)):
+                for col in range(S):
+                    item = QTableWidgetItem("")
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
+                    )
+                    item.setForeground(QBrush(QColor("#f5f5f5")))
+                    self.table.setItem(row, col, item)
+                    self._cell_activity_map[(row, col)] = []
+            self.table.resizeColumnsToContents()
+            self.table.resizeRowsToContents()
+            for c in range(self.table.columnCount()):
+                if self.table.columnWidth(c) < 120:
+                    self.table.setColumnWidth(c, 120)
+            for r in range(self.table.rowCount()):
+                if self.table.rowHeight(r) < 34:
+                    self.table.setRowHeight(r, 34)
+            return
+
+        if self.entity_combo.count() == 0:
+            self.clear_table()
+            return
+        data = self.entity_combo.currentData()
+        if data is None:
+            self.clear_table()
+            return
+        entity_id = int(data)
+        view_type = self.view_type_combo.currentText()
+
+        cell_entries: Dict[Tuple[str, int], List[Tuple[int, str]]] = {
             (d, s): [] for d in days for s in range(S)
         }
+        self._cell_activity_map = {}
 
         for a_id, info in self.current_schedule.items():
             if info["week"] != week:
@@ -1531,18 +2331,39 @@ class MainWindow(QMainWindow):
             for ds in range(dur):
                 s = s0 + ds
                 if 0 <= s < S:
-                    cell_content[(day, s)].append(label)
+                    cell_entries[(day, s)].append((int(a_id), label))
+
+        held_target_map = self._collect_held_target_map(week)
+        held_id = (
+            int(self.held_activity_id)
+            if self.held_activity_id is not None and self.held_activity_id in self.current_schedule
+            else None
+        )
+        held_week_ok = (
+            held_id is not None
+            and int(self.current_schedule[held_id]["week"]) == int(week)
+        )
 
         for row, day in enumerate(days):
             for col in range(S):
-                items = cell_content[(day, col)]
-                text = "\n\n".join(items)
+                entries = cell_entries[(day, col)]
+                ids = [a_id for a_id, _ in entries]
+                text = "\n\n".join(label for _, label in entries)
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(
                     Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
                 )
                 item.setForeground(QBrush(QColor("#f5f5f5")))
+                if ids:
+                    item.setData(Qt.ItemDataRole.UserRole, ids)
+                    item.setToolTip(" / ".join(f"A{a_id}" for a_id in ids))
+                if held_week_ok and held_id is not None:
+                    if held_id in ids:
+                        item.setBackground(QBrush(QColor("#234f7a")))
+                    elif held_target_map.get((day, col), False):
+                        item.setBackground(QBrush(QColor("#2c5f3c")))
                 self.table.setItem(row, col, item)
+                self._cell_activity_map[(row, col)] = ids
 
         self.table.resizeColumnsToContents()
         self.table.resizeRowsToContents()
@@ -1687,10 +2508,34 @@ class MainWindow(QMainWindow):
             self.quality_label.setText("")
             return
 
+        global_penalty = None
+        hard_conflicts = 0
+        try:
+            global_penalty = LocalSearchImprover(self.inst).compute_soft_penalty(
+                self.current_schedule
+            )
+        except Exception:
+            global_penalty = None
+        try:
+            hard_conflicts = len(
+                validate_schedule_against_instance(
+                    self.inst, self.current_schedule, strict_rooms=False
+                )
+            )
+        except Exception:
+            hard_conflicts = 0
+
         penalties = self.compute_group_penalties(self.current_schedule)
         if not penalties:
             self.quality_label.setText("")
             return
+
+        header_parts: List[str] = []
+        if global_penalty is not None:
+            header_parts.append(f"Global soft penalty: {global_penalty}")
+        header_parts.append(f"Hard conflicts: {hard_conflicts}")
+        if self.held_activity_id is not None:
+            header_parts.append(f"Held: A{self.held_activity_id}")
 
         parts: List[str] = []
         for g_id in sorted(self.inst.groups.keys()):
@@ -1699,7 +2544,7 @@ class MainWindow(QMainWindow):
             status = self.classify_group_quality(pen)
             parts.append(f"{g.name}: {pen} ({status})")
 
-        text = "Group quality:\n" + " | ".join(parts)
+        text = " | ".join(header_parts) + "\nGroup quality:\n" + " | ".join(parts)
         self.quality_label.setText(text)
 
     # ----- manual edit -----
@@ -1710,11 +2555,8 @@ class MainWindow(QMainWindow):
         if self.entity_combo.count() == 0 or self.week_combo.count() == 0:
             return
 
-        data = self.entity_combo.currentData()
-        if data is None:
+        if self.entity_combo.currentData() is None:
             return
-        entity_id = int(data)
-        view_type = self.view_type_combo.currentText()
 
         week_data = self.week_combo.currentData()
         if week_data is None:
@@ -1724,27 +2566,7 @@ class MainWindow(QMainWindow):
         day = self.inst.days[row]
         slot = col
 
-        act_ids: List[int] = []
-        for a_id, info in self.current_schedule.items():
-            if info["week"] != week:
-                continue
-            if info["day"] != day:
-                continue
-            s0 = info["slot"]
-            dur = info["duration"]
-            if slot < s0 or slot >= s0 + dur:
-                continue
-
-            if view_type == "Group":
-                if entity_id not in info["group_ids"]:
-                    continue
-            elif view_type == "Staff":
-                if entity_id != info["staff_id"]:
-                    continue
-            else:  # Room
-                if entity_id != info["room_id"]:
-                    continue
-            act_ids.append(a_id)
+        act_ids = self._cell_activity_ids_for_view(day, slot, week)
 
         if not act_ids:
             return
@@ -1759,18 +2581,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Invalid move", reason)
             return
 
-        info = self.current_schedule[a_id]
+        self._push_undo_state()
+        updated_schedule = self._clone_schedule()
+        info = updated_schedule[a_id]
         info["day"] = new_day
         info["slot"] = new_slot
         info["room_id"] = new_room
         info["staff_id"] = new_staff
-
-        # Persist staff assignment onto the instance (solver convention: prof for LEC, TA for TUT/LAB).
-        act = self.inst.activities[a_id]
-        if act.kind == "LEC":
-            act.prof_id = int(new_staff)
-        else:
-            act.ta_id = int(new_staff)
 
         # Update locks (used by re-solve).
         fixed = dict(self.locked_activities.get(a_id, {}))
@@ -1789,9 +2606,9 @@ class MainWindow(QMainWindow):
         else:
             self.locked_activities.pop(a_id, None)
 
-        self.update_table()
-        self.update_quality_summary()
-        self.set_status(f"Edited A{a_id} (locks={len(self.locked_activities)})")
+        self._commit_schedule(
+            updated_schedule, f"Edited A{a_id} (locks={len(self.locked_activities)})"
+        )
 
     def check_move(
         self,
@@ -1800,9 +2617,20 @@ class MainWindow(QMainWindow):
         new_slot: int,
         new_room_id: int,
         new_staff_id: int,
+        schedule_override: Dict[int, Dict[str, Any]] | None = None,
     ) -> Tuple[bool, str]:
         inst = self.inst
-        schedule = self.current_schedule
+        if inst is None:
+            return False, "No instance loaded."
+        schedule = self.current_schedule if schedule_override is None else schedule_override
+        if a_id not in schedule:
+            return False, f"Activity A{a_id} not found in schedule."
+        if a_id not in inst.activities:
+            return False, f"Activity A{a_id} not found in instance."
+        if new_staff_id not in inst.staff:
+            return False, "Unknown staff member."
+        if new_room_id not in inst.rooms:
+            return False, "Unknown room."
         act = inst.activities[a_id]
         info = schedule[a_id]
         w = info["week"]

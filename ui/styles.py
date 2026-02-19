@@ -30,6 +30,20 @@ QSpinBox::up-button:hover, QSpinBox::down-button:hover {
 QSpinBox::up-button:pressed, QSpinBox::down-button:pressed {
     background-color: #38215c;
 }
+QSpinBox::up-arrow {
+    width: 0px;
+    height: 0px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 7px solid #f5f5f5;
+}
+QSpinBox::down-arrow {
+    width: 0px;
+    height: 0px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid #f5f5f5;
+}
 
 QPushButton {
     color: #ffffff;

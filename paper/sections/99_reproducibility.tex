@@ -20,10 +20,10 @@ This command writes:
 For publication/release packaging, we freeze an artifact bundle with commit hash,
 environment snapshot, checksums, and paper inputs:
 \begin{verbatim}
-PYTHON_BIN=.venv/bin/python ./scripts/freeze_release_artifacts.sh v0.2.0
+PYTHON_BIN=.venv/bin/python ./scripts/freeze_release_artifacts.sh v1.0
 \end{verbatim}
 
-The output directory \texttt{release/v0.2.0/} contains:
+The output directory \texttt{release/v1.0/} contains:
 \begin{itemize}[leftmargin=*]
   \item \texttt{environment.txt} (git SHA, Python version, package list, platform),
   \item \texttt{SHA256SUMS} (checksums of included files),

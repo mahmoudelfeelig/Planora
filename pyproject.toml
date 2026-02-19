@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "university-timetabling-scheduler"
-version = "0.1.0"
+version = "1.0"
 description = "University timetabling scheduler using OR-Tools CP-SAT with optional local search and a PyQt desktop UI."
 readme = "README.md"
 requires-python = ">=3.12"

@@ -45,3 +45,17 @@ def test_busy_toggle_disables_controls(qt_app):
     finally:
         win.close()
         win.deleteLater()
+
+
+def test_generate_shows_empty_calendar_before_solve(qt_app):
+    win = MainWindow()
+    try:
+        win.mode_combo.setCurrentText("small_demo")
+        win.on_generate()
+        assert win.inst is not None
+        assert win.current_schedule == {}
+        assert win.table.rowCount() == len(win.inst.days)
+        assert win.table.columnCount() == int(win.inst.slots_per_day)
+    finally:
+        win.close()
+        win.deleteLater()

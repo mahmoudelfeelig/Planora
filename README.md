@@ -131,7 +131,7 @@ PYTHON_BIN=.venv/bin/python ./scripts/run_experiment_batches.sh
 Freeze a release artifact bundle (commit + environment + checksums + paper inputs):
 
 ```bash
-PYTHON_BIN=.venv/bin/python ./scripts/freeze_release_artifacts.sh v0.2.0
+PYTHON_BIN=.venv/bin/python ./scripts/freeze_release_artifacts.sh v1.0
 ```
 
 ## Notes / current limitations

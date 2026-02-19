@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="${1:-v0.2.0}"
+VERSION="${1:-v1.0}"
 OUT_DIR="${ROOT_DIR}/release/${VERSION}"
 PAPER_OUT_DIR="${OUT_DIR}/paper"
 
