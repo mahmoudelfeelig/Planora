@@ -45,23 +45,26 @@ The desktop UI exposes these toggles: room mode (Strict/Fast), objective on/off,
 
 ### Prerequisites
 
-- Python 3.12+ (the repo is Windows-friendly; examples use the `py` launcher).
-- Required:
-  - `ortools`
-- For the desktop UI:
-  - `PyQt6`
-- For DOCX export:
-  - `python-docx`
-- For tests:
-  - `pytest`
+- Python 3.12+
 
-Install dependencies (example):
+Recommended setup:
 
-`py -m pip install ortools PyQt6 python-docx pytest`
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
+```
+
+Optional editable install (exposes `scheduler-cli` and `scheduler-ui` entrypoints):
+
+```bash
+python -m pip install -e .[dev]
+```
 
 ### CLI run (generate + solve + export)
 
-`py main.py`
+`python main.py`
 
 Exports include DOCX, ICS, CSV schedule, PDF group listings, and CSV summary reports.
 
@@ -72,7 +75,7 @@ Exports include DOCX, ICS, CSV schedule, PDF group listings, and CSV summary rep
 
 ### Desktop UI
 
-`py ui/app.py`
+`python ui/app.py`
 
 Workflow:
 
@@ -88,6 +91,19 @@ Workflow:
 Optional solver time limit (seconds) for the UI worker:
 
 - `TT_TIME_LIMIT=300`
+
+### Test and CI commands
+
+Run the same checks used in CI:
+
+```bash
+./scripts/run_ci_checks.sh
+```
+
+This executes:
+- syntax compile checks (`python -m compileall -q core ui utils tests main.py scripts`)
+- non-slow tests (`pytest -m "not slow"`)
+- slow/integration/UI tests (`pytest -m "slow"`)
 
 ## Notes / current limitations
 

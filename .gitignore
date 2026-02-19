@@ -209,3 +209,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local presentation drafts
+paper/presentation_project_overview.md
+
+# Generated timetable artifacts
+timetable_*.docx
+schedule_*.csv
+groups_*.pdf
+ics_*/
+reports_*/

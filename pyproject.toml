@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "university-timetabling-scheduler"
+version = "0.1.0"
+description = "University timetabling scheduler using OR-Tools CP-SAT with optional local search and a PyQt desktop UI."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+  { name = "Scheduler Project Contributors" }
+]
+dependencies = [
+  "ortools==9.15.6755",
+  "PyQt6==6.10.2",
+  "python-docx==1.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.0.2",
+]
+
+[project.scripts]
+scheduler-cli = "main:main"
+scheduler-ui = "ui.app:main"
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+markers = [
+  "slow: slower tests run in the second CI phase",
+  "ui: tests that exercise the desktop UI layer",
+]
