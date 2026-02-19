@@ -12,8 +12,8 @@ class LocalSearchImprover:
     Local search on a feasible CP-SAT schedule.
 
     Keeps feasibility by checking resource occupancy when proposing moves.
-    Optimizes a soft penalty capturing free days, gaps, heavy days, early starts,
-    week-to-week stability, and room consistency.
+    Optimizes a soft penalty capturing free days, gaps, thin/single days, late starts,
+    active-day minimization, week-to-week stability, and room consistency.
     Daily load caps are ignored here by specification; weekly caps are enforced in CP.
     """
 
@@ -353,11 +353,12 @@ class LocalSearchImprover:
         W_STUD_FREE_MF = 5
         W_STUD_GAPS = 5
         W_STAFF_FREE_DAYS = 6
-        W_ACTIVE_DAYS = 3
-        W_EARLY_START = 2
-        W_BALANCE = 2
+        W_ACTIVE_DAYS = 5
+        W_LATE_START = 3
+        W_THIN_DAY = 3
         W_STABILITY = 1
         W_ROOM_CONSISTENCY = 1
+        W_SINGLE_SLOT = 6
 
         penalty = 0
 
@@ -396,7 +397,7 @@ class LocalSearchImprover:
                 if free_mf < want:
                     penalty += W_STUD_FREE_MF * (want - free_mf)
 
-        # gaps, heavy days, early-start discourager
+        # gaps, day shape, late start discourager
         for g_id in inst.groups.keys():
             for w in weeks:
                 for d in days:
@@ -412,10 +413,14 @@ class LocalSearchImprover:
                         prev = v
                     if blocks > 1:
                         penalty += W_STUD_GAPS * (blocks - 1)
-                    if load > 3:
-                        penalty += W_BALANCE * (load - 3)
-                    if occ and occ[0] == 1 and any(occ[s] == 1 for s in range(1, slots)):
-                        penalty += W_EARLY_START
+                    if load == 1:
+                        penalty += W_SINGLE_SLOT
+                    if load == 2:
+                        penalty += W_THIN_DAY
+                    if load > 0:
+                        first_slot = next((i for i, v in enumerate(occ) if v == 1), None)
+                        if first_slot is not None and first_slot >= 2:
+                            penalty += W_LATE_START
 
         # staff free day
         for s_id in inst.staff.keys():
@@ -464,6 +469,8 @@ class LocalSearchImprover:
         start_temp: float = 5.0,
         end_temp: float = 0.1,
         max_seconds: float | None = None,
+        progress_every: int = 1000,
+        progress_hook = None,
     ):
         current = {a_id: info.copy() for a_id, info in schedule.items()}
         best = {a_id: info.copy() for a_id, info in schedule.items()}
@@ -539,5 +546,12 @@ class LocalSearchImprover:
                 else:
                     for cid in cluster:
                         self._apply_room_move(current, cid, old_room)
+
+            if progress_hook and progress_every > 0 and (it + 1) % progress_every == 0:
+                try:
+                    progress_hook(it + 1, best_pen, current_pen)
+                except Exception:
+                    # keep search running even if the hook fails
+                    pass
 
         return best

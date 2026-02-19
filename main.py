@@ -16,7 +16,11 @@ from utils.exporter import (
     export_groups_ics_per_id,
     export_staff_ics_per_id,
     export_rooms_ics_per_id,
+    export_schedule_to_csv,
+    export_groups_pdf,
+    export_summary_reports,
 )
+from utils.specs import validate_instance_against_spec
 
 # ---------- time labels ----------
 
@@ -160,10 +164,11 @@ def compute_group_penalties(inst: Instance, schedule: Dict[int, Dict[str, Any]])
     W_STUD_FREE_DAYS = 10
     W_STUD_FREE_MF = 5
     W_STUD_GAPS = 5
-    W_ACTIVE_DAYS = 3
-    W_EARLY_START = 2
-    W_BALANCE = 2
+    W_ACTIVE_DAYS = 5
+    W_LATE_START = 3
+    W_THIN_DAY = 3
     W_STABILITY = 1
+    W_SINGLE_SLOT = 6
 
     group_occ: Dict[tuple, int] = {}
     for g_id in inst.groups.keys():
@@ -201,19 +206,20 @@ def compute_group_penalties(inst: Instance, schedule: Dict[int, Dict[str, Any]])
                 pen += W_STUD_FREE_MF * (g.preferred_free_days - free_mf)
             for d in days:
                 occ = [group_occ[g_id, w, d, s] for s in range(S)]
-                blocks = 0; prev = 0; load = 0
-                for v in occ:
+                blocks = 0; prev = 0; load = 0; first_slot = None
+                for idx, v in enumerate(occ):
                     if v == 1 and prev == 0: blocks += 1
-                    if v == 1: load += 1
+                    if v == 1:
+                        load += 1
+                        if first_slot is None:
+                            first_slot = idx
                     prev = v
                 if blocks > 1: pen += W_STUD_GAPS * (blocks - 1)
-                if load > 3: pen += W_BALANCE * (load - 3)
+                if load == 1: pen += W_SINGLE_SLOT
+                if load == 2: pen += W_THIN_DAY
+                if first_slot is not None and first_slot >= 2: pen += W_LATE_START
             active_days = sum(day_active[g_id, w, d] for d in days)
             if active_days > 3: pen += W_ACTIVE_DAYS * (active_days - 3)
-            for d in days:
-                occ = [group_occ[g_id, w, d, s] for s in range(S)]
-                if occ[0] == 1 and any(occ[s] == 1 for s in range(1, S)):
-                    pen += W_EARLY_START
         for wi in range(1, len(weeks)):
             w_prev = weeks[wi-1]; w_curr = weeks[wi]
             for d in days:
@@ -243,7 +249,7 @@ def print_group_quality(inst: Instance, schedule: Dict[int, Dict[str, Any]]) -> 
 def main():
     MODE = "target_case"
 
-    CP_TIME_LIMIT = float(os.getenv("TT_TIME_LIMIT", "120.0"))
+    CP_TIME_LIMIT = float(os.getenv("TT_TIME_LIMIT", "300.0"))
     CP_WORKERS = int(os.getenv("TT_CP_WORKERS", "8"))
     LS_ITERATIONS = int(os.getenv("TT_LS_ITERATIONS", "10000"))
     LS_START_TEMP = 5.0
@@ -257,21 +263,44 @@ def main():
 
     EXPORT_DOCX = f"timetable_{MODE}.docx"
     EXPORT_ICS_DIR = f"ics_{MODE}"
+    EXPORT_CSV = f"schedule_{MODE}.csv"
+    EXPORT_PDF = f"groups_{MODE}.pdf"
+    EXPORT_REPORTS_DIR = f"reports_{MODE}"
 
     inst = generate_instance(mode=MODE)
 
     # normalize to satisfy new hard rules
     normalize_instance_for_spec(inst)
     stamp_instance_time(inst, DAY_START, SLOT_MINUTES, BREAK_MINUTES)
+    validate_instance_against_spec(inst)
     print_instance_stats(inst)
     check_staff_weekly_capacity(inst)  # prints warnings only
 
     room_mode = os.getenv("TT_ROOM_MODE", "cp_rooms")
     use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
     use_objective = use_objective_env not in ("0", "false", "False", "no")
+    log_progress_env = os.getenv("TT_CP_LOG", "").strip().lower()
+    log_progress = log_progress_env not in ("", "0", "false", "no")
+
+    strict_limit_env = os.getenv("TT_STRICT_TIME_LIMIT")
+    strict_limit = float(strict_limit_env) if strict_limit_env else min(CP_TIME_LIMIT, 300.0)
 
     solver_model = TimetableSolver(inst, room_mode=room_mode, use_objective=use_objective)
-    cp_solver, status = solver_model.solve(time_limit_seconds=CP_TIME_LIMIT, workers=CP_WORKERS)
+    cp_solver, status = solver_model.solve(
+        time_limit_seconds=strict_limit,
+        workers=CP_WORKERS,
+        log_progress=log_progress,
+    )
+
+    # Fallback to faster mode if strict solve fails (unknown/infeasible)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE) and room_mode == "cp_rooms":
+        print("Strict CP-rooming did not find a solution (status =", status, "); falling back to greedy rooming...")
+        solver_model = TimetableSolver(inst, room_mode="greedy", use_objective=False)
+        cp_solver, status = solver_model.solve(
+            time_limit_seconds=CP_TIME_LIMIT,
+            workers=CP_WORKERS,
+            log_progress=log_progress,
+        )
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         print("No feasible solution, status:", status)
@@ -286,10 +315,20 @@ def main():
         ls = LocalSearchImprover(inst)
         base_pen = ls.compute_soft_penalty(schedule)
         print("Soft penalty before local search:", base_pen)
+
+        ls_progress_env = os.getenv("TT_LS_PROGRESS", "1").strip().lower()
+        ls_progress = ls_progress_env not in ("0", "false", "no")
+
+        def _ls_progress_hook(iteration: int, best_pen: int, current_pen: int):
+            if ls_progress:
+                print(f"[ls] iter {iteration}/{LS_ITERATIONS} best={best_pen} current={current_pen}")
+
         improved = ls.improve(
             schedule, iterations=LS_ITERATIONS,
             start_temp=LS_START_TEMP, end_temp=LS_END_TEMP,
             max_seconds=LS_MAX_SECONDS,
+            progress_every=1000,
+            progress_hook=_ls_progress_hook if ls_progress else None,
         )
         print("Soft penalty after local search:", ls.compute_soft_penalty(improved))
 
@@ -320,6 +359,29 @@ def main():
         print("ICS exported to:", EXPORT_ICS_DIR)
     except Exception as e:
         print("ICS export error:", e)
+        if getattr(e, "reason", None):
+            print("Rooming failure reason:", getattr(e, "reason", None))
+
+    # CSV schedule export
+    try:
+        export_schedule_to_csv(inst, improved, EXPORT_CSV)
+        print("CSV exported to:", EXPORT_CSV)
+    except Exception as e:
+        print("CSV export error:", e)
+
+    # PDF group export
+    try:
+        export_groups_pdf(inst, improved, EXPORT_PDF)
+        print("PDF exported to:", EXPORT_PDF)
+    except Exception as e:
+        print("PDF export error:", e)
+
+    # Summary reports
+    try:
+        export_summary_reports(inst, improved, EXPORT_REPORTS_DIR)
+        print("Reports exported to:", EXPORT_REPORTS_DIR)
+    except Exception as e:
+        print("Report export error:", e)
 
 
 if __name__ == "__main__":

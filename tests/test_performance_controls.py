@@ -30,6 +30,21 @@ def test_local_search_respects_time_budget():
     assert elapsed < 0.3
 
 
+def test_greedy_rooming_is_fast():
+    inst, schedule = _solve_small_instance()
+    # Clear rooms to force greedy assignment again
+    for info in schedule.values():
+        info["room_id"] = None
+
+    start = time.perf_counter()
+    from core.solver_cp_sat import assign_rooms_greedily
+    assign_rooms_greedily(inst, schedule)
+    elapsed = time.perf_counter() - start
+
+    # Should be fast for a small instance.
+    assert elapsed < 1.0
+
+
 def test_local_search_does_not_move_locked_activity():
     inst, schedule = _solve_small_instance()
     # Lock the first activity
