@@ -1,5 +1,6 @@
 After a feasible timetable is produced by CP-SAT, an optional local-search improver attempts to reduce a composite soft penalty.
 The improver is implemented in \texttt{core/metaheuristics.py}.
+This follows the common pattern of feasibility-first construction plus neighborhood-based improvement widely used in course timetabling~\cite{lewis2008metaheuristics,bettinelli2015overview}.
 
 \subsection{Neighborhood}
 At each iteration, the algorithm samples an activity (or a cluster of co-start activities) and proposes one of:
@@ -21,4 +22,3 @@ Candidate moves are filtered by:
 We use a simulated annealing style rule.
 Let $\Delta$ be the change in penalty.
 Moves with $\Delta\le 0$ are accepted; moves with $\Delta>0$ are accepted with probability $\exp(-\Delta/T)$ where $T$ follows an exponential cooling schedule from $T_0$ to $T_1$.
-

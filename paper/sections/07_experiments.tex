@@ -13,31 +13,44 @@ For each mode and seed, we record:
 \end{itemize}
 
 The runs in Table~\ref{tab:perf} were produced by \texttt{scripts/run\_experiments.py}
-with seed \(1\), time limit \(120\) seconds, \(4\) workers, CP objective enabled, and
-local-search budget \texttt{ls\_iters=2000}, \texttt{ls\_seconds=15}. The generated JSONL
-output was converted to LaTeX rows using \texttt{scripts/jsonl\_to\_latex\_table.py}.
+on modes \texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, and \texttt{target\_case}
+with seeds \(\{1,2\}\), requested room modes \(\{\texttt{cp\_rooms}, \texttt{greedy}\}\),
+strict time budget \(15\) seconds, global per-attempt time budget \(45\) seconds, and \(4\) workers.
 
-On \texttt{small\_demo}, both rooming modes reached \texttt{OPTIMAL}; \texttt{cp\_rooms}
-obtained a lower penalty than \texttt{greedy} at higher CP runtime. On \texttt{target\_case},
-both modes returned \texttt{UNKNOWN} within the 120-second limit, so no feasible schedule was
-extracted and penalty values are reported as ``-''.
+We enabled two reliability strategies:
+\begin{itemize}[leftmargin=*]
+  \item retry the same room mode with objective disabled when the first objective-enabled solve is not feasible;
+  \item if the requested mode is \texttt{cp\_rooms} and still non-feasible, fall back to \texttt{greedy} with objective disabled.
+\end{itemize}
+
+The generated JSONL output was converted to LaTeX rows using \texttt{scripts/jsonl\_to\_latex\_table.py}.
+
+Observed trends:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{small\_demo}: 100\% feasible in both requested modes with low median runtime (\(\approx 15\)s).
+  \item \texttt{target\_case}: 100\% feasible under the retry/fallback strategy; requesting \texttt{greedy} is faster than requesting \texttt{cp\_rooms} because strict-room attempts often consume budget before fallback.
+  \item \texttt{block\_profs}: 0\% feasible for both requested modes under this configuration.
+  \item \texttt{mixed\_large}: timing can be found but room assignment fails in the studied seeds (reported as rooming failure with missing room-type capacity for some activities).
+\end{itemize}
 
 \subsection{Public Benchmarks (Optional)}
-If using public benchmarks (e.g., International Timetabling Competition instances~\cite{itc2007_track3}), we must define a mapping from benchmark input to this paper's data model and constraints.
+If using public benchmarks (e.g., International Timetabling Competition instances~\cite{itc2007_track3,mccollum2010itc}), we must define a mapping from benchmark input to this paper's data model and constraints.
 Only benchmarks that can be mapped without altering the stated constraints should be reported.
+For curriculum-based course timetabling datasets, reporting should follow the published data/validation conventions~\cite{bonutti2012benchmarking,bettinelli2015overview}.
 
 \subsection{Tables and Figures}
-Table~\ref{tab:perf} reports the measured runtime and quality metrics from these runs.
+Table~\ref{tab:perf} reports aggregated metrics by scenario and requested room mode.
+The full per-run breakdown is available in \texttt{sections/07\_experiments\_runs.tex}.
 
 \begin{table}[h]
 \centering
-\begin{tabular}{lrrrrr}
+\begin{tabular}{lrrrrrrr}
 \toprule
-Scenario & \#Acts & Mode & CP time (s) & Penalty (base) & Penalty (LS) \\
+Scenario & Req. mode & Runs & Feasible (\%) & Median CP (s) & Median base penalty & Median LS penalty & Objective retries \\
 \midrule
 \input{sections/07_experiments_table.tex}
 \bottomrule
 \end{tabular}
-\caption{Performance and quality on generated instances (\texttt{-} means no feasible schedule extracted within the time limit).}
+\caption{Aggregated performance and quality metrics on generated instances (\texttt{-} means no feasible schedule extracted).}
 \label{tab:perf}
 \end{table}

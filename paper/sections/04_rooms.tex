@@ -3,6 +3,7 @@ Room assignment is supported in two modes:
   \item \textbf{Integrated rooming} (\texttt{room\_mode=cp\_rooms}): CP-SAT selects rooms and enforces per-room non-overlap, eligibility, and room availability.
   \item \textbf{Post-processing rooming} (\texttt{room\_mode=greedy}): CP-SAT assigns times only; rooms are assigned afterward by a greedy algorithm.
 \end{enumerate}
+Using either integrated or decoupled room assignment is consistent with hybrid/decomposition strategies studied in timetabling literature~\cite{muller2009hybrid,bettinelli2015overview}.
 
 \subsection{Eligibility}
 Eligibility is based on:
@@ -24,4 +25,3 @@ It prioritizes:
   \item smallest-capacity eligible room that fits (to preserve large rooms).
 \end{itemize}
 If rooming fails, the implementation raises a structured error with a reason code (e.g., capacity, availability, tag mismatch) for debugging and UI display.
-

@@ -1,6 +1,9 @@
 This paper describes a university timetabling system that schedules academic activities on a fixed weekly grid.
 The primary goal is feasibility under hard constraints (no conflicts, availability, room eligibility), with secondary quality objectives such as reducing gaps and improving schedule stability across weeks.
 
+Automated timetabling is a mature research area with broad surveys on exact and heuristic methods~\cite{schaerf1999survey,lewis2008metaheuristics}.
+Benchmark-driven progress has been shaped by the International Timetabling Competitions and follow-up analyses~\cite{mccollum2010itc,bonutti2012benchmarking,bettinelli2015overview}.
+
 Our contributions are:
 \begin{itemize}[leftmargin=*]
   \item A CP-SAT feasibility model with optional weighted soft penalties, implemented in OR-Tools CP-SAT~\cite{cpsatlp,ortools,ortools_cite,perron_didier_gay_cpsatlp_2023}.
