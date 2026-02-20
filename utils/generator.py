@@ -196,7 +196,7 @@ def generate_custom_instance(
       - course maps use 1-based local staff indexes (1..num_professors / 1..num_tas)
       - all courses are assigned exactly one professor and one TA
       - when maps are partial/empty, remaining courses are assigned round-robin
-      - program_overrides rows may define: program_id, groups, courses, courses_per_group
+      - program_overrides rows may define: program_id, program_name, groups, courses, courses_per_group
       - course_patterns rows may define: course_id, lecture_count, tutorial_count,
         lab_type (NONE/NORMAL/SPECIAL), lab_duration, lab_tag
     """
@@ -217,6 +217,7 @@ def generate_custom_instance(
     program_group_counts = [int(default_groups) for _ in range(int(num_programs))]
     program_course_counts = [int(default_courses) for _ in range(int(num_programs))]
     program_courses_per_group = [int(default_courses) for _ in range(int(num_programs))]
+    program_names = [f"Program-{idx}" for idx in range(1, int(num_programs) + 1)]
 
     for raw in list(program_overrides or []):
         if not isinstance(raw, dict):
@@ -228,6 +229,7 @@ def generate_custom_instance(
         if pid < 1 or pid > int(num_programs):
             continue
         idx = pid - 1
+        pname = str(raw.get("program_name", "")).strip()
         groups_val = raw.get("groups", program_group_counts[idx])
         courses_val = raw.get("courses", program_course_counts[idx])
         cpg_val = raw.get("courses_per_group", program_courses_per_group[idx])
@@ -240,6 +242,8 @@ def generate_custom_instance(
         program_group_counts[idx] = groups_int
         program_course_counts[idx] = courses_int
         program_courses_per_group[idx] = min(courses_int, cpg_int)
+        if pname:
+            program_names[idx] = pname
 
     course_pattern_overrides: Dict[int, Dict[str, Any]] = {}
     if isinstance(course_patterns, dict):
@@ -303,6 +307,7 @@ def generate_custom_instance(
         program_group_counts=program_group_counts,
         program_course_counts=program_course_counts,
         program_courses_per_group=program_courses_per_group,
+        program_names=program_names,
         course_pattern_overrides=course_pattern_overrides,
     )
 
@@ -404,6 +409,7 @@ def _generate_university(
     program_group_counts: List[int] | None = None,
     program_course_counts: List[int] | None = None,
     program_courses_per_group: List[int] | None = None,
+    program_names: List[str] | None = None,
     course_pattern_overrides: Dict[int, Dict[str, Any]] | None = None,
 ) -> Instance:
     """
@@ -427,6 +433,8 @@ def _generate_university(
         raise ValueError("program_course_counts must match num_programs")
     if program_courses_per_group is not None and len(program_courses_per_group) != int(num_programs):
         raise ValueError("program_courses_per_group must match num_programs")
+    if program_names is not None and len(program_names) != int(num_programs):
+        raise ValueError("program_names must match num_programs")
 
     programs: Dict[int, Program] = {}
     groups: Dict[int, Group] = {}
@@ -760,11 +768,16 @@ def _generate_university(
     for p in range(1, num_programs + 1):
         c_ids = program_to_course_ids[p]
         g_ids = program_to_group_ids[p]
+        p_name = (
+            str(program_names[p - 1]).strip()
+            if program_names is not None and str(program_names[p - 1]).strip()
+            else f"Program-{p}"
+        )
         for g_id in g_ids:
             groups[g_id].course_ids = list(group_to_course_ids.get(g_id, c_ids))
         programs[p] = Program(
             id=p,
-            name=f"Program-{p}",
+            name=p_name,
             course_ids=list(c_ids),
             group_ids=list(g_ids),
         )

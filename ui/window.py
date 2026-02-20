@@ -143,6 +143,57 @@ class StepSpinBox(QSpinBox):
         self._btn_minus.raise_()
 
 
+class NumericTableItem(QTableWidgetItem):
+    """Table item that sorts numeric text by numeric value."""
+
+    @staticmethod
+    def _to_number(value: str) -> float | int | None:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            if text.isdigit() or (text.startswith("-") and text[1:].isdigit()):
+                return int(text)
+            return float(text)
+        except Exception:
+            return None
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:
+        if isinstance(other, QTableWidgetItem):
+            a_num = self._to_number(self.text())
+            b_num = self._to_number(other.text())
+            if a_num is not None and b_num is not None:
+                return a_num < b_num
+            if a_num is not None and b_num is None:
+                return True
+            if a_num is None and b_num is not None:
+                return False
+            return self.text().lower() < other.text().lower()
+        return super().__lt__(other)
+
+
+class NaturalSortTableItem(QTableWidgetItem):
+    """Table item that sorts mixed text/number tokens naturally."""
+
+    @staticmethod
+    def _key(value: str) -> tuple:
+        parts = re.split(r"(\d+)", str(value).strip().lower())
+        key: List[Any] = []
+        for part in parts:
+            if not part:
+                continue
+            if part.isdigit():
+                key.append(int(part))
+            else:
+                key.append(part)
+        return tuple(key)
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:
+        if isinstance(other, QTableWidgetItem):
+            return self._key(self.text()) < self._key(other.text())
+        return super().__lt__(other)
+
+
 class MainWindow(QMainWindow):
     DEFAULT_PREVIEW_DAYS: Tuple[str, ...] = ("MON", "TUE", "WED", "THU", "FRI", "SAT")
     DEFAULT_PREVIEW_SLOTS: int = 5
@@ -243,7 +294,7 @@ class MainWindow(QMainWindow):
         self._worker_preset_counts: Dict[str, int] = {}
         cpu_count = max(1, min(64, int(os.cpu_count() or DEFAULT_CP_WORKERS)))
         workers_min = 1
-        workers_med = max(1, min(cpu_count, max(2, cpu_count // 2)))
+        workers_med = max(1, min(cpu_count, int(DEFAULT_CP_WORKERS)))
         workers_max = cpu_count
         for label, value in [
             ("Min", workers_min),
@@ -439,11 +490,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(DARK_STYLE)
 
         self._build_menus()
-        self._reset_custom_program_table()
-        self._reset_custom_course_pattern_table()
-        self._reset_custom_staff_table()
-        self._reset_custom_room_table()
-        self._refresh_staff_course_picker()
+        self._ensure_custom_generator_seeded()
         self._load_constraint_controls_from_instance(None)
         self._apply_control_tooltips()
         self._refresh_history_buttons()
@@ -834,9 +881,118 @@ class MainWindow(QMainWindow):
         self.project_menu.addAction(act_load_inst)
         self.project_menu.addAction(act_load_sched)
 
+    def _build_collapsible_section(
+        self,
+        title: str,
+        content: QWidget,
+        *,
+        collapsed: bool = True,
+    ) -> QWidget:
+        wrapper = QWidget()
+        wrapper_layout = QVBoxLayout(wrapper)
+        wrapper_layout.setContentsMargins(0, 0, 0, 0)
+        wrapper_layout.setSpacing(4)
+
+        toggle = QToolButton(wrapper)
+        toggle.setText(str(title))
+        toggle.setCheckable(True)
+        toggle.setChecked(not collapsed)
+        toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toggle.setArrowType(
+            Qt.ArrowType.DownArrow if not collapsed else Qt.ArrowType.RightArrow
+        )
+        toggle.setProperty("sectionToggle", True)
+        toggle.setStyleSheet("QToolButton { font-weight: 600; text-align: left; }")
+
+        content.setVisible(not collapsed)
+
+        def _on_toggle(opened: bool) -> None:
+            content.setVisible(bool(opened))
+            toggle.setArrowType(
+                Qt.ArrowType.DownArrow if opened else Qt.ArrowType.RightArrow
+            )
+
+        toggle.toggled.connect(_on_toggle)
+        wrapper_layout.addWidget(toggle)
+        wrapper_layout.addWidget(content)
+        return wrapper
+
+    def _ensure_custom_generator_seeded(self) -> None:
+        # Keep custom tables populated even after resize/layout edge-cases.
+        try:
+            if hasattr(self, "custom_program_table") and self.custom_program_table.rowCount() <= 0:
+                self._reset_custom_program_table()
+            if hasattr(self, "custom_course_pattern_table") and self.custom_course_pattern_table.rowCount() <= 0:
+                self._reset_custom_course_pattern_table()
+            if hasattr(self, "custom_staff_table") and self.custom_staff_table.rowCount() <= 0:
+                self._reset_custom_staff_table()
+            if hasattr(self, "custom_room_table") and self.custom_room_table.rowCount() <= 0:
+                self._reset_custom_room_table()
+            if hasattr(self, "staff_course_picker_combo"):
+                self._refresh_staff_course_picker()
+            self._normalize_custom_table_item_types()
+        except Exception:
+            traceback.print_exc()
+
+    def _normalize_custom_table_item_types(self) -> None:
+        """Ensure key sortable columns use numeric-aware item classes."""
+        if hasattr(self, "custom_program_table"):
+            was_sorting = self.custom_program_table.isSortingEnabled()
+            self.custom_program_table.setSortingEnabled(False)
+            for row in range(self.custom_program_table.rowCount()):
+                item = self.custom_program_table.item(row, 0)
+                txt = str(item.text()).strip() if item is not None else str(row + 1)
+                self.custom_program_table.setItem(
+                    row, 0, self._make_locked_item(txt, numeric=True)
+                )
+                name_item = self.custom_program_table.item(row, 1)
+                if name_item is not None:
+                    self.custom_program_table.setItem(
+                        row, 1, NaturalSortTableItem(str(name_item.text()))
+                    )
+            self.custom_program_table.setSortingEnabled(was_sorting)
+        if hasattr(self, "custom_course_pattern_table"):
+            was_sorting = self.custom_course_pattern_table.isSortingEnabled()
+            self.custom_course_pattern_table.setSortingEnabled(False)
+            for row in range(self.custom_course_pattern_table.rowCount()):
+                id_item = self.custom_course_pattern_table.item(row, 0)
+                id_txt = str(id_item.text()).strip() if id_item is not None else str(row + 1)
+                self.custom_course_pattern_table.setItem(
+                    row, 0, self._make_locked_item(id_txt, numeric=True)
+                )
+                name_item = self.custom_course_pattern_table.item(row, 1)
+                if name_item is not None:
+                    name_txt = str(name_item.text())
+                    self.custom_course_pattern_table.setItem(
+                        row, 1, self._make_locked_item(name_txt, natural=True)
+                    )
+            self.custom_course_pattern_table.setSortingEnabled(was_sorting)
+        if hasattr(self, "custom_staff_table"):
+            was_sorting = self.custom_staff_table.isSortingEnabled()
+            self.custom_staff_table.setSortingEnabled(False)
+            for row in range(self.custom_staff_table.rowCount()):
+                name_item = self.custom_staff_table.item(row, 0)
+                if name_item is not None:
+                    self.custom_staff_table.setItem(
+                        row, 0, NaturalSortTableItem(str(name_item.text()))
+                    )
+            self.custom_staff_table.setSortingEnabled(was_sorting)
+        if hasattr(self, "custom_room_table"):
+            was_sorting = self.custom_room_table.isSortingEnabled()
+            self.custom_room_table.setSortingEnabled(False)
+            for row in range(self.custom_room_table.rowCount()):
+                name_item = self.custom_room_table.item(row, 0)
+                if name_item is not None:
+                    self.custom_room_table.setItem(
+                        row, 0, NaturalSortTableItem(str(name_item.text()))
+                    )
+            self.custom_room_table.setSortingEnabled(was_sorting)
+
     def _build_generator_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
 
         counts_box = QGroupBox("Scenario Size")
         counts_form = QFormLayout(counts_box)
@@ -857,7 +1013,9 @@ class MainWindow(QMainWindow):
         counts_form.addRow("Groups per program", self.custom_groups_per_program_spin)
         counts_form.addRow("Courses per program", self.custom_courses_per_program_spin)
         counts_form.addRow("Course names (CSV)", self.custom_course_names_edit)
-        layout.addWidget(counts_box)
+        layout.addWidget(
+            self._build_collapsible_section("Scenario Size", counts_box, collapsed=True)
+        )
 
         plan_box = QGroupBox("Program/Course Overrides")
         plan_layout = QVBoxLayout(plan_box)
@@ -869,15 +1027,19 @@ class MainWindow(QMainWindow):
         plan_controls.addStretch(1)
         plan_layout.addLayout(plan_controls)
 
-        self.custom_program_table = QTableWidget(0, 4)
+        self.custom_program_table = QTableWidget(0, 5)
         self.custom_program_table.setHorizontalHeaderLabels(
-            ["Program", "Groups", "Courses", "Courses/Group"]
+            ["Program ID", "Program Name", "Groups", "Courses", "Courses/Group"]
         )
         self.custom_program_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
         self.custom_program_table.verticalHeader().setVisible(False)
         self.custom_program_table.setSortingEnabled(True)
+        self.custom_program_table.setMinimumHeight(220)
+        self.custom_program_table.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         plan_layout.addWidget(self.custom_program_table)
 
         self.custom_course_pattern_table = QTableWidget(0, 7)
@@ -897,6 +1059,10 @@ class MainWindow(QMainWindow):
         )
         self.custom_course_pattern_table.verticalHeader().setVisible(False)
         self.custom_course_pattern_table.setSortingEnabled(True)
+        self.custom_course_pattern_table.setMinimumHeight(300)
+        self.custom_course_pattern_table.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         plan_layout.addWidget(self.custom_course_pattern_table)
 
         plan_hint = QLabel(
@@ -905,7 +1071,11 @@ class MainWindow(QMainWindow):
         )
         plan_hint.setWordWrap(True)
         plan_layout.addWidget(plan_hint)
-        layout.addWidget(plan_box)
+        layout.addWidget(
+            self._build_collapsible_section(
+                "Program/Course Overrides", plan_box, collapsed=True
+            )
+        )
 
         staff_box = QGroupBox("Staff Mapping")
         staff_layout = QVBoxLayout(staff_box)
@@ -940,8 +1110,14 @@ class MainWindow(QMainWindow):
         self.custom_staff_table.horizontalHeader().setSortIndicatorShown(True)
         self.custom_staff_table.verticalHeader().setVisible(False)
         self.custom_staff_table.setSortingEnabled(True)
+        self.custom_staff_table.setMinimumHeight(360)
+        self.custom_staff_table.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         staff_layout.addWidget(self.custom_staff_table)
-        layout.addWidget(staff_box)
+        layout.addWidget(
+            self._build_collapsible_section("Staff Mapping", staff_box, collapsed=True)
+        )
 
         room_box = QGroupBox("Room Definitions")
         room_layout = QVBoxLayout(room_box)
@@ -965,8 +1141,14 @@ class MainWindow(QMainWindow):
         self.custom_room_table.horizontalHeader().setSortIndicatorShown(True)
         self.custom_room_table.verticalHeader().setVisible(False)
         self.custom_room_table.setSortingEnabled(True)
+        self.custom_room_table.setMinimumHeight(280)
+        self.custom_room_table.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         room_layout.addWidget(self.custom_room_table)
-        layout.addWidget(room_box)
+        layout.addWidget(
+            self._build_collapsible_section("Room Definitions", room_box, collapsed=True)
+        )
 
         hint = QLabel(
             "Use mode 'custom' to generate from these tables.\n"
@@ -974,7 +1156,15 @@ class MainWindow(QMainWindow):
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
-        return tab
+        layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidget(content)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        return scroll
 
     def _build_constraints_tab(self) -> QWidget:
         tab = QWidget()
@@ -1100,10 +1290,21 @@ class MainWindow(QMainWindow):
         return "BIG"
 
     @staticmethod
-    def _make_locked_item(text: str) -> QTableWidgetItem:
-        item = QTableWidgetItem(text)
+    def _make_locked_item(
+        text: str, *, numeric: bool = False, natural: bool = False
+    ) -> QTableWidgetItem:
+        if numeric:
+            item: QTableWidgetItem = NumericTableItem(text)
+        elif natural:
+            item = NaturalSortTableItem(text)
+        else:
+            item = QTableWidgetItem(text)
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         return item
+
+    @staticmethod
+    def _make_numeric_item(value: Any) -> QTableWidgetItem:
+        return NumericTableItem(str(value))
 
     def _find_room_combo_position(self, combo: QComboBox) -> Tuple[int, int]:
         for row in range(self.custom_room_table.rowCount()):
@@ -1166,7 +1367,7 @@ class MainWindow(QMainWindow):
         self.custom_staff_table.setRowCount(rows)
         row = 0
         for idx in range(1, int(self.custom_num_profs_spin.value()) + 1):
-            name_item = QTableWidgetItem(f"Prof-{idx}")
+            name_item = NaturalSortTableItem(f"Prof-{idx}")
             role_item = QTableWidgetItem("PROF")
             role_item.setFlags(role_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.custom_staff_table.setItem(row, 0, name_item)
@@ -1175,7 +1376,7 @@ class MainWindow(QMainWindow):
             self.custom_staff_table.setItem(row, 3, QTableWidgetItem(",".join(self.inst.days if self.inst else ["MON", "TUE", "WED", "THU", "FRI", "SAT"])))
             row += 1
         for idx in range(1, int(self.custom_num_tas_spin.value()) + 1):
-            name_item = QTableWidgetItem(f"TA-{idx}")
+            name_item = NaturalSortTableItem(f"TA-{idx}")
             role_item = QTableWidgetItem("TA")
             role_item.setFlags(role_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.custom_staff_table.setItem(row, 0, name_item)
@@ -1196,10 +1397,12 @@ class MainWindow(QMainWindow):
             rtype = defaults[row % len(defaults)]
             cat = "MEDIUM"
             cap = ROOM_CATEGORY_CAPACITY[cat]
-            self.custom_room_table.setItem(row, 0, QTableWidgetItem(f"{rtype.title()}-{row + 1}"))
+            self.custom_room_table.setItem(
+                row, 0, NaturalSortTableItem(f"{rtype.title()}-{row + 1}")
+            )
             self._set_room_enum_cell(row, 1, options=ROOM_TYPE_CHOICES, value=rtype)
             self._set_room_enum_cell(row, 2, options=ROOM_CATEGORY_CHOICES, value=cat)
-            self.custom_room_table.setItem(row, 3, QTableWidgetItem(str(cap)))
+            self.custom_room_table.setItem(row, 3, self._make_numeric_item(cap))
             self.custom_room_table.setItem(row, 4, QTableWidgetItem("" if rtype != "SPECIALIZED_LAB" else "LAB1"))
         self.custom_room_table.blockSignals(False)
         self.custom_room_table.setSortingEnabled(was_sorting)
@@ -1219,10 +1422,21 @@ class MainWindow(QMainWindow):
         self._custom_program_table_internal_change = True
         self.custom_program_table.setRowCount(rows)
         for row in range(rows):
-            self.custom_program_table.setItem(row, 0, self._make_locked_item(str(row + 1)))
-            self.custom_program_table.setItem(row, 1, QTableWidgetItem(str(default_groups)))
-            self.custom_program_table.setItem(row, 2, QTableWidgetItem(str(default_courses)))
-            self.custom_program_table.setItem(row, 3, QTableWidgetItem(str(default_courses)))
+            self.custom_program_table.setItem(
+                row, 0, self._make_locked_item(str(row + 1), numeric=True)
+            )
+            self.custom_program_table.setItem(
+                row, 1, NaturalSortTableItem(f"Program-{row + 1}")
+            )
+            self.custom_program_table.setItem(
+                row, 2, self._make_numeric_item(default_groups)
+            )
+            self.custom_program_table.setItem(
+                row, 3, self._make_numeric_item(default_courses)
+            )
+            self.custom_program_table.setItem(
+                row, 4, self._make_numeric_item(default_courses)
+            )
         self._custom_program_table_internal_change = False
         self.custom_program_table.blockSignals(False)
         self.custom_program_table.setSortingEnabled(was_sorting)
@@ -1234,7 +1448,7 @@ class MainWindow(QMainWindow):
             )
         total = 0
         for row in range(self.custom_program_table.rowCount()):
-            item = self.custom_program_table.item(row, 2)
+            item = self.custom_program_table.item(row, 3)
             try:
                 courses = max(1, int(str(item.text()).strip())) if item is not None else int(
                     self.custom_courses_per_program_spin.value()
@@ -1342,12 +1556,22 @@ class MainWindow(QMainWindow):
             lab_tag = str(prev.get("lab_tag", ""))
             if lab_type not in COURSE_LAB_TYPE_CHOICES:
                 lab_type = "NONE"
-            self.custom_course_pattern_table.setItem(row, 0, self._make_locked_item(str(c_id)))
-            self.custom_course_pattern_table.setItem(row, 1, self._make_locked_item(name))
-            self.custom_course_pattern_table.setItem(row, 2, QTableWidgetItem(lec))
-            self.custom_course_pattern_table.setItem(row, 3, QTableWidgetItem(tut))
+            self.custom_course_pattern_table.setItem(
+                row, 0, self._make_locked_item(str(c_id), numeric=True)
+            )
+            self.custom_course_pattern_table.setItem(
+                row, 1, self._make_locked_item(name, natural=True)
+            )
+            self.custom_course_pattern_table.setItem(
+                row, 2, self._make_numeric_item(lec)
+            )
+            self.custom_course_pattern_table.setItem(
+                row, 3, self._make_numeric_item(tut)
+            )
             self._set_course_lab_type_cell(row, lab_type)
-            self.custom_course_pattern_table.setItem(row, 5, QTableWidgetItem(lab_dur))
+            self.custom_course_pattern_table.setItem(
+                row, 5, self._make_numeric_item(lab_dur)
+            )
             self.custom_course_pattern_table.setItem(
                 row,
                 6,
@@ -1362,28 +1586,28 @@ class MainWindow(QMainWindow):
             return
         if item is None:
             return
-        if item.column() not in (1, 2, 3):
+        if item.column() not in (2, 3, 4):
             return
         self._custom_program_table_internal_change = True
         try:
             try:
                 val = max(1, int(str(item.text()).strip()))
             except Exception:
-                if item.column() == 1:
+                if item.column() == 2:
                     val = int(self.custom_groups_per_program_spin.value())
                 else:
                     val = int(self.custom_courses_per_program_spin.value())
             item.setText(str(val))
-            if item.column() == 2:
-                cpg_item = self.custom_program_table.item(item.row(), 3)
+            if item.column() == 3:
+                cpg_item = self.custom_program_table.item(item.row(), 4)
                 if cpg_item is not None:
                     try:
                         cpg = max(1, int(str(cpg_item.text()).strip()))
                     except Exception:
                         cpg = int(val)
                     cpg_item.setText(str(min(int(val), int(cpg))))
-            elif item.column() == 3:
-                courses_item = self.custom_program_table.item(item.row(), 2)
+            elif item.column() == 4:
+                courses_item = self.custom_program_table.item(item.row(), 3)
                 if courses_item is not None:
                     try:
                         courses = max(1, int(str(courses_item.text()).strip()))
@@ -1550,11 +1774,17 @@ class MainWindow(QMainWindow):
 
         for row in range(self.custom_program_table.rowCount()):
             pid_item = self.custom_program_table.item(row, 0)
-            groups_item = self.custom_program_table.item(row, 1)
-            courses_item = self.custom_program_table.item(row, 2)
-            cpg_item = self.custom_program_table.item(row, 3)
+            name_item = self.custom_program_table.item(row, 1)
+            groups_item = self.custom_program_table.item(row, 2)
+            courses_item = self.custom_program_table.item(row, 3)
+            cpg_item = self.custom_program_table.item(row, 4)
             try:
                 pid = int(str(pid_item.text()).strip()) if pid_item is not None else row + 1
+                pname = (
+                    str(name_item.text()).strip()
+                    if name_item is not None and str(name_item.text()).strip()
+                    else f"Program-{int(pid)}"
+                )
                 groups = max(1, int(str(groups_item.text()).strip())) if groups_item is not None else int(self.custom_groups_per_program_spin.value())
                 courses = max(1, int(str(courses_item.text()).strip())) if courses_item is not None else int(self.custom_courses_per_program_spin.value())
                 courses_per_group = max(1, int(str(cpg_item.text()).strip())) if cpg_item is not None else courses
@@ -1563,6 +1793,7 @@ class MainWindow(QMainWindow):
             program_overrides.append(
                 {
                     "program_id": int(pid),
+                    "program_name": str(pname),
                     "groups": int(groups),
                     "courses": int(courses),
                     "courses_per_group": min(int(courses), int(courses_per_group)),
@@ -1707,6 +1938,7 @@ class MainWindow(QMainWindow):
 
     def _on_mode_changed(self) -> None:
         if self.mode_combo.currentText() == "custom":
+            self._ensure_custom_generator_seeded()
             self.workspace_tabs.setCurrentIndex(1)
 
     # ----- helpers -----
@@ -3279,6 +3511,7 @@ class MainWindow(QMainWindow):
         mode = self.mode_combo.currentText()
         try:
             if mode == "custom":
+                self._ensure_custom_generator_seeded()
                 inst = generate_custom_instance(**self._collect_custom_generation_config())
             else:
                 inst = generate_instance(mode=mode)

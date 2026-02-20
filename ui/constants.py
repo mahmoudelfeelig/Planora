@@ -4,4 +4,4 @@ DEFAULT_DAY_START = "08:30"
 DEFAULT_SLOT_MINUTES = 90
 DEFAULT_BREAK_MINUTES = 0
 DEFAULT_TIME_LIMIT = 300  # seconds
-DEFAULT_CP_WORKERS = max(4, (os.cpu_count() or 4))
+DEFAULT_CP_WORKERS = max(1, min(8, int(os.cpu_count() or 8)))
