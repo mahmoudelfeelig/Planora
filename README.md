@@ -178,3 +178,7 @@ PYTHON_BIN=.venv/bin/python ./scripts/freeze_release_artifacts.sh v1.0
 - The built-in generator focuses on `LEC_TUT` and `LAB_ONLY` course patterns; other structure types can be added by extending `generator.py`.
 - Data import is file-based (JSON/PKL/CSV); schedules are validated against hard rules on load.
 - Comparison reporting is summary-only (no side-by-side visualization).
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later). See `LICENSE`.
