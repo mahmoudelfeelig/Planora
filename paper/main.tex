@@ -5,10 +5,12 @@
 \usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage{hyperref}
+\usepackage{xurl}
 \usepackage{microtype}
 \usepackage{enumitem}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{placeins}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 
@@ -57,6 +59,7 @@ We provide model details, system architecture, release-ready reproducibility too
 
 \section{Experimental Evaluation}
 \input{sections/07_experiments.tex}
+\FloatBarrier
 
 \section{Limitations and Future Work}
 \input{sections/08_limitations.tex}
@@ -67,7 +70,7 @@ We provide model details, system architecture, release-ready reproducibility too
 \bibliographystyle{IEEEtran}
 \bibliography{refs}
 
-\appendix
+\appendices
 \section{Reproducibility Notes}
 \input{sections/99_reproducibility.tex}
 

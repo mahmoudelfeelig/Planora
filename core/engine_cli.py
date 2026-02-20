@@ -4,6 +4,7 @@ import sys
 import os
 import pickle
 import time
+import json
 import traceback
 from typing import Dict, Any
 
@@ -95,6 +96,11 @@ def main() -> int:
 
     # Build and solve the CP model
     try:
+        def _emit_progress(event: str, **payload: object) -> None:
+            msg = {"event": str(event)}
+            msg.update(payload)
+            print(f"[progress] {json.dumps(msg, separators=(',', ':'))}", flush=True)
+
         room_mode = os.getenv("TT_ROOM_MODE", "cp_rooms")
         use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
         use_objective = use_objective_env not in ("0", "false", "False", "no")
@@ -117,12 +123,22 @@ def main() -> int:
 
         def _solve_attempt(mode: str, objective: bool, limit: float | None):
             nonlocal attempts
+            attempt_idx = len(attempts) + 1
+            _emit_progress(
+                "solve_attempt_start",
+                attempt=attempt_idx,
+                mode=str(mode),
+                objective=bool(objective),
+                limit_seconds=(float(limit) if limit is not None else None),
+            )
             model = TimetableSolver(inst, room_mode=mode, use_objective=objective)
+            t0 = time.perf_counter()
             sat_solver, sat_status = model.solve(
                 time_limit_seconds=limit,
                 workers=workers,
                 log_progress=log_progress,
             )
+            elapsed = time.perf_counter() - t0
             attempts.append(
                 {
                     "room_mode": mode,
@@ -130,6 +146,14 @@ def main() -> int:
                     "time_limit_seconds": limit,
                     "status": int(sat_status),
                 }
+            )
+            _emit_progress(
+                "solve_attempt_done",
+                attempt=attempt_idx,
+                mode=str(mode),
+                objective=bool(objective),
+                status=int(sat_status),
+                elapsed_seconds=float(elapsed),
             )
             return model, sat_solver, sat_status
 
@@ -150,11 +174,23 @@ def main() -> int:
         improve_max_rounds = _read_int_env("TT_IMPROVE_MAX_ROUNDS")
         if improve_max_rounds is None:
             improve_max_rounds = 12
+        _emit_progress(
+            "run_start",
+            phased=bool(phased_solve),
+            room_mode=str(room_mode),
+            use_objective=bool(use_objective),
+            retry_without_objective=bool(retry_without_objective),
+            strict_limit_seconds=(float(strict_limit) if strict_limit is not None else None),
+            time_limit_seconds=(float(time_limit) if time_limit is not None else None),
+            improve_total_seconds=float(improve_total_seconds),
+            improve_max_rounds=int(improve_max_rounds),
+        )
 
         if phased_solve:
             feasibility_limit = feasibility_seconds if feasibility_seconds is not None else strict_limit
             solver_model, sat, status = _solve_attempt(room_mode, False, feasibility_limit)
             if room_mode == "cp_rooms" and not _is_feasible(status):
+                _emit_progress("solve_fallback", from_mode="cp_rooms", to_mode="greedy")
                 solver_model, sat, status = _solve_attempt("greedy", False, feasibility_limit)
             meta["phased"] = {
                 "enabled": True,
@@ -173,6 +209,7 @@ def main() -> int:
 
             # Fallback: if strict mode still fails, retry with greedy rooming and no objective for feasibility.
             if room_mode == "cp_rooms" and not _is_feasible(status):
+                _emit_progress("solve_fallback", from_mode="cp_rooms", to_mode="greedy")
                 solver_model, sat, status = _solve_attempt("greedy", False, time_limit)
             meta["phased"] = {"enabled": False}
     except Exception as e:
@@ -244,6 +281,12 @@ def main() -> int:
 
     if phased_solve and improve_total_seconds > 0:
         try:
+            _emit_progress(
+                "improve_start",
+                total_seconds=float(improve_total_seconds),
+                max_rounds=int(improve_max_rounds),
+                iters_per_slice=int(improve_iters_per_slice),
+            )
             improver = LocalSearchImprover(inst)
             best_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
             best_penalty = int(improver.compute_soft_penalty(best_schedule))
@@ -283,6 +326,16 @@ def main() -> int:
                         "best_penalty": best_penalty,
                     }
                 )
+                _emit_progress(
+                    "improve_round",
+                    round=int(round_idx),
+                    max_rounds=int(improve_max_rounds),
+                    candidate_penalty=int(candidate_penalty),
+                    best_penalty=int(best_penalty),
+                    accepted=bool(accepted),
+                    elapsed_seconds=float(time.perf_counter() - start_ts),
+                    total_seconds=float(improve_total_seconds),
+                )
 
             schedule = best_schedule
             meta["improvement"] = {
@@ -292,6 +345,12 @@ def main() -> int:
                 "rounds": rounds,
                 "elapsed_seconds": time.perf_counter() - start_ts,
             }
+            _emit_progress(
+                "improve_done",
+                rounds_completed=int(len(rounds)),
+                final_penalty=int(best_penalty),
+                elapsed_seconds=float(time.perf_counter() - start_ts),
+            )
         except Exception as e:
             meta["improvement"] = {"enabled": True, "error": str(e)}
 
@@ -337,6 +396,10 @@ def main() -> int:
         return 5
 
     # Brief log line for the merged QProcess output
+    try:
+        _emit_progress("run_done", status=int(ui_status), attempts=int(len(attempts)))
+    except Exception:
+        pass
     print(f"[ok] solved. activities={len(inst.activities)} status={ui_status} (raw={status}) attempts={len(attempts)}")
     return 0
 

@@ -8,6 +8,7 @@ import tempfile
 import traceback
 import time
 import re
+import json
 from typing import Dict, Any, Tuple, List, Set
 
 # Allow running directly (python ui/window.py) by ensuring repo root on sys.path
@@ -92,6 +93,7 @@ ROOM_TYPE_CHOICES: Tuple[str, ...] = (
     "SPECIALIZED_LAB",
 )
 ROOM_CATEGORY_CHOICES: Tuple[str, ...] = ("SMALL", "MEDIUM", "BIG")
+COURSE_LAB_TYPE_CHOICES: Tuple[str, ...] = ("NONE", "NORMAL", "SPECIAL")
 
 
 class StepSpinBox(QSpinBox):
@@ -154,6 +156,7 @@ class MainWindow(QMainWindow):
 
         self.inst: Instance | None = None
         self.base_schedule: Dict[int, Dict[str, Any]] = {}
+        self._manual_highlight_base_schedule: Dict[int, Dict[str, Any]] = {}
         self.current_schedule: Dict[int, Dict[str, Any]] = {}
         self.locked_activities: Dict[int, Dict[str, Any]] = {}
         self.held_activity_id: int | None = None
@@ -169,16 +172,25 @@ class MainWindow(QMainWindow):
         self._solve_progress_timer: QTimer | None = None
         self._solve_started_at: float | None = None
         self._solve_expected_seconds: float = 0.0
+        self._solve_progress_percent: int = 0
+        self._solve_progress_context: Dict[str, Any] = {}
+        self._solve_attempt_started_at: float | None = None
+        self._solver_output_log: str = ""
+        self._solver_output_partial: str = ""
         self._table_relayout_pending = False
         self._layout_stabilize_pending: bool = False
         self.top_widget: QWidget | None = None
         self._top_controls_height_cache: int | None = None
         self._status_full_text: str = "Ready"
         self._live_improve_mode: bool = False
+        self._improve_running: bool = False
+        self._improve_stop_requested: bool = False
         self._maximize_on_first_show: bool = True
         self.tmp_inst_path: str | None = None
         self.tmp_res_path: str | None = None
         self._room_table_internal_change = False
+        self._custom_program_table_internal_change = False
+        self._custom_course_pattern_table_internal_change = False
 
         self._build_ui()
         self._connect_signals()
@@ -187,9 +199,9 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self):
         self.top_widget = QWidget()
-        top_layout = QGridLayout(self.top_widget)
-        top_layout.setHorizontalSpacing(10)
-        top_layout.setVerticalSpacing(6)
+        top_layout = QVBoxLayout(self.top_widget)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(6)
 
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(
@@ -208,6 +220,8 @@ class MainWindow(QMainWindow):
         self.solve_button = QPushButton("Solve")
         self.clear_locks_button = QPushButton("Clear Locks")
         self.improve_button = QPushButton("Improve")
+        self.stop_improve_button = QPushButton("Stop Improving")
+        self.stop_improve_button.setEnabled(False)
         self.undo_button = QPushButton("Undo")
         self.redo_button = QPushButton("Redo")
         self.revert_button = QPushButton("Revert Base")
@@ -225,20 +239,40 @@ class MainWindow(QMainWindow):
         self.time_limit_spin.setValue(DEFAULT_TIME_LIMIT)
         self.time_limit_spin.setSuffix(" s")
 
-        self.workers_spin = StepSpinBox()
-        self.workers_spin.setRange(1, 64)
-        self.workers_spin.setValue(DEFAULT_CP_WORKERS)
+        self.workers_preset_combo = QComboBox()
+        self._worker_preset_counts: Dict[str, int] = {}
+        cpu_count = max(1, min(64, int(os.cpu_count() or DEFAULT_CP_WORKERS)))
+        workers_min = 1
+        workers_med = max(1, min(cpu_count, max(2, cpu_count // 2)))
+        workers_max = cpu_count
+        for label, value in [
+            ("Min", workers_min),
+            ("Medium", workers_med),
+            ("Max", workers_max),
+        ]:
+            self.workers_preset_combo.addItem(f"{label} ({int(value)})", int(value))
+            self._worker_preset_counts[str(label).lower()] = int(value)
+        # Default to medium unless DEFAULT_CP_WORKERS clearly matches another preset.
+        default_idx = 1
+        for idx in range(self.workers_preset_combo.count()):
+            data = self.workers_preset_combo.itemData(idx)
+            if int(data) == int(DEFAULT_CP_WORKERS):
+                default_idx = idx
+                break
+        self.workers_preset_combo.setCurrentIndex(default_idx)
 
         self.improve_runs_spin = StepSpinBox()
         self.improve_runs_spin.setRange(10, 100000)
         self.improve_runs_spin.setSingleStep(10)
         self.improve_runs_spin.setValue(1000)
         self.improve_runs_spin.setMinimumWidth(90)
+        self.improve_runs_spin.setMaximumWidth(130)
 
         self.ls_time_spin = StepSpinBox()
         self.ls_time_spin.setRange(0, 600)
         self.ls_time_spin.setValue(10)
         self.ls_time_spin.setSuffix(" s")
+        self.ls_time_spin.setMaximumWidth(120)
 
         self.export_menu_btn = QToolButton()
         self.export_menu_btn.setText("Export")
@@ -261,56 +295,76 @@ class MainWindow(QMainWindow):
         self.quality_label = QLabel("")
         self.quality_label.setWordWrap(True)
 
+        def _pair_widget(label: str, widget: QWidget) -> QWidget:
+            box = QWidget()
+            lay = QHBoxLayout(box)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(4)
+            lay.addWidget(QLabel(label))
+            lay.addWidget(widget)
+            return box
+
         # Row 0: main actions
-        r = 0
-        c = 0
-        top_layout.addWidget(QLabel("Mode:"), r, c); c += 1
-        top_layout.addWidget(self.mode_combo, r, c); c += 1
-        top_layout.addWidget(self.generate_button, r, c); c += 1
-        top_layout.addWidget(self.solve_button, r, c); c += 1
-        top_layout.addWidget(self.clear_locks_button, r, c); c += 1
-        top_layout.addWidget(self.improve_button, r, c); c += 1
-        top_layout.addWidget(self.export_menu_btn, r, c); c += 1
-        top_layout.addWidget(self.project_menu_btn, r, c); c += 1
-        top_layout.addWidget(self.undo_button, r, c); c += 1
-        top_layout.addWidget(self.redo_button, r, c); c += 1
-        top_layout.addWidget(self.revert_button, r, c); c += 1
-        top_layout.addWidget(self.conflicts_button, r, c); c += 1
+        row_actions = QHBoxLayout()
+        row_actions.setContentsMargins(8, 1, 8, 1)
+        row_actions.setSpacing(8)
+        action_widgets: List[QWidget] = [
+            _pair_widget("Mode:", self.mode_combo),
+            self.generate_button,
+            self.solve_button,
+            self.clear_locks_button,
+            self.improve_button,
+            self.stop_improve_button,
+            self.export_menu_btn,
+            self.project_menu_btn,
+            self.undo_button,
+            self.redo_button,
+            self.revert_button,
+            self.conflicts_button,
+        ]
+        for idx, widget in enumerate(action_widgets):
+            row_actions.addWidget(widget)
+            if idx < len(action_widgets) - 1:
+                row_actions.addStretch(1)
+        top_layout.addLayout(row_actions)
 
         # Row 1: tuning
-        r = 1
-        c = 0
-        top_layout.addWidget(QLabel("LS iters:"), r, c); c += 1
-        top_layout.addWidget(self.improve_runs_spin, r, c); c += 1
-        top_layout.addWidget(QLabel("LS time:"), r, c); c += 1
-        top_layout.addWidget(self.ls_time_spin, r, c); c += 1
-        top_layout.addWidget(QLabel("Room mode:"), r, c); c += 1
-        top_layout.addWidget(self.room_mode_combo, r, c); c += 1
-        top_layout.addWidget(self.objective_cb, r, c); c += 1
-        top_layout.addWidget(QLabel("Limit:"), r, c); c += 1
-        top_layout.addWidget(self.time_limit_spin, r, c); c += 1
-        top_layout.addWidget(QLabel("Workers:"), r, c); c += 1
-        top_layout.addWidget(self.workers_spin, r, c); c += 1
+        row_tuning = QHBoxLayout()
+        row_tuning.setContentsMargins(8, 1, 8, 1)
+        row_tuning.setSpacing(10)
+        tuning_widgets: List[QWidget] = [
+            _pair_widget("LS iters:", self.improve_runs_spin),
+            _pair_widget("LS time:", self.ls_time_spin),
+            _pair_widget("Room mode:", self.room_mode_combo),
+            self.objective_cb,
+            _pair_widget("Limit:", self.time_limit_spin),
+            _pair_widget("Workers:", self.workers_preset_combo),
+        ]
+        for idx, widget in enumerate(tuning_widgets):
+            row_tuning.addWidget(widget)
+            if idx < len(tuning_widgets) - 1:
+                row_tuning.addStretch(1)
+        top_layout.addLayout(row_tuning)
 
         # Row 2: view controls + status
-        r = 2
-        c = 0
-        top_layout.addWidget(QLabel("View:"), r, c); c += 1
-        top_layout.addWidget(self.view_type_combo, r, c); c += 1
-        top_layout.addWidget(self.entity_combo, r, c); c += 1
-        top_layout.addWidget(QLabel("Week:"), r, c); c += 1
-        top_layout.addWidget(self.week_combo, r, c); c += 1
-        status_col = c
-        top_layout.addWidget(self.status_label, r, status_col, 1, 3)
-        top_layout.setColumnStretch(status_col, 1)
+        row_view = QHBoxLayout()
+        row_view.setContentsMargins(8, 1, 8, 1)
+        row_view.setSpacing(10)
+        row_view.addWidget(_pair_widget("View:", self.view_type_combo))
+        row_view.addWidget(self.entity_combo)
+        row_view.addWidget(_pair_widget("Week:", self.week_combo))
+        row_view.addWidget(self.status_label, 1)
+        top_layout.addLayout(row_view)
 
         # Emphasize primary admin controls and improve discoverability.
         self.improve_button.setMaximumWidth(96)
+        self.stop_improve_button.setMinimumWidth(126)
         self.export_menu_btn.setMinimumWidth(92)
         self.project_menu_btn.setMinimumWidth(92)
         self.view_type_combo.setMinimumWidth(120)
         self.entity_combo.setMinimumWidth(220)
         self.week_combo.setMinimumWidth(96)
+        self.workers_preset_combo.setMinimumWidth(120)
         self.status_label.setWordWrap(False)
         self.status_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.entity_combo.setSizeAdjustPolicy(
@@ -385,6 +439,8 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(DARK_STYLE)
 
         self._build_menus()
+        self._reset_custom_program_table()
+        self._reset_custom_course_pattern_table()
         self._reset_custom_staff_table()
         self._reset_custom_room_table()
         self._refresh_staff_course_picker()
@@ -425,35 +481,46 @@ class MainWindow(QMainWindow):
         w = int(self.width())
         if w >= 1700:
             improve_max = 96
+            stop_min = 132
             menu_min = 96
             view_min = 130
             entity_min = 260
             week_min = 110
+            workers_min = 130
         elif w >= 1450:
             improve_max = 90
+            stop_min = 126
             menu_min = 90
             view_min = 116
             entity_min = 220
             week_min = 100
+            workers_min = 124
         elif w >= 1250:
             improve_max = 84
+            stop_min = 120
             menu_min = 84
             view_min = 102
             entity_min = 180
             week_min = 92
+            workers_min = 116
         else:
             improve_max = 76
+            stop_min = 112
             menu_min = 78
             view_min = 88
             entity_min = 140
             week_min = 84
+            workers_min = 108
 
         self.improve_button.setMaximumWidth(improve_max)
+        self.stop_improve_button.setMinimumWidth(stop_min)
         self.export_menu_btn.setMinimumWidth(menu_min)
         self.project_menu_btn.setMinimumWidth(menu_min)
         self.view_type_combo.setMinimumWidth(view_min)
         self.entity_combo.setMinimumWidth(entity_min)
         self.week_combo.setMinimumWidth(week_min)
+        if hasattr(self, "workers_preset_combo"):
+            self.workers_preset_combo.setMinimumWidth(workers_min)
         self.top_widget.setMinimumWidth(0)
         if hasattr(self, "top_controls_scroll"):
             self.top_controls_scroll.setMinimumWidth(0)
@@ -552,6 +619,7 @@ class MainWindow(QMainWindow):
         self.solve_button.setToolTip("Run the solver from scratch.")
         self.clear_locks_button.setToolTip("Remove all time/room locks from activities.")
         self.improve_button.setToolTip("Run local-search improvement on the current schedule.")
+        self.stop_improve_button.setToolTip("Request a graceful stop for the active improvement run.")
         self.undo_button.setToolTip("Undo the last manual/admin schedule change.")
         self.redo_button.setToolTip("Redo the last undone schedule change.")
         self.revert_button.setToolTip("Restore the current schedule to the base solved schedule.")
@@ -572,7 +640,9 @@ class MainWindow(QMainWindow):
         self.entity_combo.setToolTip("Select which entity to view in the timetable.")
         self.week_combo.setToolTip("Select academic week.")
         self.time_limit_spin.setToolTip("Maximum solver runtime (seconds).")
-        self.workers_spin.setToolTip("Number of CP-SAT worker threads.")
+        self.workers_preset_combo.setToolTip(
+            "CP-SAT worker preset: Min=1 thread, Medium=about half cores, Max=all available cores."
+        )
         self.improve_runs_spin.setToolTip("Maximum local-search iterations.")
         self.ls_time_spin.setToolTip("Maximum local-search runtime (seconds).")
         self.selected_activity_combo.setToolTip(
@@ -605,7 +675,7 @@ class MainWindow(QMainWindow):
             "<span style='color:#6fe38a'>green</span>=better held target (lower global score), "
             "<span style='color:#d8a958'>amber</span>=worse held target (higher global score), "
             "<span style='color:#ffd84d'>yellow</span>=held target conflicts, "
-            "<span style='color:#ff86dd'>pink</span>=manually changed from base, "
+            "<span style='color:#ff86dd'>pink</span>=manual admin edits, "
             "<span style='color:#ff6b6b'>red</span>=current hard conflict, "
             "<span style='color:#7ab7ff'>blue</span>=held activity."
         )
@@ -663,6 +733,7 @@ class MainWindow(QMainWindow):
         self.solve_button.clicked.connect(self.on_solve)
         self.clear_locks_button.clicked.connect(self.on_clear_locks)
         self.improve_button.clicked.connect(self.on_improve)
+        self.stop_improve_button.clicked.connect(self.on_stop_improve)
         self.undo_button.clicked.connect(self.on_undo)
         self.redo_button.clicked.connect(self.on_redo)
         self.revert_button.clicked.connect(self.on_revert_to_base)
@@ -670,12 +741,19 @@ class MainWindow(QMainWindow):
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self.custom_reset_staff_btn.clicked.connect(self._reset_custom_staff_table)
         self.custom_reset_rooms_btn.clicked.connect(self._reset_custom_room_table)
-        self.staff_add_course_btn.clicked.connect(self._on_add_course_to_selected_staff)
-        self.custom_programs_spin.valueChanged.connect(self._refresh_staff_course_picker)
-        self.custom_courses_per_program_spin.valueChanged.connect(
-            self._refresh_staff_course_picker
+        self.custom_reset_programs_btn.clicked.connect(self._reset_custom_program_table)
+        self.custom_reset_course_patterns_btn.clicked.connect(
+            self._reset_custom_course_pattern_table
         )
+        self.staff_add_course_btn.clicked.connect(self._on_add_course_to_selected_staff)
+        self.custom_programs_spin.valueChanged.connect(self._on_custom_size_changed)
+        self.custom_groups_per_program_spin.valueChanged.connect(self._on_custom_size_changed)
+        self.custom_courses_per_program_spin.valueChanged.connect(self._on_custom_size_changed)
         self.custom_course_names_edit.textChanged.connect(self._refresh_staff_course_picker)
+        self.custom_course_names_edit.textChanged.connect(
+            self._reset_custom_course_pattern_table
+        )
+        self.custom_program_table.itemChanged.connect(self._on_custom_program_table_item_changed)
         self.custom_room_table.itemChanged.connect(self._on_room_table_item_changed)
         self.apply_constraints_btn.clicked.connect(self.on_apply_constraints_to_instance)
         self.view_type_combo.currentIndexChanged.connect(self.update_entities)
@@ -780,6 +858,54 @@ class MainWindow(QMainWindow):
         counts_form.addRow("Courses per program", self.custom_courses_per_program_spin)
         counts_form.addRow("Course names (CSV)", self.custom_course_names_edit)
         layout.addWidget(counts_box)
+
+        plan_box = QGroupBox("Program/Course Overrides")
+        plan_layout = QVBoxLayout(plan_box)
+        plan_controls = QHBoxLayout()
+        self.custom_reset_programs_btn = QPushButton("Reset Program Rows")
+        self.custom_reset_course_patterns_btn = QPushButton("Reset Course Patterns")
+        plan_controls.addWidget(self.custom_reset_programs_btn)
+        plan_controls.addWidget(self.custom_reset_course_patterns_btn)
+        plan_controls.addStretch(1)
+        plan_layout.addLayout(plan_controls)
+
+        self.custom_program_table = QTableWidget(0, 4)
+        self.custom_program_table.setHorizontalHeaderLabels(
+            ["Program", "Groups", "Courses", "Courses/Group"]
+        )
+        self.custom_program_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.custom_program_table.verticalHeader().setVisible(False)
+        self.custom_program_table.setSortingEnabled(True)
+        plan_layout.addWidget(self.custom_program_table)
+
+        self.custom_course_pattern_table = QTableWidget(0, 7)
+        self.custom_course_pattern_table.setHorizontalHeaderLabels(
+            [
+                "Course ID",
+                "Course Name",
+                "LEC Count",
+                "TUT Count",
+                "Lab Type",
+                "Lab Dur",
+                "Lab Tag",
+            ]
+        )
+        self.custom_course_pattern_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.custom_course_pattern_table.verticalHeader().setVisible(False)
+        self.custom_course_pattern_table.setSortingEnabled(True)
+        plan_layout.addWidget(self.custom_course_pattern_table)
+
+        plan_hint = QLabel(
+            "Program rows allow different groups/courses per program and courses per group.\n"
+            "Course pattern rows allow per-course LEC/TUT totals and lab type (NONE/NORMAL/SPECIAL)."
+        )
+        plan_hint.setWordWrap(True)
+        plan_layout.addWidget(plan_hint)
+        layout.addWidget(plan_box)
 
         staff_box = QGroupBox("Staff Mapping")
         staff_layout = QVBoxLayout(staff_box)
@@ -1078,6 +1204,197 @@ class MainWindow(QMainWindow):
         self.custom_room_table.blockSignals(False)
         self.custom_room_table.setSortingEnabled(was_sorting)
 
+    def _on_custom_size_changed(self, *_args: Any) -> None:
+        self._reset_custom_program_table()
+        self._reset_custom_course_pattern_table()
+        self._refresh_staff_course_picker()
+
+    def _reset_custom_program_table(self) -> None:
+        rows = int(self.custom_programs_spin.value())
+        default_groups = int(self.custom_groups_per_program_spin.value())
+        default_courses = int(self.custom_courses_per_program_spin.value())
+        was_sorting = self.custom_program_table.isSortingEnabled()
+        self.custom_program_table.setSortingEnabled(False)
+        self.custom_program_table.blockSignals(True)
+        self._custom_program_table_internal_change = True
+        self.custom_program_table.setRowCount(rows)
+        for row in range(rows):
+            self.custom_program_table.setItem(row, 0, self._make_locked_item(str(row + 1)))
+            self.custom_program_table.setItem(row, 1, QTableWidgetItem(str(default_groups)))
+            self.custom_program_table.setItem(row, 2, QTableWidgetItem(str(default_courses)))
+            self.custom_program_table.setItem(row, 3, QTableWidgetItem(str(default_courses)))
+        self._custom_program_table_internal_change = False
+        self.custom_program_table.blockSignals(False)
+        self.custom_program_table.setSortingEnabled(was_sorting)
+
+    def _effective_custom_total_courses(self) -> int:
+        if not hasattr(self, "custom_program_table"):
+            return int(self.custom_programs_spin.value()) * int(
+                self.custom_courses_per_program_spin.value()
+            )
+        total = 0
+        for row in range(self.custom_program_table.rowCount()):
+            item = self.custom_program_table.item(row, 2)
+            try:
+                courses = max(1, int(str(item.text()).strip())) if item is not None else int(
+                    self.custom_courses_per_program_spin.value()
+                )
+            except Exception:
+                courses = int(self.custom_courses_per_program_spin.value())
+            total += int(courses)
+        return max(1, int(total))
+
+    def _find_course_lab_combo_row(self, combo: QComboBox) -> int:
+        for row in range(self.custom_course_pattern_table.rowCount()):
+            if self.custom_course_pattern_table.cellWidget(row, 4) is combo:
+                return row
+        return -1
+
+    def _set_course_lab_type_cell(self, row: int, value: str) -> None:
+        value_norm = str(value).strip().upper()
+        if value_norm not in COURSE_LAB_TYPE_CHOICES:
+            value_norm = "NONE"
+        self.custom_course_pattern_table.setItem(row, 4, self._make_locked_item(value_norm))
+        combo = QComboBox(self.custom_course_pattern_table)
+        combo.addItems(list(COURSE_LAB_TYPE_CHOICES))
+        combo.blockSignals(True)
+        idx = combo.findText(value_norm)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+        combo.blockSignals(False)
+        combo.currentTextChanged.connect(self._on_course_lab_type_changed)
+        self.custom_course_pattern_table.setCellWidget(row, 4, combo)
+
+    def _course_pattern_table_text(self, row: int, col: int) -> str:
+        widget = self.custom_course_pattern_table.cellWidget(row, col)
+        if isinstance(widget, QComboBox):
+            return str(widget.currentText()).strip()
+        item = self.custom_course_pattern_table.item(row, col)
+        return str(item.text()).strip() if item is not None else ""
+
+    def _on_course_lab_type_changed(self, _text: str) -> None:
+        if self._custom_course_pattern_table_internal_change:
+            return
+        sender = self.sender()
+        if not isinstance(sender, QComboBox):
+            return
+        row = self._find_course_lab_combo_row(sender)
+        if row < 0:
+            return
+        self._custom_course_pattern_table_internal_change = True
+        try:
+            lab_type = self._course_pattern_table_text(row, 4).upper()
+            tag_item = self.custom_course_pattern_table.item(row, 6)
+            if tag_item is None:
+                tag_item = QTableWidgetItem("")
+                self.custom_course_pattern_table.setItem(row, 6, tag_item)
+            if lab_type == "SPECIAL":
+                if not str(tag_item.text()).strip():
+                    tag_item.setText("LAB1")
+            else:
+                tag_item.setText("")
+        finally:
+            self._custom_course_pattern_table_internal_change = False
+
+    def _reset_custom_course_pattern_table(self) -> None:
+        existing: Dict[int, Dict[str, Any]] = {}
+        if not hasattr(self, "custom_course_pattern_table"):
+            return
+        for row in range(self.custom_course_pattern_table.rowCount()):
+            cid_item = self.custom_course_pattern_table.item(row, 0)
+            if cid_item is None:
+                continue
+            try:
+                c_id = int(str(cid_item.text()).strip())
+            except Exception:
+                continue
+            existing[c_id] = {
+                "lecture_count": self.custom_course_pattern_table.item(row, 2).text()
+                if self.custom_course_pattern_table.item(row, 2) is not None
+                else "12",
+                "tutorial_count": self.custom_course_pattern_table.item(row, 3).text()
+                if self.custom_course_pattern_table.item(row, 3) is not None
+                else "12",
+                "lab_type": self._course_pattern_table_text(row, 4).upper() or "NONE",
+                "lab_duration": self.custom_course_pattern_table.item(row, 5).text()
+                if self.custom_course_pattern_table.item(row, 5) is not None
+                else "2",
+                "lab_tag": self.custom_course_pattern_table.item(row, 6).text()
+                if self.custom_course_pattern_table.item(row, 6) is not None
+                else "",
+            }
+
+        total = self._effective_custom_total_courses()
+        names = self._parse_csv_names(self.custom_course_names_edit.text())
+        was_sorting = self.custom_course_pattern_table.isSortingEnabled()
+        self.custom_course_pattern_table.setSortingEnabled(False)
+        self.custom_course_pattern_table.blockSignals(True)
+        self._custom_course_pattern_table_internal_change = True
+        self.custom_course_pattern_table.setRowCount(total)
+        for row in range(total):
+            c_id = row + 1
+            name = names[row % len(names)] if names else f"Course-{c_id}"
+            prev = existing.get(c_id, {})
+            lec = str(prev.get("lecture_count", "12"))
+            tut = str(prev.get("tutorial_count", "12"))
+            lab_type = str(prev.get("lab_type", "NONE")).upper()
+            lab_dur = str(prev.get("lab_duration", "2"))
+            lab_tag = str(prev.get("lab_tag", ""))
+            if lab_type not in COURSE_LAB_TYPE_CHOICES:
+                lab_type = "NONE"
+            self.custom_course_pattern_table.setItem(row, 0, self._make_locked_item(str(c_id)))
+            self.custom_course_pattern_table.setItem(row, 1, self._make_locked_item(name))
+            self.custom_course_pattern_table.setItem(row, 2, QTableWidgetItem(lec))
+            self.custom_course_pattern_table.setItem(row, 3, QTableWidgetItem(tut))
+            self._set_course_lab_type_cell(row, lab_type)
+            self.custom_course_pattern_table.setItem(row, 5, QTableWidgetItem(lab_dur))
+            self.custom_course_pattern_table.setItem(
+                row,
+                6,
+                QTableWidgetItem(lab_tag if lab_type == "SPECIAL" else ""),
+            )
+        self._custom_course_pattern_table_internal_change = False
+        self.custom_course_pattern_table.blockSignals(False)
+        self.custom_course_pattern_table.setSortingEnabled(was_sorting)
+
+    def _on_custom_program_table_item_changed(self, item: QTableWidgetItem) -> None:
+        if self._custom_program_table_internal_change:
+            return
+        if item is None:
+            return
+        if item.column() not in (1, 2, 3):
+            return
+        self._custom_program_table_internal_change = True
+        try:
+            try:
+                val = max(1, int(str(item.text()).strip()))
+            except Exception:
+                if item.column() == 1:
+                    val = int(self.custom_groups_per_program_spin.value())
+                else:
+                    val = int(self.custom_courses_per_program_spin.value())
+            item.setText(str(val))
+            if item.column() == 2:
+                cpg_item = self.custom_program_table.item(item.row(), 3)
+                if cpg_item is not None:
+                    try:
+                        cpg = max(1, int(str(cpg_item.text()).strip()))
+                    except Exception:
+                        cpg = int(val)
+                    cpg_item.setText(str(min(int(val), int(cpg))))
+            elif item.column() == 3:
+                courses_item = self.custom_program_table.item(item.row(), 2)
+                if courses_item is not None:
+                    try:
+                        courses = max(1, int(str(courses_item.text()).strip()))
+                    except Exception:
+                        courses = int(self.custom_courses_per_program_spin.value())
+                    item.setText(str(min(int(courses), int(val))))
+        finally:
+            self._custom_program_table_internal_change = False
+        self._reset_custom_course_pattern_table()
+        self._refresh_staff_course_picker()
+
     def _on_room_table_item_changed(self, item: QTableWidgetItem) -> None:
         if self._room_table_internal_change:
             return
@@ -1153,9 +1470,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_staff_course_picker(self, *_args: Any) -> None:
         self.staff_course_picker_combo.clear()
-        total = int(self.custom_programs_spin.value()) * int(
-            self.custom_courses_per_program_spin.value()
-        )
+        total = self._effective_custom_total_courses()
         names = self._parse_csv_names(self.custom_course_names_edit.text())
         for c_id in range(1, max(1, total) + 1):
             if names:
@@ -1188,6 +1503,8 @@ class MainWindow(QMainWindow):
         ta_course_map: Dict[int, List[int]] = {}
         prof_days: Dict[int, List[str]] = {}
         ta_days: Dict[int, List[str]] = {}
+        program_overrides: List[Dict[str, Any]] = []
+        course_patterns: List[Dict[str, Any]] = []
         prof_idx = 0
         ta_idx = 0
         for row in range(self.custom_staff_table.rowCount()):
@@ -1231,10 +1548,59 @@ class MainWindow(QMainWindow):
                 }
             )
 
+        for row in range(self.custom_program_table.rowCount()):
+            pid_item = self.custom_program_table.item(row, 0)
+            groups_item = self.custom_program_table.item(row, 1)
+            courses_item = self.custom_program_table.item(row, 2)
+            cpg_item = self.custom_program_table.item(row, 3)
+            try:
+                pid = int(str(pid_item.text()).strip()) if pid_item is not None else row + 1
+                groups = max(1, int(str(groups_item.text()).strip())) if groups_item is not None else int(self.custom_groups_per_program_spin.value())
+                courses = max(1, int(str(courses_item.text()).strip())) if courses_item is not None else int(self.custom_courses_per_program_spin.value())
+                courses_per_group = max(1, int(str(cpg_item.text()).strip())) if cpg_item is not None else courses
+            except Exception:
+                continue
+            program_overrides.append(
+                {
+                    "program_id": int(pid),
+                    "groups": int(groups),
+                    "courses": int(courses),
+                    "courses_per_group": min(int(courses), int(courses_per_group)),
+                }
+            )
+
+        for row in range(self.custom_course_pattern_table.rowCount()):
+            cid_item = self.custom_course_pattern_table.item(row, 0)
+            lec_item = self.custom_course_pattern_table.item(row, 2)
+            tut_item = self.custom_course_pattern_table.item(row, 3)
+            dur_item = self.custom_course_pattern_table.item(row, 5)
+            tag_item = self.custom_course_pattern_table.item(row, 6)
+            try:
+                c_id = int(str(cid_item.text()).strip()) if cid_item is not None else row + 1
+                lecture_count = int(str(lec_item.text()).strip()) if lec_item is not None else 12
+                tutorial_count = int(str(tut_item.text()).strip()) if tut_item is not None else 12
+                lab_duration = int(str(dur_item.text()).strip()) if dur_item is not None else 2
+            except Exception:
+                continue
+            lab_type = self._course_pattern_table_text(row, 4).upper() or "NONE"
+            lab_tag = str(tag_item.text()).strip().upper() if tag_item is not None else ""
+            course_patterns.append(
+                {
+                    "course_id": int(c_id),
+                    "lecture_count": int(lecture_count),
+                    "tutorial_count": int(tutorial_count),
+                    "lab_type": str(lab_type),
+                    "lab_duration": int(lab_duration),
+                    "lab_tag": str(lab_tag),
+                }
+            )
+
         return {
             "num_programs": int(self.custom_programs_spin.value()),
             "groups_per_program": int(self.custom_groups_per_program_spin.value()),
             "courses_per_program": int(self.custom_courses_per_program_spin.value()),
+            "program_overrides": program_overrides,
+            "course_patterns": course_patterns,
             "course_names": self._parse_csv_names(self.custom_course_names_edit.text()),
             "num_professors": int(self.custom_num_profs_spin.value()),
             "num_tas": int(self.custom_num_tas_spin.value()),
@@ -1371,6 +1737,7 @@ class MainWindow(QMainWindow):
             self.solve_button,
             self.clear_locks_button,
             self.improve_button,
+            self.stop_improve_button,
             self.export_menu_btn,
             self.project_menu_btn,
             self.undo_button,
@@ -1384,11 +1751,16 @@ class MainWindow(QMainWindow):
         self.room_mode_combo.setEnabled(enable)
         self.objective_cb.setEnabled(enable)
         self.time_limit_spin.setEnabled(enable)
-        self.workers_spin.setEnabled(enable)
+        self.workers_preset_combo.setEnabled(enable)
         self.workspace_tabs.setEnabled(enable)
         self.custom_reset_staff_btn.setEnabled(enable)
         self.custom_reset_rooms_btn.setEnabled(enable)
+        self.custom_reset_programs_btn.setEnabled(enable)
+        self.custom_reset_course_patterns_btn.setEnabled(enable)
         self.apply_constraints_btn.setEnabled(enable)
+        # Keep stop available while a local improvement pass is running.
+        if hasattr(self, "stop_improve_button"):
+            self.stop_improve_button.setEnabled(bool(busy and self._improve_running))
         if enable:
             self._refresh_history_buttons()
             self._refresh_quick_actions()
@@ -1396,8 +1768,16 @@ class MainWindow(QMainWindow):
     def _start_solve_progress(self) -> None:
         self._stop_solve_progress()
         self._solve_started_at = time.perf_counter()
-        # Solver process budget; local-search phase is tracked separately.
-        self._solve_expected_seconds = max(1.0, float(self.time_limit_spin.value()))
+        ctx = dict(self._solve_progress_context or {})
+        phased = bool(ctx.get("phased", False))
+        feasibility_seconds = float(ctx.get("feasibility_seconds", 0.0) or 0.0)
+        improve_total_seconds = float(ctx.get("improve_total_seconds", 0.0) or 0.0)
+        if phased:
+            self._solve_expected_seconds = max(1.0, feasibility_seconds + improve_total_seconds)
+        else:
+            self._solve_expected_seconds = max(1.0, float(self.time_limit_spin.value()))
+        self._solve_progress_percent = 0
+        self._solve_attempt_started_at = None
         self._solve_progress_timer = QTimer(self)
         self._solve_progress_timer.setInterval(400)
         self._solve_progress_timer.timeout.connect(self._on_solve_progress_tick)
@@ -1407,9 +1787,31 @@ class MainWindow(QMainWindow):
         if self.proc is None or self._solve_started_at is None:
             self._stop_solve_progress()
             return
-        elapsed = max(0.0, time.perf_counter() - self._solve_started_at)
-        pct = int(min(99.0, (elapsed / max(1.0, self._solve_expected_seconds)) * 100.0))
-        self.status_label.setText(f"Solving... {pct}%")
+        ctx = self._solve_progress_context or {}
+        phased = bool(ctx.get("phased", False))
+        attempt_idx = int(ctx.get("attempt", 1) or 1)
+        expected_attempts = max(1, int(ctx.get("expected_attempts", 1) or 1))
+        solve_share = 0.5 if phased else 1.0
+        base_pct = int((max(0, attempt_idx - 1) / float(expected_attempts)) * (solve_share * 100.0))
+        limit = float(ctx.get("attempt_limit_seconds", 0.0) or 0.0)
+        if self._solve_attempt_started_at is not None and limit > 0:
+            elapsed_attempt = max(0.0, time.perf_counter() - self._solve_attempt_started_at)
+            frac_attempt = min(1.0, elapsed_attempt / max(1.0, limit))
+            pct = int(base_pct + frac_attempt * ((solve_share * 100.0) / float(expected_attempts)))
+        else:
+            completed = max(0, int(ctx.get("completed_attempts", 0) or 0))
+            pct = int((min(completed, expected_attempts) / float(expected_attempts)) * (solve_share * 100.0))
+        phase_label = str(ctx.get("phase_label", "running"))
+        self._update_solve_progress_status(pct, phase_label)
+
+    def _update_solve_progress_status(self, pct: int, phase_label: str = "") -> None:
+        pct_clamped = max(0, min(99, int(pct)))
+        if pct_clamped < int(self._solve_progress_percent):
+            pct_clamped = int(self._solve_progress_percent)
+        self._solve_progress_percent = int(pct_clamped)
+        detail = f" ({phase_label})" if str(phase_label).strip() else ""
+        self._status_full_text = f"Solving... {int(self._solve_progress_percent)}%{detail}"
+        self._refresh_status_label()
 
     def _stop_solve_progress(self) -> None:
         if self._solve_progress_timer is not None:
@@ -1418,6 +1820,162 @@ class MainWindow(QMainWindow):
         self._solve_progress_timer = None
         self._solve_started_at = None
         self._solve_expected_seconds = 0.0
+        self._solve_progress_percent = 0
+        self._solve_attempt_started_at = None
+        self._solve_progress_context = {}
+        self._solver_output_partial = ""
+
+    def _expected_solver_attempts(self, *, phased: bool, room_mode: str, objective_on: bool) -> int:
+        mode = str(room_mode)
+        if phased:
+            # Feasibility-first: room-mode attempt, then optional strict->greedy fallback.
+            return 2 if mode == "cp_rooms" else 1
+        attempts = 1
+        if bool(objective_on):
+            attempts += 1  # objective-off retry
+        if mode == "cp_rooms":
+            attempts += 1  # strict->greedy fallback
+        return max(1, int(attempts))
+
+    def _selected_worker_count(self) -> int:
+        if hasattr(self, "workers_preset_combo") and self.workers_preset_combo is not None:
+            data = self.workers_preset_combo.currentData()
+            try:
+                return max(1, min(64, int(data)))
+            except Exception:
+                pass
+        return max(1, min(64, int(DEFAULT_CP_WORKERS)))
+
+    def on_solver_output_ready(self) -> None:
+        if self.proc is None:
+            return
+        try:
+            chunk = bytes(self.proc.readAll()).decode("utf-8", errors="ignore")
+        except Exception:
+            return
+        if not chunk:
+            return
+        self._solver_output_log += str(chunk)
+        blob = self._solver_output_partial + str(chunk)
+        lines = blob.splitlines()
+        if blob and not blob.endswith("\n"):
+            self._solver_output_partial = lines[-1] if lines else blob
+            lines = lines[:-1]
+        else:
+            self._solver_output_partial = ""
+        for raw in lines:
+            line = str(raw).strip()
+            if not line:
+                continue
+            if not line.startswith("[progress] "):
+                continue
+            payload = line[len("[progress] "):].strip()
+            try:
+                event = json.loads(payload)
+            except Exception:
+                continue
+            if isinstance(event, dict):
+                self._handle_solver_progress_event(event)
+
+    def _handle_solver_progress_event(self, event: Dict[str, Any]) -> None:
+        kind = str(event.get("event", "")).strip().lower()
+        ctx = dict(self._solve_progress_context or {})
+        phased = bool(ctx.get("phased", event.get("phased", False)))
+        expected_attempts = max(1, int(ctx.get("expected_attempts", 1) or 1))
+        if kind == "run_start":
+            mode = str(event.get("room_mode", ctx.get("room_mode", "")))
+            objective = bool(event.get("use_objective", ctx.get("objective_on", False)))
+            phased = bool(event.get("phased", phased))
+            expected_attempts = self._expected_solver_attempts(
+                phased=bool(phased),
+                room_mode=str(mode),
+                objective_on=bool(objective),
+            )
+            ctx["phased"] = bool(phased)
+            ctx["room_mode"] = str(mode)
+            ctx["objective_on"] = bool(objective)
+            ctx["expected_attempts"] = int(expected_attempts)
+            ctx["completed_attempts"] = 0
+            self._solve_progress_context = ctx
+            return
+        solve_share = 0.5 if phased else 1.0
+        improve_share = 1.0 - solve_share
+
+        if kind == "solve_attempt_start":
+            attempt = max(1, int(event.get("attempt", 1) or 1))
+            expected_attempts = max(expected_attempts, int(attempt))
+            limit = event.get("limit_seconds")
+            try:
+                attempt_limit = float(limit) if limit is not None else float(self.time_limit_spin.value())
+            except Exception:
+                attempt_limit = float(self.time_limit_spin.value())
+            ctx["attempt"] = int(attempt)
+            ctx["expected_attempts"] = int(expected_attempts)
+            ctx["completed_attempts"] = max(int(ctx.get("completed_attempts", 0) or 0), int(attempt - 1))
+            ctx["attempt_limit_seconds"] = float(max(1.0, attempt_limit))
+            mode = str(event.get("mode", ctx.get("room_mode", "")))
+            objective = bool(event.get("objective", False))
+            phase = "objective" if objective else "feasibility"
+            mode_label = "strict cp_rooms" if mode == "cp_rooms" else "greedy"
+            if mode == "greedy" and str(ctx.get("room_mode", "")) == "cp_rooms" and int(attempt) > 1:
+                mode_label = "greedy fallback"
+            ctx["phase_label"] = f"attempt {attempt}/{expected_attempts}: {mode_label} ({phase})"
+            self._solve_progress_context = ctx
+            self._solve_attempt_started_at = time.perf_counter()
+            base_pct = int((max(0, attempt - 1) / float(expected_attempts)) * (solve_share * 100.0))
+            self._update_solve_progress_status(base_pct, str(ctx.get("phase_label", "")))
+            return
+
+        if kind == "solve_attempt_done":
+            attempt = max(1, int(event.get("attempt", ctx.get("attempt", 1)) or 1))
+            expected_attempts = max(expected_attempts, int(attempt))
+            ctx["attempt"] = int(attempt)
+            ctx["expected_attempts"] = int(expected_attempts)
+            ctx["completed_attempts"] = int(attempt)
+            status = event.get("status")
+            ctx["phase_label"] = f"attempt {attempt}/{expected_attempts} done (status {status})"
+            self._solve_progress_context = ctx
+            self._solve_attempt_started_at = None
+            pct = int((min(attempt, expected_attempts) / float(expected_attempts)) * (solve_share * 100.0))
+            self._update_solve_progress_status(pct, str(ctx.get("phase_label", "")))
+            return
+
+        if kind == "solve_fallback":
+            from_mode = str(event.get("from_mode", "cp_rooms"))
+            to_mode = str(event.get("to_mode", "greedy"))
+            label = f"fallback: {from_mode} -> {to_mode}"
+            ctx["phase_label"] = label
+            self._solve_progress_context = ctx
+            self._update_solve_progress_status(int(self._solve_progress_percent), label)
+            return
+
+        if kind == "improve_start":
+            max_rounds = max(1, int(ctx.get("improve_max_rounds", event.get("max_rounds", 1)) or 1))
+            ctx["phase_label"] = f"improve round 0/{max_rounds}"
+            self._solve_progress_context = ctx
+            self._update_solve_progress_status(
+                int(solve_share * 100.0),
+                str(ctx.get("phase_label", "improve round 0/1")),
+            )
+            return
+
+        if kind == "improve_round":
+            round_idx = max(0, int(event.get("round", 0) or 0))
+            max_rounds = max(1, int(event.get("max_rounds", 1) or 1))
+            elapsed = float(event.get("elapsed_seconds", 0.0) or 0.0)
+            total = float(event.get("total_seconds", 0.0) or 0.0)
+            frac_rounds = min(1.0, float(round_idx) / float(max_rounds))
+            frac_time = min(1.0, elapsed / total) if total > 0 else 0.0
+            frac = max(frac_rounds, frac_time)
+            pct = int((solve_share + improve_share * frac) * 100.0)
+            label = f"improve round {round_idx}/{max_rounds}"
+            ctx["phase_label"] = label
+            self._solve_progress_context = ctx
+            self._update_solve_progress_status(pct, label)
+            return
+
+        if kind in {"improve_done", "run_done"}:
+            self._update_solve_progress_status(99, "finalizing")
 
     def populate_weeks(self):
         self.week_combo.blockSignals(True)
@@ -1817,6 +2375,18 @@ class MainWindow(QMainWindow):
         source = self.current_schedule if schedule is None else schedule
         return {a_id: info.copy() for a_id, info in source.items()}
 
+    def _set_manual_highlight_base(
+        self, schedule: Dict[int, Dict[str, Any]] | None = None
+    ) -> None:
+        if schedule is None:
+            self._manual_highlight_base_schedule = {}
+            return
+        self._manual_highlight_base_schedule = {
+            int(a_id): dict(info)
+            for a_id, info in schedule.items()
+            if isinstance(info, dict)
+        }
+
     def _compute_soft_penalty(self, schedule: Dict[int, Dict[str, Any]]) -> int | None:
         if self.inst is None:
             return None
@@ -1904,7 +2474,7 @@ class MainWindow(QMainWindow):
 
     def _is_activity_changed_from_base(self, a_id: int) -> bool:
         current = self.current_schedule.get(int(a_id))
-        base = self.base_schedule.get(int(a_id))
+        base = self._manual_highlight_base_schedule.get(int(a_id))
         if current is None:
             return False
         if base is None:
@@ -2657,7 +3227,7 @@ class MainWindow(QMainWindow):
             f"- Room mode: {'cp_rooms' if self.room_mode_combo.currentIndex() == 0 else 'greedy'}",
             f"- Objective: {'on' if self.objective_cb.isChecked() else 'off'}",
             f"- Time limit: {self.time_limit_spin.value()}s",
-            f"- Workers: {self.workers_spin.value()}",
+            f"- Workers: {self.workers_preset_combo.currentText()}",
         ]
         attempts = self._format_solver_attempts(res)
         if attempts:
@@ -2728,6 +3298,7 @@ class MainWindow(QMainWindow):
             return
 
         self.base_schedule = {}
+        self._set_manual_highlight_base({})
         self.current_schedule = {}
         self.locked_activities = {}
         self.held_activity_id = None
@@ -2790,10 +3361,15 @@ class MainWindow(QMainWindow):
         env_map = os.environ.copy()
         time_limit_seconds = float(self.time_limit_spin.value())
         objective_on = self.objective_cb.isChecked()
-        env_map["TT_ROOM_MODE"] = "cp_rooms" if self.room_mode_combo.currentIndex() == 0 else "greedy"
+        room_mode = "cp_rooms" if self.room_mode_combo.currentIndex() == 0 else "greedy"
+        env_map["TT_ROOM_MODE"] = room_mode
         env_map["TT_TIME_LIMIT"] = str(self.time_limit_spin.value())
-        env_map["TT_CP_WORKERS"] = str(self.workers_spin.value())
+        env_map["TT_CP_WORKERS"] = str(self._selected_worker_count())
         env_map["TT_USE_OBJECTIVE"] = "1" if objective_on else "0"
+        phased_enabled = bool(objective_on)
+        feasibility_seconds = float(time_limit_seconds)
+        improve_budget_seconds = 0.0
+        improve_max_rounds = 0
         if objective_on:
             # Feasibility-first then iterative improvement within the total solve budget.
             feasibility_seconds, improve_budget_seconds = self._split_phased_budget(time_limit_seconds)
@@ -2803,9 +3379,11 @@ class MainWindow(QMainWindow):
             env_map["TT_IMPROVE_SLICE_SECONDS"] = "5"
             env_map["TT_IMPROVE_ITERS_PER_SLICE"] = "1200"
             env_map["TT_IMPROVE_MAX_ROUNDS"] = "12"
+            improve_max_rounds = 12
         else:
             env_map["TT_PHASED_SOLVE"] = "0"
             env_map["TT_IMPROVE_TOTAL_SECONDS"] = "0"
+            phased_enabled = False
         # ensure the worker can import core/utils modules
         env_map["PYTHONPATH"] = os.pathsep.join([os.path.dirname(os.path.dirname(os.path.abspath(__file__))), env_map.get("PYTHONPATH", "")])
         try:
@@ -2821,6 +3399,28 @@ class MainWindow(QMainWindow):
         self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self.proc.finished.connect(self.on_solver_finished)
         self.proc.errorOccurred.connect(self.on_solver_error)
+        self.proc.readyRead.connect(self.on_solver_output_ready)
+
+        expected_attempts = self._expected_solver_attempts(
+            phased=bool(phased_enabled),
+            room_mode=room_mode,
+            objective_on=bool(objective_on),
+        )
+        self._solve_progress_context = {
+            "phased": bool(phased_enabled),
+            "room_mode": str(room_mode),
+            "objective_on": bool(objective_on),
+            "expected_attempts": int(expected_attempts),
+            "attempt": 1,
+            "completed_attempts": 0,
+            "attempt_limit_seconds": float(max(1.0, feasibility_seconds if phased_enabled else time_limit_seconds)),
+            "feasibility_seconds": float(max(0.0, feasibility_seconds)),
+            "improve_total_seconds": float(max(0.0, improve_budget_seconds)),
+            "improve_max_rounds": int(max(0, improve_max_rounds)),
+            "phase_label": "starting",
+        }
+        self._solver_output_log = ""
+        self._solver_output_partial = ""
 
         self.set_busy(True)
         lock_count = len(self.locked_activities)
@@ -2860,6 +3460,7 @@ class MainWindow(QMainWindow):
             return
         self._push_undo_state()
         self.current_schedule = {a_id: info.copy() for a_id, info in self.base_schedule.items()}
+        self._set_manual_highlight_base(self.current_schedule)
         self.locked_activities = {}
         self.held_activity_id = None
         self._sync_instance_staff_from_schedule(self.current_schedule)
@@ -2900,33 +3501,37 @@ class MainWindow(QMainWindow):
     def on_solver_error(self, error):
         self.set_busy(False)
         self._stop_solve_progress()
-        output = ""
+        output = str(self._solver_output_log or "")
         if self.proc is not None:
             try:
-                output = (
-                    self.proc.readAll().data().decode("utf-8", errors="ignore")
-                )
+                output += self.proc.readAll().data().decode("utf-8", errors="ignore")
             except Exception:
-                output = ""
+                pass
         QMessageBox.critical(
             self, "Solver error", output or f"QProcess error: {error}"
         )
         self.proc = None
+        self._solver_output_log = ""
         self.set_status("Solve error")
 
     def on_solver_finished(self, exit_code: int, exit_status):
+        if self.proc is not None:
+            try:
+                self.on_solver_output_ready()
+            except Exception:
+                pass
+        self._update_solve_progress_status(99, "finalizing")
         self.set_busy(False)
         self._stop_solve_progress()
 
-        output = ""
+        output = str(self._solver_output_log or "")
         if self.proc is not None:
             try:
-                output = (
-                    self.proc.readAll().data().decode("utf-8", errors="ignore")
-                )
+                output += self.proc.readAll().data().decode("utf-8", errors="ignore")
             except Exception:
-                output = ""
+                pass
         self.proc = None
+        self._solver_output_log = ""
 
         if exit_code != 0:
             QMessageBox.critical(
@@ -2967,6 +3572,7 @@ class MainWindow(QMainWindow):
         status = res.get("status", -1)
         if status not in (0, 4):  # 0=FEASIBLE, 4=OPTIMAL
             self.base_schedule = {}
+            self._set_manual_highlight_base({})
             self.current_schedule = {}
             self.held_activity_id = None
             self._reset_history()
@@ -2989,6 +3595,7 @@ class MainWindow(QMainWindow):
         )
         if base_hard_errors:
             self.base_schedule = {}
+            self._set_manual_highlight_base({})
             self.current_schedule = {}
             self.held_activity_id = None
             self._reset_history()
@@ -3009,6 +3616,7 @@ class MainWindow(QMainWindow):
         self.current_schedule = {
             a_id: info.copy() for a_id, info in self.base_schedule.items()
         }
+        self._set_manual_highlight_base(self.current_schedule)
         self.held_activity_id = None
         self._reset_history()
         attempts = self._format_solver_attempts(res)
@@ -3037,6 +3645,7 @@ class MainWindow(QMainWindow):
                     self.current_schedule = {
                         a_id: info.copy() for a_id, info in improved.items()
                     }
+                    self._set_manual_highlight_base(self.current_schedule)
                     status_msg = (
                         f"Solved (status {status}), soft penalty {before} -> {after}"
                     )
@@ -3068,72 +3677,144 @@ class MainWindow(QMainWindow):
         try:
             self.set_busy(True)
             self._live_improve_mode = True
+            self._improve_running = True
+            self._improve_stop_requested = False
+            self.stop_improve_button.setEnabled(True)
             ls = LocalSearchImprover(self.inst)
-            base_schedule = {
+            best_schedule = {
                 a_id: info.copy() for a_id, info in self.current_schedule.items()
             }
-            base_pen = ls.compute_soft_penalty(base_schedule)
+            base_pen = ls.compute_soft_penalty(best_schedule)
+            best_pen = int(base_pen)
+
+            # Dynamic best-as-base: each round starts from the latest accepted best schedule.
+            round_iters = max(25, min(250, max(1, total_iters // 10)))
+            max_seconds = self.ls_time_spin.value() or None
+            round_seconds = None
+            if max_seconds:
+                round_seconds = min(2.0, max(0.25, float(max_seconds) / 8.0))
 
             self.set_status(f"Improving... 0% (target {total_iters} iters)")
 
-            max_seconds = self.ls_time_spin.value() or None
             progress_every = 1
-            render_interval_s = 0.50
-            quality_interval_s = 0.40
+            render_interval_s = 0.45
+            quality_interval_s = 0.35
             pump_interval = 20
             last_render_ts = 0.0
             last_quality_ts = 0.0
+            total_done = 0
+            round_idx = 0
+            started_at = time.perf_counter()
 
-            def _progress_hook(
-                it_done: int,
-                best_pen: int,
-                cur_pen: int,
-                **kwargs: Any,
-            ) -> None:
-                nonlocal last_render_ts, last_quality_ts
-                pct = int(
-                    min(99, (float(it_done) / max(1.0, float(total_iters))) * 100.0)
-                )
-                msg = (
-                    f"Improving... {pct}% "
-                    f"(iter {it_done}/{total_iters}, best={best_pen}, current={cur_pen})"
-                )
-                self._status_full_text = msg
-                self._refresh_status_label()
+            while total_done < total_iters:
+                if self._improve_stop_requested:
+                    break
+                iter_budget = min(round_iters, total_iters - total_done)
 
-                now = time.perf_counter()
-                current_snapshot = kwargs.get("current_schedule")
-                should_render = (
-                    isinstance(current_snapshot, dict)
-                    and (
-                        (now - last_render_ts) >= render_interval_s
-                        or it_done == int(total_iters)
+                slice_budget = None
+                if max_seconds:
+                    elapsed = time.perf_counter() - started_at
+                    remaining = float(max_seconds) - elapsed
+                    if remaining <= 0:
+                        break
+                    slice_budget = min(float(round_seconds), remaining)
+                round_idx += 1
+
+                round_offset = total_done
+                round_progress_done = 0
+
+                def _progress_hook(
+                    it_done: int,
+                    round_best_pen: int,
+                    cur_pen: int,
+                    **kwargs: Any,
+                ) -> None:
+                    nonlocal last_render_ts, last_quality_ts, round_progress_done
+                    if self._improve_stop_requested:
+                        return
+                    round_progress_done = max(round_progress_done, int(it_done))
+                    global_iter = min(total_iters, round_offset + int(it_done))
+                    pct_iter = float(global_iter) / max(1.0, float(total_iters))
+                    pct_time = 0.0
+                    if max_seconds:
+                        elapsed_total = max(0.0, time.perf_counter() - started_at)
+                        pct_time = min(1.0, float(elapsed_total) / max(1e-6, float(max_seconds)))
+                    pct = int(min(99.0, max(float(pct_iter), float(pct_time)) * 100.0))
+                    msg = (
+                        f"Improving... {pct}% "
+                        f"(iter {global_iter}/{total_iters}, best={round_best_pen}, current={cur_pen})"
                     )
-                )
-                if should_render:
-                    self.current_schedule = {
-                        int(a_id): info.copy()
-                        for a_id, info in current_snapshot.items()
-                    }
-                    self.update_table()
-                    last_render_ts = now
-                    if (now - last_quality_ts) >= quality_interval_s or it_done == int(
-                        total_iters
-                    ):
-                        self.update_quality_summary()
-                        last_quality_ts = now
-                    QApplication.processEvents()
-                elif it_done % int(pump_interval) == 0:
-                    QApplication.processEvents()
+                    self._status_full_text = msg
+                    self._refresh_status_label()
 
-            improved = ls.improve(
-                base_schedule,
-                iterations=total_iters,
-                max_seconds=max_seconds,
-                progress_every=progress_every,
-                progress_hook=_progress_hook,
+                    now = time.perf_counter()
+                    preview_snapshot = kwargs.get("best_schedule") or kwargs.get(
+                        "current_schedule"
+                    )
+                    should_render = (
+                        isinstance(preview_snapshot, dict)
+                        and (
+                            (now - last_render_ts) >= render_interval_s
+                            or global_iter >= int(total_iters)
+                        )
+                    )
+                    if should_render:
+                        self.current_schedule = {
+                            int(a_id): info.copy()
+                            for a_id, info in preview_snapshot.items()
+                        }
+                        self.update_table()
+                        last_render_ts = now
+                        if (now - last_quality_ts) >= quality_interval_s or global_iter >= int(
+                            total_iters
+                        ):
+                            self.update_quality_summary()
+                            last_quality_ts = now
+                        QApplication.processEvents()
+                    elif global_iter % int(pump_interval) == 0:
+                        QApplication.processEvents()
+
+                candidate = ls.improve(
+                    best_schedule,
+                    iterations=iter_budget,
+                    max_seconds=slice_budget,
+                    progress_every=progress_every,
+                    progress_hook=_progress_hook,
+                    stop_hook=lambda: bool(self._improve_stop_requested),
+                    probe_activities=7,
+                )
+
+                total_done += int(max(0, min(iter_budget, round_progress_done)))
+                if self._improve_stop_requested:
+                    break
+                candidate_pen = int(ls.compute_soft_penalty(candidate))
+                candidate_hard_errors = self._validate_schedule_hard_errors(
+                    candidate, require_all=True
+                )
+
+                if (not candidate_hard_errors) and candidate_pen <= int(best_pen):
+                    best_schedule = {
+                        a_id: info.copy() for a_id, info in candidate.items()
+                    }
+                    best_pen = int(candidate_pen)
+
+                # Keep live view synced with the best accepted state between rounds.
+                self.current_schedule = {
+                    a_id: info.copy() for a_id, info in best_schedule.items()
+                }
+                self.update_table()
+                self.update_quality_summary()
+                QApplication.processEvents()
+
+            self._status_full_text = (
+                "Improving... stopped (finalizing)"
+                if self._improve_stop_requested
+                else "Improving... 100% (finalizing)"
             )
-            best_pen = ls.compute_soft_penalty(improved)
+            self._refresh_status_label()
+            improved = {
+                a_id: info.copy() for a_id, info in best_schedule.items()
+            }
             improved_hard_errors = self._validate_schedule_hard_errors(
                 improved, require_all=True
             )
@@ -3155,8 +3836,11 @@ class MainWindow(QMainWindow):
                 self._commit_schedule(
                     improved,
                     f"Improved global penalty {base_pen} -> {best_pen} "
-                    f"in {total_iters} iterations",
+                    f"in {total_done} iterations ({round_idx} rounds)"
+                    + (" [stopped]" if self._improve_stop_requested else ""),
                 )
+                # Improvement changes are optimizer-generated; don't mark them as manual edits.
+                self._set_manual_highlight_base(self.current_schedule)
 
         except Exception as e:
             traceback.print_exc()
@@ -3169,7 +3853,17 @@ class MainWindow(QMainWindow):
             self.update_quality_summary()
         finally:
             self._live_improve_mode = False
+            self._improve_running = False
+            self._improve_stop_requested = False
+            self.stop_improve_button.setEnabled(False)
             self.set_busy(False)
+
+    def on_stop_improve(self) -> None:
+        if not self._improve_running:
+            self.set_status("No active improve run")
+            return
+        self._improve_stop_requested = True
+        self.set_status("Stopping improvement at next safe checkpoint...")
 
     def on_export(self):
         if not self.current_schedule or self.inst is None:
@@ -3347,6 +4041,7 @@ class MainWindow(QMainWindow):
         self.locked_activities = dict(getattr(inst, "locked_activities", {}) or {})
         self.base_schedule = schedule
         self.current_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
+        self._set_manual_highlight_base(self.current_schedule)
         self.held_activity_id = None
         self._reset_history()
         self._load_constraint_controls_from_instance(self.inst)
@@ -3456,6 +4151,7 @@ class MainWindow(QMainWindow):
         self.inst = inst
         self.locked_activities = dict(getattr(inst, "locked_activities", {}) or {})
         self.base_schedule = {}
+        self._set_manual_highlight_base({})
         self.current_schedule = {}
         self.held_activity_id = None
         self._reset_history()
@@ -3532,6 +4228,7 @@ class MainWindow(QMainWindow):
 
         self.base_schedule = filtered
         self.current_schedule = {a_id: info.copy() for a_id, info in filtered.items()}
+        self._set_manual_highlight_base(self.current_schedule)
         self.held_activity_id = None
         self._reset_history()
         # Allow importing partially specified schedules (room_id may be blank).
@@ -3545,6 +4242,7 @@ class MainWindow(QMainWindow):
                 msg += f"\n... and {len(errors) - 20} more"
             QMessageBox.critical(self, "Invalid schedule", msg)
             self.base_schedule = {}
+            self._set_manual_highlight_base({})
             self.current_schedule = {}
             self.held_activity_id = None
             self.clear_table()

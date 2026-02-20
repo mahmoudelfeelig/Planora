@@ -1,4 +1,4 @@
-This section reports measurements from running the released code and scripts.
+This section reports controlled empirical measurements under fixed seeds and solver budgets.
 
 \subsection{Research Questions}
 We evaluate four practical questions:
@@ -10,7 +10,7 @@ We evaluate four practical questions:
 \end{itemize}
 
 \subsection{Setup}
-All runs are produced by \texttt{scripts/run\_experiment\_batches.sh}.
+All runs are produced by the batch driver script \texttt{run\_experiment\_batches.sh}.
 We evaluate modes \texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, and \texttt{target\_case}
 with seeds \(\{1,2,3\}\).
 
@@ -30,11 +30,14 @@ This produces 24 runs in total.
 \begin{itemize}[leftmargin=*]
   \item requested room mode: \texttt{greedy},
   \item same retry/fallback and CP limits as Batch A,
-  \item local search enabled with \texttt{ls\_iters}=150 and \texttt{ls\_seconds}=8.
+  \item local search enabled with \texttt{ls\_iters}=150 and \texttt{ls\_seconds}=8,
+  \item deterministic group/week pre-pass enabled (worst groups first) with bounded compound lookahead,
+  \item guided stochastic neighborhood search with bounded restart/diversification defaults,
+  \item entity-priority targeting enabled (worst groups/staff are optimized first).
 \end{itemize}
 This produces 12 runs in total and is used for RQ4.
 
-The JSONL outputs are converted to LaTeX rows using dedicated aggregation scripts.
+The JSONL outputs are then aggregated into LaTeX table rows.
 
 \subsection{Results}
 \paragraph{RQ1 (Feasibility reliability).}
@@ -77,7 +80,7 @@ For broader cross-paper score comparison, public benchmark ingestion and schema 
 remain future work~\cite{itc2007_track3,mccollum2010itc,bonutti2012benchmarking,bettinelli2015overview}.
 
 \subsection{Tables}
-The full per-run rows are included in \texttt{sections/07\_experiments\_runs.tex}.
+Detailed per-run results are provided as supplementary table rows in \texttt{sections/07\_experiments\_runs.tex}.
 
 \subsection{Comparison Diagrams}
 \begin{figure}[t]
@@ -163,9 +166,10 @@ The full per-run rows are included in \texttt{sections/07\_experiments\_runs.tex
 \label{fig:ls_gain}
 \end{figure}
 
-\begin{table}[h]
+\begin{table*}[t]
 \centering
-\small
+\footnotesize
+\setlength{\tabcolsep}{5pt}
 \begin{tabular}{lrrrrrrr}
 \toprule
 Scenario & Req. mode & Runs & Feasible (\%) & Median CP (s) & Median base penalty & Median LS penalty & Objective retries \\
@@ -182,11 +186,12 @@ target\_case & greedy & 3 & 100.00 & 49.59 & 11691.00 & - & 3 \\
 \end{tabular}
 \caption{Aggregated reliability/runtime metrics (Batch A).}
 \label{tab:perf}
-\end{table}
+\end{table*}
 
-\begin{table}[h]
+\begin{table*}[t]
 \centering
-\small
+\footnotesize
+\setlength{\tabcolsep}{5pt}
 \begin{tabular}{lrrrrr}
 \toprule
 Scenario & Runs & Median base penalty & Median LS penalty & Median delta & Median improvement (\%) \\
@@ -199,4 +204,4 @@ target\_case & 3 & 11691.00 & 11633.00 & 58.00 & 0.50 \\
 \end{tabular}
 \caption{Local-search ablation metrics (Batch B).}
 \label{tab:ls}
-\end{table}
+\end{table*}

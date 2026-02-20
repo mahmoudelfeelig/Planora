@@ -6,11 +6,11 @@ Benchmark-driven progress has been shaped by the International Timetabling Compe
 
 Our contributions are:
 \begin{itemize}[leftmargin=*]
-  \item A CP-SAT feasibility model with optional weighted soft penalties, implemented in OR-Tools CP-SAT~\cite{cpsatlp,ortools,ortools_cite,perron_didier_gay_cpsatlp_2023}.
-  \item A room-assignment strategy supporting both integrated CP rooming and a faster post-processing assignment.
-  \item A local-search improver that reduces a composite penalty while maintaining feasibility.
-  \item A phased anytime solve mode for UI use (feasibility first, then iterative improvement under a fixed budget).
-  \item An end-to-end software system (CLI and desktop UI) with exports (DOCX/CSV/ICS/PDF), diagnostics, and reproducibility hooks.
+  \item A formal start-time assignment model with binary decision variables, occupancy-based non-overlap constraints, and rule constraints for institutional policies.
+  \item A hybrid rooming formulation that supports either integrated CP room assignment or a decoupled post-processing assignment, enabling strictness/runtime trade-offs.
+  \item A weighted soft-penalty objective and a feasibility-preserving local-search layer that improves timetable quality under bounded time.
+  \item A phased anytime solving policy (feasibility phase then improvement phase) with explicit budget partitioning.
+  \item A reproducible implementation in OR-Tools CP-SAT with a shared CLI/UI runtime and export pipeline~\cite{cpsatlp,ortools,ortools_cite,perron_didier_gay_cpsatlp_2023}.
 \end{itemize}
 
 All non-trivial solver claims in this paper are tied directly to the implementation and/or cited references.

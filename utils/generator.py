@@ -175,8 +175,10 @@ def _build_custom_rooms(room_specs: List[Dict[str, Any]]) -> Dict[int, Room]:
 def generate_custom_instance(
     *,
     num_programs: int,
-    groups_per_program: int,
-    courses_per_program: int,
+    groups_per_program: int | None = None,
+    courses_per_program: int | None = None,
+    program_overrides: List[Dict[str, Any]] | None = None,
+    course_patterns: List[Dict[str, Any]] | Dict[int, Dict[str, Any]] | None = None,
     course_names: List[str] | None = None,
     num_professors: int,
     num_tas: int,
@@ -194,23 +196,114 @@ def generate_custom_instance(
       - course maps use 1-based local staff indexes (1..num_professors / 1..num_tas)
       - all courses are assigned exactly one professor and one TA
       - when maps are partial/empty, remaining courses are assigned round-robin
+      - program_overrides rows may define: program_id, groups, courses, courses_per_group
+      - course_patterns rows may define: course_id, lecture_count, tutorial_count,
+        lab_type (NONE/NORMAL/SPECIAL), lab_duration, lab_tag
     """
     if num_programs < 1:
         raise ValueError("num_programs must be >= 1")
-    if groups_per_program < 1:
-        raise ValueError("groups_per_program must be >= 1")
-    if courses_per_program < 1:
-        raise ValueError("courses_per_program must be >= 1")
     if num_professors < 1:
         raise ValueError("num_professors must be >= 1")
     if num_tas < 1:
         raise ValueError("num_tas must be >= 1")
 
+    default_groups = int(groups_per_program) if groups_per_program is not None else 2
+    default_courses = int(courses_per_program) if courses_per_program is not None else 6
+    if default_groups < 1:
+        raise ValueError("groups_per_program must be >= 1")
+    if default_courses < 1:
+        raise ValueError("courses_per_program must be >= 1")
+
+    program_group_counts = [int(default_groups) for _ in range(int(num_programs))]
+    program_course_counts = [int(default_courses) for _ in range(int(num_programs))]
+    program_courses_per_group = [int(default_courses) for _ in range(int(num_programs))]
+
+    for raw in list(program_overrides or []):
+        if not isinstance(raw, dict):
+            continue
+        try:
+            pid = int(raw.get("program_id", 0))
+        except Exception:
+            continue
+        if pid < 1 or pid > int(num_programs):
+            continue
+        idx = pid - 1
+        groups_val = raw.get("groups", program_group_counts[idx])
+        courses_val = raw.get("courses", program_course_counts[idx])
+        cpg_val = raw.get("courses_per_group", program_courses_per_group[idx])
+        try:
+            groups_int = max(1, int(groups_val))
+            courses_int = max(1, int(courses_val))
+            cpg_int = max(1, int(cpg_val))
+        except Exception:
+            continue
+        program_group_counts[idx] = groups_int
+        program_course_counts[idx] = courses_int
+        program_courses_per_group[idx] = min(courses_int, cpg_int)
+
+    course_pattern_overrides: Dict[int, Dict[str, Any]] = {}
+    if isinstance(course_patterns, dict):
+        raw_rows = []
+        for raw_cid, raw_cfg in course_patterns.items():
+            if isinstance(raw_cfg, dict):
+                row = dict(raw_cfg)
+            else:
+                row = {}
+            row["course_id"] = raw_cid
+            raw_rows.append(row)
+    else:
+        raw_rows = list(course_patterns or [])
+
+    for raw in raw_rows:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            c_id = int(raw.get("course_id", 0))
+        except Exception:
+            continue
+        if c_id < 1:
+            continue
+        lecture_count = raw.get("lecture_count", 12)
+        tutorial_count = raw.get("tutorial_count", 12)
+        lab_type = str(raw.get("lab_type", "NONE")).strip().upper()
+        lab_duration = raw.get("lab_duration", 2)
+        lab_tag = str(raw.get("lab_tag", "LAB1")).strip().upper() or "LAB1"
+        try:
+            lecture_count = int(lecture_count)
+        except Exception:
+            lecture_count = 12
+        try:
+            tutorial_count = int(tutorial_count)
+        except Exception:
+            tutorial_count = 12
+        try:
+            lab_duration = int(lab_duration)
+        except Exception:
+            lab_duration = 2
+        if lecture_count not in (12, 18, 24):
+            lecture_count = 12
+        if tutorial_count not in (0, 12, 18, 24):
+            tutorial_count = 12
+        if lab_type not in {"NONE", "NORMAL", "SPECIAL"}:
+            lab_type = "NONE"
+        lab_duration = max(1, min(2, lab_duration))
+        course_pattern_overrides[c_id] = {
+            "lecture_count": lecture_count,
+            "tutorial_count": tutorial_count,
+            "lab_type": lab_type,
+            "lab_duration": lab_duration,
+            "lab_tag": lab_tag,
+        }
+
     inst = _generate_university(
         seed=seed,
         num_programs=int(num_programs),
-        groups_per_program=(int(groups_per_program), int(groups_per_program)),
-        courses_per_program=(int(courses_per_program), int(courses_per_program)),
+        groups_per_program=(min(program_group_counts), max(program_group_counts)),
+        courses_per_program=(min(program_course_counts), max(program_course_counts)),
+        program_group_counts=program_group_counts,
+        program_course_counts=program_course_counts,
+        program_courses_per_group=program_courses_per_group,
+        course_pattern_overrides=course_pattern_overrides,
     )
 
     # Optional custom room set.
@@ -308,6 +401,10 @@ def _generate_university(
     target_profile: bool = False,
     max_group_load_slots: int | None = None,
     block_prof_extra_days: tuple[str, ...] = (),
+    program_group_counts: List[int] | None = None,
+    program_course_counts: List[int] | None = None,
+    program_courses_per_group: List[int] | None = None,
+    course_pattern_overrides: Dict[int, Dict[str, Any]] | None = None,
 ) -> Instance:
     """
     Generic builder for all modes.
@@ -324,6 +421,13 @@ def _generate_university(
 
     rng = random.Random(seed)
 
+    if program_group_counts is not None and len(program_group_counts) != int(num_programs):
+        raise ValueError("program_group_counts must match num_programs")
+    if program_course_counts is not None and len(program_course_counts) != int(num_programs):
+        raise ValueError("program_course_counts must match num_programs")
+    if program_courses_per_group is not None and len(program_courses_per_group) != int(num_programs):
+        raise ValueError("program_courses_per_group must match num_programs")
+
     programs: Dict[int, Program] = {}
     groups: Dict[int, Group] = {}
     courses: Dict[int, Course] = {}
@@ -337,8 +441,11 @@ def _generate_university(
     next_group_id = 1
 
     for p in range(1, num_programs + 1):
-        g_min, g_max = groups_per_program
-        num_groups = rng.randint(g_min, g_max)
+        if program_group_counts is not None:
+            num_groups = max(1, int(program_group_counts[p - 1]))
+        else:
+            g_min, g_max = groups_per_program
+            num_groups = rng.randint(g_min, g_max)
         g_ids: List[int] = []
 
         for gi in range(num_groups):
@@ -366,7 +473,10 @@ def _generate_university(
     min_c, max_c = courses_per_program
 
     for p in range(1, num_programs + 1):
-        num_courses = rng.randint(min_c, max_c)
+        if program_course_counts is not None:
+            num_courses = max(1, int(program_course_counts[p - 1]))
+        else:
+            num_courses = rng.randint(min_c, max_c)
         c_ids: List[int] = []
 
         for ci in range(num_courses):
@@ -391,6 +501,37 @@ def _generate_university(
             c_ids.append(c_id)
 
         program_to_course_ids[p] = c_ids
+
+    # ----- group-course enrollment (supports per-program/per-group customization) -----
+    group_to_course_ids: Dict[int, List[int]] = {}
+    course_to_group_ids: DefaultDict[int, List[int]] = defaultdict(list)
+
+    for p in range(1, num_programs + 1):
+        c_ids = list(program_to_course_ids[p])
+        g_ids = list(program_to_group_ids[p])
+        if not c_ids:
+            continue
+        if program_courses_per_group is not None:
+            cpg = max(1, min(len(c_ids), int(program_courses_per_group[p - 1])))
+        else:
+            cpg = len(c_ids)
+
+        for gi, g_id in enumerate(g_ids):
+            if cpg >= len(c_ids):
+                assigned = list(c_ids)
+            else:
+                start = gi % len(c_ids)
+                assigned = [c_ids[(start + off) % len(c_ids)] for off in range(cpg)]
+                # keep order deterministic and unique
+                assigned = list(dict.fromkeys(assigned))
+            group_to_course_ids[g_id] = list(assigned)
+            for c_id in assigned:
+                course_to_group_ids[c_id].append(g_id)
+
+    for g_id, c_ids in group_to_course_ids.items():
+        group_to_course_ids[g_id] = list(dict.fromkeys(c_ids))
+    for c_id, g_ids in list(course_to_group_ids.items()):
+        course_to_group_ids[c_id] = list(dict.fromkeys(g_ids))
 
     total_courses = len(courses)
 
@@ -431,6 +572,11 @@ def _generate_university(
             if block_courses:
                 break
 
+    # Explicit per-course pattern overrides should take precedence over random
+    # block-course tagging so user-provided lecture/tutorial totals are respected.
+    if course_pattern_overrides:
+        block_courses.difference_update(int(cid) for cid in course_pattern_overrides.keys())
+
     # ----- staff (profs, block profs, TAs) -----
 
     prof_ids, ta_ids, block_prof_ids = _build_staff_pool(
@@ -447,6 +593,8 @@ def _generate_university(
     block_prof_course_count = {sid: 0 for sid in block_prof_ids}
     max_block_courses_per_prof = 2
     regular_prof_ids = [sid for sid in prof_ids if sid not in block_prof_ids]
+    course_lab_mode: Dict[int, str] = {}
+    course_special_lab_tag: Dict[int, str] = {}
 
     # ----- rooms -----
 
@@ -460,11 +608,14 @@ def _generate_university(
     # ----- assign courses to staff and finalise course metadata -----
 
     for p in range(1, num_programs + 1):
-        g_ids = program_to_group_ids[p]
         c_ids = program_to_course_ids[p]
         labs_only_id = labs_only_for_program.get(p)
 
         for c_id in c_ids:
+            enrolled_g_ids = list(course_to_group_ids.get(c_id, []))
+            if not enrolled_g_ids:
+                # No enrolled groups -> skip this course from activity generation.
+                continue
             # TA choice
             ta_choice = min(ta_ids, key=lambda s: ta_load[s])
             ta_load[ta_choice] += 1
@@ -488,7 +639,9 @@ def _generate_university(
             prof_load[prof_choice] += 1
 
             c = courses[c_id]
-            c.share_lecture_group_ids = list(g_ids) if len(g_ids) >= 2 else []
+            c.share_lecture_group_ids = (
+                list(enrolled_g_ids) if len(enrolled_g_ids) >= 2 else []
+            )
             c.prof_id = prof_choice
             c.ta_id = ta_choice
             staff[prof_choice].can_teach_courses.add(c_id)
@@ -501,30 +654,85 @@ def _generate_university(
                 c.tutorial_count = 0
                 c.lab_weeks = 12
                 c.lab_duration = 2
+                course_lab_mode[c_id] = "SPECIAL"
+                course_special_lab_tag[c_id] = rng.choice(["LAB1", "LAB2", "LAB3"])
             else:
-                if target_profile:
-                    lecture_total = 12
-                    tutorial_total = rng.choices([0, 12], weights=[0.15, 0.85])[0]
+                override = (
+                    course_pattern_overrides.get(c_id)
+                    if isinstance(course_pattern_overrides, dict)
+                    else None
+                )
+                if override:
+                    lecture_total = int(override.get("lecture_count", 12))
+                    tutorial_total = int(override.get("tutorial_count", 12))
+                    if lecture_total not in (12, 18, 24):
+                        lecture_total = 12
+                    if tutorial_total not in (0, 12, 18, 24):
+                        tutorial_total = 12
+                    if is_block_course:
+                        # Block lecture courses are fixed to 4x3-slot blocks.
+                        lecture_total = 12
+                    lab_type = str(override.get("lab_type", "NONE")).strip().upper()
+                    if lab_type not in {"NONE", "NORMAL", "SPECIAL"}:
+                        lab_type = "NONE"
+                    lab_duration = int(override.get("lab_duration", 2))
+                    lab_duration = max(1, min(2, lab_duration))
+                    if lab_type == "NONE":
+                        if tutorial_total > 0:
+                            structure = "LEC_TUT"
+                        else:
+                            structure = "LEC_ONLY"
+                        lab_weeks = 0
+                        lab_duration = 0
+                    else:
+                        structure = "LEC_TUT_LAB"
+                        if tutorial_total == 0:
+                            tutorial_total = 12
+                        lab_weeks = 12
+                        course_lab_mode[c_id] = lab_type
+                        if lab_type == "SPECIAL":
+                            course_special_lab_tag[c_id] = (
+                                str(override.get("lab_tag", "LAB1")).strip().upper()
+                                or "LAB1"
+                            )
                 else:
-                    # Keep patterns feasible at the repo's target scale: prefer 12/18, keep 24 rare.
-                    lecture_total = rng.choices([12, 18, 24], weights=[0.75, 0.20, 0.05])[0]
-                    tutorial_total = rng.choices([0, 12, 18, 24], weights=[0.10, 0.75, 0.12, 0.03])[0]
+                    if target_profile:
+                        lecture_total = 12
+                        tutorial_total = rng.choices([0, 12], weights=[0.15, 0.85])[0]
+                    else:
+                        # Keep patterns feasible at the repo's target scale: prefer 12/18, keep 24 rare.
+                        lecture_total = rng.choices([12, 18, 24], weights=[0.75, 0.20, 0.05])[0]
+                        tutorial_total = rng.choices([0, 12, 18, 24], weights=[0.10, 0.75, 0.12, 0.03])[0]
 
-                if is_block_course:
-                    # Block lecture courses: 4×3-slot blocks (slot-total 12) in fixed weeks.
-                    lecture_total = 12
+                    if is_block_course:
+                        # Block lecture courses: 4×3-slot blocks (slot-total 12) in fixed weeks.
+                        lecture_total = 12
 
-                # Decide which structure to use (some courses have labs)
-                structure = rng.choices(
-                    ["LEC_ONLY", "LEC_TUT", "LEC_TUT_LAB"],
-                    weights=[0.15, 0.70, 0.15],
-                )[0]
+                    # Decide which structure to use (some courses have labs)
+                    structure = rng.choices(
+                        ["LEC_ONLY", "LEC_TUT", "LEC_TUT_LAB"],
+                        weights=[0.15, 0.70, 0.15],
+                    )[0]
 
-                if target_profile:
-                    # favor clustered lectures; ensure share_lecture_group_ids already set
-                    structure_weights = [0.05, 0.75, 0.20]
-                    structure = rng.choices(["LEC_ONLY", "LEC_TUT", "LEC_TUT_LAB"], weights=structure_weights)[0]
-                    if structure == "LEC_ONLY":
+                    if target_profile:
+                        # favor clustered lectures; ensure share_lecture_group_ids already set
+                        structure_weights = [0.05, 0.75, 0.20]
+                        structure = rng.choices(["LEC_ONLY", "LEC_TUT", "LEC_TUT_LAB"], weights=structure_weights)[0]
+                        if structure == "LEC_ONLY":
+                            tutorial_total = 0
+                            lab_weeks = 0
+                            lab_duration = 0
+                        elif structure == "LEC_TUT":
+                            lab_weeks = 0
+                            lab_duration = 0
+                            if tutorial_total == 0:
+                                tutorial_total = 12
+                        else:
+                            if tutorial_total == 0:
+                                tutorial_total = 12
+                            lab_weeks = 12
+                            lab_duration = 2
+                    elif structure == "LEC_ONLY":
                         tutorial_total = 0
                         lab_weeks = 0
                         lab_duration = 0
@@ -532,27 +740,13 @@ def _generate_university(
                         lab_weeks = 0
                         lab_duration = 0
                         if tutorial_total == 0:
+                            # keep "LEC_TUT" meaningful
                             tutorial_total = 12
-                    else:
+                    else:  # LEC_TUT_LAB
                         if tutorial_total == 0:
                             tutorial_total = 12
                         lab_weeks = 12
-                        lab_duration = 2
-                elif structure == "LEC_ONLY":
-                    tutorial_total = 0
-                    lab_weeks = 0
-                    lab_duration = 0
-                elif structure == "LEC_TUT":
-                    lab_weeks = 0
-                    lab_duration = 0
-                    if tutorial_total == 0:
-                        # keep "LEC_TUT" meaningful
-                        tutorial_total = 12
-                else:  # LEC_TUT_LAB
-                    if tutorial_total == 0:
-                        tutorial_total = 12
-                    lab_weeks = 12
-                    lab_duration = rng.choice([1, 2])
+                        lab_duration = rng.choice([1, 2])
 
                 c.structure_type = structure
                 c.lecture_count = int(lecture_total)
@@ -567,7 +761,7 @@ def _generate_university(
         c_ids = program_to_course_ids[p]
         g_ids = program_to_group_ids[p]
         for g_id in g_ids:
-            groups[g_id].course_ids = list(c_ids)
+            groups[g_id].course_ids = list(group_to_course_ids.get(g_id, c_ids))
         programs[p] = Program(
             id=p,
             name=f"Program-{p}",
@@ -583,11 +777,13 @@ def _generate_university(
     tut_weeks = list(range(2, 13))  # week-1 rule: tutorials/labs start week 2
 
     for p in range(1, num_programs + 1):
-        g_ids = program_to_group_ids[p]
         c_ids = program_to_course_ids[p]
 
         for c_id in c_ids:
             c = courses[c_id]
+            c_g_ids = list(course_to_group_ids.get(c_id, []))
+            if not c_g_ids:
+                continue
             prof_id = c.prof_id
             ta_id = c.ta_id
             is_block_course = c_id in block_courses
@@ -600,7 +796,7 @@ def _generate_university(
                         act_id = next_act_id; next_act_id += 1
                         activities[act_id] = Activity(
                             id=act_id, course_id=c_id, week=week,
-                            kind="LEC", duration=3, group_ids=list(g_ids),
+                            kind="LEC", duration=3, group_ids=list(c_g_ids),
                             prof_id=prof_id, ta_id=ta_id, requires_specialization=None,
                         )
                 else:
@@ -610,7 +806,7 @@ def _generate_university(
                             act_id = next_act_id; next_act_id += 1
                             activities[act_id] = Activity(
                                 id=act_id, course_id=c_id, week=week,
-                                kind="LEC", duration=1, group_ids=list(g_ids),
+                                kind="LEC", duration=1, group_ids=list(c_g_ids),
                                 prof_id=prof_id, ta_id=ta_id, requires_specialization=None,
                             )
 
@@ -618,7 +814,7 @@ def _generate_university(
             if c.tutorial_count and c.tutorial_count > 0 and c.structure_type in ("LEC_TUT", "LEC_TUT_LAB"):
                 tut_counts = _distribute_sessions(int(c.tutorial_count), tut_weeks, rng=rng)
                 for week in tut_weeks:
-                    for g_id in g_ids:
+                    for g_id in c_g_ids:
                         for _ in range(tut_counts.get(week, 0)):
                             act_id = next_act_id; next_act_id += 1
                             activities[act_id] = Activity(
@@ -631,15 +827,21 @@ def _generate_university(
             if c.lab_weeks and c.lab_weeks > 0 and c.lab_duration and c.lab_duration > 0:
                 lab_counts = _distribute_sessions(int(c.lab_weeks), tut_weeks, rng=rng)
                 if c.structure_type == "LAB_ONLY":
-                    requires_tag: str | None = rng.choice(["LAB1", "LAB2", "LAB3"])
+                    requires_tag: str | None = course_special_lab_tag.get(c_id) or rng.choice(["LAB1", "LAB2", "LAB3"])
                 else:
-                    requires_tag = rng.choice([None, "LAB1", "LAB2", "LAB3"])
+                    lab_mode = str(course_lab_mode.get(c_id, "AUTO")).upper()
+                    if lab_mode == "NORMAL":
+                        requires_tag = None
+                    elif lab_mode == "SPECIAL":
+                        requires_tag = course_special_lab_tag.get(c_id) or rng.choice(["LAB1", "LAB2", "LAB3"])
+                    else:
+                        requires_tag = rng.choice([None, "LAB1", "LAB2", "LAB3"])
                 for week in tut_weeks:
                     for _ in range(lab_counts.get(week, 0)):
                         act_id = next_act_id; next_act_id += 1
                         activities[act_id] = Activity(
                             id=act_id, course_id=c_id, week=week,
-                            kind="LAB", duration=int(c.lab_duration), group_ids=list(g_ids),
+                            kind="LAB", duration=int(c.lab_duration), group_ids=list(c_g_ids),
                             prof_id=prof_id, ta_id=ta_id, requires_specialization=requires_tag,
                         )
 

@@ -55,6 +55,22 @@ For each cluster $C$ with leader $\ell$, enforce equal start times:
 \end{align}
 
 \subsection{Soft Objective (Optional)}
-The CP objective is a weighted sum of linear penalties approximating schedule quality:
-free-day shortfalls, gaps, late starts, stability, and (when rooming in CP) room-consistency.
-Weights are configurable at the instance level.
+When objective mode is enabled, the model minimizes
+\begin{align}
+\min_{x}\; F(x)
+&=
+w_{\mathrm{free}}\,P_{\mathrm{free}}(x)
++w_{\mathrm{gap}}\,P_{\mathrm{gap}}(x)
++w_{\mathrm{late}}\,P_{\mathrm{late}}(x)\nonumber\\
+&\quad
++w_{\mathrm{stab}}\,P_{\mathrm{stab}}(x)
++w_{\mathrm{room}}\,P_{\mathrm{room}}(x),
+\label{eq:softobj}
+\end{align}
+where each \(P_{\bullet}(x)\) is a nonnegative linearized penalty term:
+free-day shortfalls, intra-day gaps, late starts, week-to-week instability, and
+room inconsistency (when rooming is integrated in CP).
+All weights \(w_{\bullet}\ge 0\) are configurable at the instance level.
+
+If objective mode is disabled, the solver runs in pure feasibility mode:
+find any \(x\) satisfying all hard constraints.

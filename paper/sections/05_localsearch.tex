@@ -1,11 +1,29 @@
 After a feasible timetable is produced by CP-SAT, an optional local-search improver attempts to reduce a composite soft penalty.
 This follows the common pattern of feasibility-first construction plus neighborhood-based improvement widely used in course timetabling~\cite{lewis2008metaheuristics,bettinelli2015overview}.
 
-\subsection{Neighborhood}
-At each iteration, the algorithm samples an activity (or a cluster of co-start activities) and proposes one of:
+\subsection{Neighborhood and Move Generation}
+The improver is two-stage. First, it runs a deterministic group/week sweep to exploit obvious structural gains. Second, it runs stochastic local search for additional refinements.
+
+\paragraph{Deterministic group/week sweep.}
+For each week and for high-penalty groups first, the improver searches feasible relocations and applies the best improving move found.
+Besides single-cluster relocations, it evaluates bounded compound relocations (default: up to 2 chained time moves), so a small temporary loss in step 1 can still be accepted when the total combined delta is better.
+This pre-pass is explicitly bounded by move count, pass count (default: up to 3 week-wise passes), and wall-clock budget to preserve responsiveness.
+
+\paragraph{Stochastic stage.}
+After the deterministic pass, each iteration selects high-pressure activities (or co-start clusters) and evaluates one of:
 \begin{itemize}[leftmargin=*]
   \item \textbf{Time move}: change $(d,s)$ within the same week, respecting hard constraints checked by incremental occupancy tables.
   \item \textbf{Room move}: change room assignment to another eligible room (when room assignments exist), respecting room eligibility and availability.
+\end{itemize}
+
+\noindent
+Compared to purely random local search, candidate generation is guided:
+\begin{itemize}[leftmargin=*]
+  \item groups and staff are scored by current soft-penalty ``badness''; move selection prioritizes activities attached to the worst entities first,
+  \item before stochastic sampling, a deterministic week-wise sweep targets worst group-weeks directly,
+  \item activities are further ranked by a pressure score (gaps, thin days, late starts, excess active days, staff day pressure),
+  \item for a selected activity/cluster, the search scans feasible candidates and keeps the best local delta found,
+  \item room moves use intersection of allowed-room sets for clustered activities to avoid invalid proposals early.
 \end{itemize}
 
 \subsection{Feasibility Preservation}
@@ -17,7 +35,28 @@ Candidate moves are filtered by:
   \item lock constraints (locked activities cannot be moved).
 \end{itemize}
 
+\subsection{Fast Delta Evaluation}
+To keep improvement interactive, the improver avoids full rescoring on every candidate.
+It evaluates local deltas on affected components only:
+\begin{itemize}[leftmargin=*]
+  \item group-week terms (free-day deficits, gaps, thin/single days, late starts, active-day penalty),
+  \item staff-week free-day term,
+  \item adjacent week-pair stability term,
+  \item room-consistency keys touched by the move.
+\end{itemize}
+An exact global penalty recomputation is triggered periodically for numerical robustness.
+Entity badness scores (groups/staff) are refreshed periodically as the schedule changes, so priority targeting remains aligned with the current worst parts of the timetable.
+
 \subsection{Acceptance Rule}
 We use a simulated annealing style rule.
 Let $\Delta$ be the change in penalty.
 Moves with $\Delta\le 0$ are accepted; moves with $\Delta>0$ are accepted with probability $\exp(-\Delta/T)$ where $T$ follows an exponential cooling schedule from $T_0$ to $T_1$.
+
+\subsection{Restart and Diversification Strategy}
+To reduce plateauing, the improver uses a bounded multi-start policy inside the same time budget:
+\begin{itemize}[leftmargin=*]
+  \item if no improvement is observed for a restart window, the search restarts from the current elite solution,
+  \item a short diversification ``kick'' applies a few random feasible perturbations,
+  \item guided search then resumes from this perturbed elite state.
+\end{itemize}
+This preserves hard-feasibility checks while improving search coverage under strict runtime limits.

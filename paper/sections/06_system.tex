@@ -27,6 +27,7 @@ B_i \approx 0.2B\ \text{(capped)},\qquad
 B_f \approx 0.8B\ \text{(floored)}.
 \]
 The first phase prioritizes obtaining a valid schedule quickly; the second phase runs short local-search slices to improve penalty.
+Each improvement slice uses a capped deterministic pre-pass (group/week sweep with bounded compound lookahead) followed by guided stochastic neighborhoods with bounded restarts/diversification when the search plateaus.
 
 \subsection{Operational Parameters}
 The main runtime parameters are:
@@ -36,4 +37,4 @@ The main runtime parameters are:
   \item time limit and worker count,
   \item local-search iteration/time budget.
 \end{itemize}
-Using the same backend for CLI and UI ensures that reported experiments and interactive runs follow identical solving logic.
+The same solver parameterization is used across batch and interactive runs, supporting consistent interpretation of results.
