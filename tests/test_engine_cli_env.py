@@ -193,3 +193,92 @@ def test_engine_cli_phased_solve_runs_feasibility_then_improves(monkeypatch, tmp
     assert improvement.get("start_penalty") == 10
     assert improvement.get("final_penalty") == 5
     assert payload["schedule"][1]["slot"] == 1
+
+
+def test_engine_cli_rejects_post_extract_hard_conflicts(monkeypatch, tmp_path: Path):
+    in_path, out_path = _write_instance(tmp_path)
+
+    class FakeSolver:
+        def __init__(self, inst, room_mode="cp_rooms", *, use_objective=True):
+            self.room_mode = room_mode
+            self.use_objective = use_objective
+
+        def solve(self, *, time_limit_seconds=None, workers=None, random_seed=None, log_progress=False):
+            return object(), cp_model.FEASIBLE
+
+        def extract_solution(self, sat):
+            return {1: {"week": 1, "day": "MON", "slot": 0, "duration": 1, "room_id": 1, "staff_id": 1, "course_id": 1, "group_ids": [], "kind": "LEC"}}
+
+    monkeypatch.setattr(engine_cli, "TimetableSolver", FakeSolver)
+    monkeypatch.setattr(engine_cli, "validate_schedule_against_instance", lambda *args, **kwargs: ["group overlap"])
+    monkeypatch.setattr(engine_cli.sys, "argv", ["engine_cli.py", str(in_path), str(out_path)])
+
+    rc = engine_cli.main()
+    assert rc == 0
+    payload = pickle.loads(out_path.read_bytes())
+    assert payload["status"] == -3
+    assert payload["schedule"] == {}
+    assert "hard conflicts" in str(payload.get("error", "")).lower()
+
+
+def test_engine_cli_phased_improvement_rejects_hard_conflict_candidates(monkeypatch, tmp_path: Path):
+    in_path, out_path = _write_instance(tmp_path)
+
+    class FakeSolver:
+        def __init__(self, inst, room_mode="cp_rooms", *, use_objective=True):
+            self.room_mode = room_mode
+            self.use_objective = use_objective
+
+        def solve(self, *, time_limit_seconds=None, workers=None, random_seed=None, log_progress=False):
+            return object(), cp_model.FEASIBLE
+
+        def extract_solution(self, sat):
+            return {
+                1: {
+                    "week": 1,
+                    "day": "MON",
+                    "slot": 0,
+                    "duration": 1,
+                    "room_id": 1,
+                    "staff_id": 1,
+                    "course_id": 1,
+                    "group_ids": [],
+                    "kind": "LEC",
+                }
+            }
+
+    class FakeImprover:
+        def __init__(self, inst):
+            pass
+
+        def compute_soft_penalty(self, schedule):
+            return int(schedule[1]["slot"])
+
+        def improve(self, schedule, *, iterations=0, max_seconds=None, **kwargs):
+            out = {a_id: info.copy() for a_id, info in schedule.items()}
+            out[1]["slot"] = 1
+            return out
+
+    def _fake_validate(_inst, schedule, **kwargs):
+        # Slot 1 is considered hard-conflicting for this test.
+        return ["hard conflict"] if int(schedule[1]["slot"]) == 1 else []
+
+    monkeypatch.setattr(engine_cli, "TimetableSolver", FakeSolver)
+    monkeypatch.setattr(engine_cli, "LocalSearchImprover", FakeImprover)
+    monkeypatch.setattr(engine_cli, "validate_schedule_against_instance", _fake_validate)
+    monkeypatch.setenv("TT_PHASED_SOLVE", "1")
+    monkeypatch.setenv("TT_IMPROVE_TOTAL_SECONDS", "1")
+    monkeypatch.setenv("TT_IMPROVE_SLICE_SECONDS", "1")
+    monkeypatch.setenv("TT_IMPROVE_ITERS_PER_SLICE", "50")
+    monkeypatch.setenv("TT_IMPROVE_MAX_ROUNDS", "1")
+    monkeypatch.setattr(engine_cli.sys, "argv", ["engine_cli.py", str(in_path), str(out_path)])
+
+    rc = engine_cli.main()
+    assert rc == 0
+    payload = pickle.loads(out_path.read_bytes())
+    assert payload["status"] in (0, 4)
+    assert payload["schedule"][1]["slot"] == 0
+    rounds = payload.get("meta", {}).get("improvement", {}).get("rounds", [])
+    assert rounds
+    assert rounds[0].get("hard_conflicts") == 1
+    assert rounds[0].get("accepted") is False

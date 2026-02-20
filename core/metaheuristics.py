@@ -569,7 +569,23 @@ class LocalSearchImprover:
 
             if progress_hook and progress_every > 0 and (it + 1) % progress_every == 0:
                 try:
-                    progress_hook(it + 1, best_pen, current_pen)
+                    progress_hook(
+                        it + 1,
+                        best_pen,
+                        current_pen,
+                        current_schedule=current,
+                        best_schedule=best,
+                        moved=bool(moved),
+                        accepted=bool(accept) if moved else False,
+                        elapsed_seconds=float(time.perf_counter() - start_ts),
+                        total_iterations=int(iterations),
+                    )
+                except TypeError:
+                    # Backward compatibility for legacy hooks with signature (it, best, cur).
+                    try:
+                        progress_hook(it + 1, best_pen, current_pen)
+                    except Exception:
+                        pass
                 except Exception:
                     # keep search running even if the hook fails
                     pass

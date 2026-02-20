@@ -34,15 +34,14 @@ This produces 24 runs in total.
 \end{itemize}
 This produces 12 runs in total and is used for RQ4.
 
-The JSONL outputs are converted to LaTeX rows by:
-\texttt{scripts/jsonl\_to\_latex\_table.py} and \texttt{scripts/jsonl\_to\_latex\_ls\_table.py}.
+The JSONL outputs are converted to LaTeX rows using dedicated aggregation scripts.
 
 \subsection{Results}
 \paragraph{RQ1 (Feasibility reliability).}
 All 24/24 Batch-A runs are feasible (100\%).
 
 \paragraph{RQ2 (Runtime trade-off).}
-Table~\ref{tab:perf} shows that on larger scenarios, requested \texttt{greedy} is consistently faster:
+Table~\ref{tab:perf} and Figure~\ref{fig:runtime_compare} show that on larger scenarios, requested \texttt{greedy} is consistently faster:
 \begin{itemize}[leftmargin=*]
   \item \texttt{block\_profs}: \(87.48\) s (\texttt{cp\_rooms}) vs \(47.59\) s (\texttt{greedy}), \(\approx 1.84\times\),
   \item \texttt{mixed\_large}: \(103.28\) s vs \(65.12\) s, \(\approx 1.59\times\),
@@ -52,11 +51,12 @@ For \texttt{small\_demo}, both requested modes are effectively identical (\(20.1
 
 \paragraph{RQ3 (Fallback behavior).}
 Among 12 runs that request \texttt{cp\_rooms}, only 3 finish in \texttt{cp\_rooms}
-(all \texttt{small\_demo}); the remaining 9 finish via \texttt{greedy} fallback.
+(all \texttt{small\_demo}); the remaining 9 finish via \texttt{greedy} fallback
+(Figure~\ref{fig:fallback_outcomes}).
 This confirms that integrated strict rooming is the main bottleneck under short strict budgets.
 
 \paragraph{RQ4 (Quality improvement).}
-Table~\ref{tab:ls} summarizes base-vs-LS penalties for Batch B.
+Table~\ref{tab:ls} and Figure~\ref{fig:ls_gain} summarize base-vs-LS penalties for Batch B.
 Local search always preserves or improves penalty in this batch:
 \begin{itemize}[leftmargin=*]
   \item \texttt{block\_profs}: median \(-149\) penalty points (\(1.13\%\)),
@@ -65,6 +65,12 @@ Local search always preserves or improves penalty in this batch:
   \item \texttt{small\_demo}: median change \(0\).
 \end{itemize}
 
+\paragraph{Retry dynamics (additional evidence).}
+Objective-off retries are never needed for \texttt{small\_demo} (0/6 runs),
+but are needed in all large-scenario runs in this batch (3/3 per requested mode for
+\texttt{block\_profs}, \texttt{mixed\_large}, and \texttt{target\_case}; see Table~\ref{tab:perf}).
+This supports the design choice of retaining an automatic objective-off retry path.
+
 \subsection{External Benchmark Positioning}
 This submission reports claims on the project's generated workloads only.
 For broader cross-paper score comparison, public benchmark ingestion and schema mapping (e.g., ITC-style CB-CTT datasets)
@@ -72,6 +78,90 @@ remain future work~\cite{itc2007_track3,mccollum2010itc,bonutti2012benchmarking,
 
 \subsection{Tables}
 The full per-run rows are included in \texttt{sections/07\_experiments\_runs.tex}.
+
+\subsection{Comparison Diagrams}
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    bar width=5.2pt,
+    width=0.96\columnwidth,
+    height=0.52\columnwidth,
+    ymin=0,
+    ylabel={Median runtime (s)},
+    symbolic x coords={SD,BP,ML,TC},
+    xtick=data,
+    enlarge x limits=0.18,
+    legend style={at={(0.5,1.02)},anchor=south,legend columns=2,font=\footnotesize},
+    tick label style={font=\scriptsize},
+    label style={font=\footnotesize},
+]
+\addplot coordinates {(SD,20.17) (BP,87.48) (ML,103.28) (TC,98.34)};
+\addplot coordinates {(SD,20.03) (BP,47.59) (ML,65.12) (TC,49.59)};
+\legend{Requested \texttt{cp\_rooms}, Requested \texttt{greedy}}
+\end{axis}
+\end{tikzpicture}
+\caption{Runtime comparison for requested room modes (Batch A medians; SD=\texttt{small\_demo}, BP=\texttt{block\_profs}, ML=\texttt{mixed\_large}, TC=\texttt{target\_case}).}
+\label{fig:runtime_compare}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    bar width=16pt,
+    width=0.88\columnwidth,
+    height=0.48\columnwidth,
+    ymin=0,
+    ymax=12,
+    ylabel={Run count},
+    symbolic x coords={CPReq},
+    xtick=data,
+    xticklabels={Requested \texttt{cp\_rooms}},
+    enlarge x limits=0.35,
+    legend style={at={(0.5,1.02)},anchor=south,legend columns=2,font=\footnotesize},
+    nodes near coords,
+    nodes near coords align={vertical},
+    every node near coord/.append style={font=\scriptsize},
+    tick label style={font=\scriptsize},
+    label style={font=\footnotesize},
+]
+\addplot coordinates {(CPReq,3)};
+\addplot coordinates {(CPReq,9)};
+\legend{Final \texttt{cp\_rooms}, Final \texttt{greedy} (fallback)}
+\end{axis}
+\end{tikzpicture}
+\caption{Fallback outcomes when strict room mode is requested (12 runs total).}
+\label{fig:fallback_outcomes}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    bar width=8pt,
+    width=0.96\columnwidth,
+    height=0.48\columnwidth,
+    ymin=0,
+    ylabel={Median LS gain (\%)},
+    symbolic x coords={SD,BP,ML,TC},
+    xtick=data,
+    enlarge x limits=0.22,
+    nodes near coords,
+    nodes near coords align={vertical},
+    every node near coord/.append style={font=\scriptsize},
+    tick label style={font=\scriptsize},
+    label style={font=\footnotesize},
+]
+\addplot coordinates {(SD,0.00) (BP,1.13) (ML,0.26) (TC,0.50)};
+\end{axis}
+\end{tikzpicture}
+\caption{Median local-search improvement over base penalty (Batch B).}
+\label{fig:ls_gain}
+\end{figure}
 
 \begin{table}[h]
 \centering

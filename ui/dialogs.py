@@ -182,24 +182,89 @@ class MoveConflictDialog(QDialog):
         self.setWindowTitle("Resolve move conflicts")
         root = QVBoxLayout(self)
 
-        intro = QLabel(
+        self.intro_label = QLabel(
             f"Moving A{self.held_activity_id} to {self.target_day} S{self.target_slot + 1} "
             "creates conflicts. Choose a conflict activity to resolve."
         )
-        intro.setWordWrap(True)
-        root.addWidget(intro)
+        self.intro_label.setWordWrap(True)
+        root.addWidget(self.intro_label)
+
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        root.addWidget(self.status_label)
 
         self.conflict_table = QTableWidget(len(conflicts), 5)
         self.conflict_table.setHorizontalHeaderLabels(
             ["Activity", "Conflict", "Current time", "Room", "Staff"]
         )
         self.conflict_table.verticalHeader().setVisible(False)
-        for row, conflict in enumerate(conflicts):
+        root.addWidget(self.conflict_table)
+
+        form = QFormLayout()
+        self.conflict_combo = QComboBox()
+        form.addRow("Conflict activity:", self.conflict_combo)
+
+        self.relocate_combo = QComboBox()
+        form.addRow("Relocate to:", self.relocate_combo)
+        root.addLayout(form)
+
+        actions = QHBoxLayout()
+        self.swap_btn = QPushButton("Swap timeslots")
+        self.move_btn = QPushButton("Move conflict away")
+        self.force_btn = QPushButton("Move here anyway")
+        self.cancel_btn = QPushButton("Cancel")
+        actions.addWidget(self.swap_btn)
+        actions.addWidget(self.move_btn)
+        actions.addWidget(self.force_btn)
+        actions.addWidget(self.cancel_btn)
+        actions.addStretch(1)
+        root.addLayout(actions)
+
+        self.conflict_combo.currentIndexChanged.connect(self._refresh_relocation_options)
+        self.swap_btn.clicked.connect(self._on_swap)
+        self.move_btn.clicked.connect(self._on_move)
+        self.force_btn.clicked.connect(self._on_force)
+        self.cancel_btn.clicked.connect(self.reject)
+        self.update_state(conflicts, relocation_options)
+
+    def update_state(
+        self,
+        conflicts: List[Dict[str, Any]],
+        relocation_options: Dict[int, List[Tuple[str, int]]],
+        message: str | None = None,
+    ) -> None:
+        prev_activity = self.conflict_combo.currentData()
+        self.conflicts = list(conflicts)
+        self.relocation_options = dict(relocation_options)
+        self.status_label.setText(str(message or ""))
+        self._refresh_conflict_rows()
+
+        self.conflict_combo.blockSignals(True)
+        self.conflict_combo.clear()
+        for conflict in self.conflicts:
             b_id = int(conflict["activity_id"])
-            info = schedule[b_id]
-            course = inst.courses.get(info["course_id"])
-            room = inst.rooms.get(info["room_id"])
-            staff = inst.staff.get(info["staff_id"])
+            info = self.schedule[b_id]
+            course = self.inst.courses.get(info["course_id"])
+            label = f"A{b_id}"
+            if course is not None:
+                label += f" {course.code}"
+            label += f" ({info['day']} S{int(info['slot']) + 1})"
+            self.conflict_combo.addItem(label, b_id)
+        if prev_activity is not None:
+            idx = self.conflict_combo.findData(int(prev_activity))
+            if idx >= 0:
+                self.conflict_combo.setCurrentIndex(idx)
+        self.conflict_combo.blockSignals(False)
+        self._refresh_relocation_options()
+
+    def _refresh_conflict_rows(self) -> None:
+        self.conflict_table.setRowCount(len(self.conflicts))
+        for row, conflict in enumerate(self.conflicts):
+            b_id = int(conflict["activity_id"])
+            info = self.schedule[b_id]
+            course = self.inst.courses.get(info["course_id"])
+            room = self.inst.rooms.get(info["room_id"])
+            staff = self.inst.staff.get(info["staff_id"])
             title = f"A{b_id}"
             if course is not None:
                 title += f" {course.code}"
@@ -216,40 +281,6 @@ class MoveConflictDialog(QDialog):
                 row, 4, QTableWidgetItem(staff.name if staff is not None else "-")
             )
         self.conflict_table.resizeColumnsToContents()
-        root.addWidget(self.conflict_table)
-
-        form = QFormLayout()
-        self.conflict_combo = QComboBox()
-        for conflict in conflicts:
-            b_id = int(conflict["activity_id"])
-            info = schedule[b_id]
-            course = inst.courses.get(info["course_id"])
-            label = f"A{b_id}"
-            if course is not None:
-                label += f" {course.code}"
-            label += f" ({info['day']} S{int(info['slot']) + 1})"
-            self.conflict_combo.addItem(label, b_id)
-        form.addRow("Conflict activity:", self.conflict_combo)
-
-        self.relocate_combo = QComboBox()
-        form.addRow("Relocate to:", self.relocate_combo)
-        root.addLayout(form)
-
-        actions = QHBoxLayout()
-        self.swap_btn = QPushButton("Swap timeslots")
-        self.move_btn = QPushButton("Move conflict away")
-        self.cancel_btn = QPushButton("Cancel")
-        actions.addWidget(self.swap_btn)
-        actions.addWidget(self.move_btn)
-        actions.addWidget(self.cancel_btn)
-        actions.addStretch(1)
-        root.addLayout(actions)
-
-        self.conflict_combo.currentIndexChanged.connect(self._refresh_relocation_options)
-        self.swap_btn.clicked.connect(self._on_swap)
-        self.move_btn.clicked.connect(self._on_move)
-        self.cancel_btn.clicked.connect(self.reject)
-        self._refresh_relocation_options()
 
     def _refresh_relocation_options(self) -> None:
         self.relocate_combo.clear()
@@ -257,12 +288,14 @@ class MoveConflictDialog(QDialog):
         if b_id is None:
             self.swap_btn.setEnabled(False)
             self.move_btn.setEnabled(False)
+            self.force_btn.setEnabled(bool(self.conflicts))
             return
         options = self.relocation_options.get(int(b_id), [])
         for day, slot in options:
             self.relocate_combo.addItem(f"{day} S{int(slot) + 1}", (str(day), int(slot)))
         self.swap_btn.setEnabled(True)
         self.move_btn.setEnabled(bool(options))
+        self.force_btn.setEnabled(bool(self.conflicts))
 
     def _on_swap(self) -> None:
         b_id = self.conflict_combo.currentData()
@@ -278,6 +311,10 @@ class MoveConflictDialog(QDialog):
             return
         day, slot = relocation
         self._decision = ("relocate", int(b_id), str(day), int(slot))
+        self.accept()
+
+    def _on_force(self) -> None:
+        self._decision = ("force",)
         self.accept()
 
     def get_decision(self) -> Tuple | None:

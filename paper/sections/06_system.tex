@@ -1,34 +1,39 @@
-The codebase is organized around a feasibility-first architecture with explicit runtime controls.
+The system follows a feasibility-first decomposition that separates three concerns:
+time assignment, room assignment, and quality improvement.
 
-\subsection{Module Structure}
+\subsection{Decomposition Strategy}
 \begin{itemize}[leftmargin=*]
-  \item \textbf{Domain and data contracts} (\texttt{utils/domain.py}): dataclasses for programs, groups, courses, staff, rooms, activities, and full instances.
-  \item \textbf{Instance generation} (\texttt{utils/generator.py}, \texttt{utils/target\_profile.py}): synthetic scenario construction with sanity/normalization steps.
-  \item \textbf{Core solver} (\texttt{core/solver\_cp\_sat.py}): CP-SAT model construction, solving, and schedule extraction; supports \texttt{cp\_rooms} and \texttt{greedy} room modes.
-  \item \textbf{Local search} (\texttt{core/metaheuristics.py}): simulated-annealing-style neighborhood search over a feasible schedule.
-  \item \textbf{UI worker process} (\texttt{core/engine\_cli.py}): isolated solver execution with structured status/meta payloads.
-  \item \textbf{Desktop UI} (\texttt{ui/window.py}, \texttt{ui/app.py}): generate/load, solve/re-solve with locks, compare, and export workflows.
-  \item \textbf{I/O and exporters} (\texttt{utils/io.py}, \texttt{utils/exporter.py}): project snapshots and DOCX/CSV/ICS/PDF/report outputs.
+  \item \textbf{Stage 1 (time feasibility):} assign each activity to a valid week/day/slot while satisfying all hard constraints.
+  \item \textbf{Stage 2 (rooming):} either co-optimize rooms inside CP (\texttt{cp\_rooms}) or assign rooms afterward (\texttt{greedy}).
+  \item \textbf{Stage 3 (quality):} improve a feasible schedule using local search under a soft-penalty objective.
 \end{itemize}
+This decomposition provides a practical trade-off between strictness and runtime.
 
-\subsection{Solve Pipeline}
-The runtime flow is:
+\subsection{Reliability Policy}
+To reduce solver timeouts in difficult instances, the runtime applies a bounded retry policy:
 \begin{enumerate}[leftmargin=*]
-  \item build/load an instance and validate against hard structural rules;
-  \item run CP-SAT with chosen room mode and objective setting;
-  \item if configured, apply reliability retries (objective-off retry and optional \texttt{cp\_rooms} \(\rightarrow\) \texttt{greedy} fallback);
-  \item extract schedule; when enabled, apply local-search improvement rounds;
-  \item emit diagnostics (attempt history, status codes, rooming-failure reason) to UI/CLI.
+  \item objective-enabled CP attempt (quality-aware),
+  \item objective-disabled retry in the same room mode (feasibility-oriented),
+  \item optional fallback from strict rooming to greedy rooming.
 \end{enumerate}
+The policy is deterministic for fixed seeds and configuration.
 
-\subsection{Anytime UI Behavior}
-For interactive use, the UI exposes a phased mode:
+\subsection{Budgeted Anytime Mode}
+For interactive use, total solve time budget $B$ is split into
+a feasibility phase $B_f$ and an improvement phase $B_i$:
+\[
+B_f + B_i = B,\qquad
+B_i \approx 0.2B\ \text{(capped)},\qquad
+B_f \approx 0.8B\ \text{(floored)}.
+\]
+The first phase prioritizes obtaining a valid schedule quickly; the second phase runs short local-search slices to improve penalty.
+
+\subsection{Operational Parameters}
+The main runtime parameters are:
 \begin{itemize}[leftmargin=*]
-  \item \textbf{Phase 1}: prioritize finding any feasible schedule within a feasibility budget.
-  \item \textbf{Phase 2}: spend remaining budget on iterative improvement slices.
+  \item room mode (\texttt{cp\_rooms} vs \texttt{greedy}),
+  \item objective on/off,
+  \item time limit and worker count,
+  \item local-search iteration/time budget.
 \end{itemize}
-This avoids spending the entire UI budget on objective optimization before a valid schedule exists.
-
-\subsection{Operational Controls}
-Key exposed controls are room mode, objective toggle, time limit, worker count, and local-search effort.
-These settings are translated into environment variables consumed by the worker process, ensuring that UI and scripted runs use the same solver backend.
+Using the same backend for CLI and UI ensures that reported experiments and interactive runs follow identical solving logic.

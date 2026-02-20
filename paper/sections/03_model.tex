@@ -1,5 +1,5 @@
-This section summarizes the CP-SAT formulation implemented in \texttt{core/solver\_cp\_sat.py}.
-We present the model in a standard mixed 0--1 form for clarity, noting that CP-SAT internally supports integer and interval variables.
+This section presents the scheduling formulation in a standard mixed 0--1 form.
+CP-SAT is used as the optimization engine, with interval variables for non-overlap constraints.
 
 \subsection{Time Encoding and Start Variables}
 For each week, index time within the week by $t \in \{0,\dots,|\mathcal{D}|S-1\}$ where
@@ -58,4 +58,3 @@ For each cluster $C$ with leader $\ell$, enforce equal start times:
 The CP objective is a weighted sum of linear penalties approximating schedule quality:
 free-day shortfalls, gaps, late starts, stability, and (when rooming in CP) room-consistency.
 Weights are configurable at the instance level.
-

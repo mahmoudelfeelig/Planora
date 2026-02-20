@@ -142,6 +142,7 @@ celerybeat.pid
 .env
 .envrc
 .venv
+.packaging-venv/
 env/
 venv/
 ENV/
@@ -221,6 +222,7 @@ schedule_*.csv
 groups_*.pdf
 ics_*/
 reports_*/
+Data/
 
 # LaTeX build artifacts
 paper/*.aux

@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from ui import window as ui_window  # noqa: E402
+from ui.dialogs import MoveConflictDialog  # noqa: E402
 from utils.generator import generate_instance  # noqa: E402
 
 
@@ -67,7 +68,7 @@ def test_undo_redo_and_revert_base(qt_app):
         win.deleteLater()
 
 
-def test_toggle_lock_and_focus_activity(qt_app):
+def test_toggle_lock_and_hold_activity(qt_app):
     win = ui_window.MainWindow()
     try:
         inst = generate_instance("small_demo")
@@ -87,7 +88,7 @@ def test_toggle_lock_and_focus_activity(qt_app):
         win.on_undo()
         assert a_id not in win.locked_activities
 
-        win._focus_activity(a_id, hold=True)
+        win._set_held_activity(a_id)
         assert win.held_activity_id == a_id
     finally:
         win.close()
@@ -138,3 +139,34 @@ def test_collect_conflict_errors_reports_overlaps(qt_app):
     finally:
         win.close()
         win.deleteLater()
+
+
+def test_move_conflict_dialog_force_and_refresh(qt_app):
+    inst = generate_instance("small_demo")
+    a_id, schedule = _single_activity_schedule(inst)
+    conflict = {"activity_id": int(a_id), "reasons": ["room"]}
+    options = {int(a_id): [("TUE", 1)]}
+    dlg = MoveConflictDialog(
+        None,
+        inst,
+        schedule,
+        int(a_id),
+        "MON",
+        0,
+        [conflict],
+        options,
+    )
+    try:
+        assert dlg.force_btn.isEnabled()
+        assert dlg.conflict_table.rowCount() == 1
+        assert dlg.relocate_combo.count() == 1
+        dlg._on_force()
+        assert dlg.get_decision() == ("force",)
+
+        dlg.update_state([], {}, message="done")
+        assert dlg.conflict_table.rowCount() == 0
+        assert not dlg.swap_btn.isEnabled()
+        assert not dlg.move_btn.isEnabled()
+    finally:
+        dlg.close()
+        dlg.deleteLater()

@@ -9,6 +9,7 @@ from typing import Dict, Any
 
 from core.solver_cp_sat import TimetableSolver, GreedyRoomingError
 from core.metaheuristics import LocalSearchImprover
+from utils.specs import validate_schedule_against_instance
 
 
 def _map_status_to_ui(status: int) -> int:
@@ -63,6 +64,15 @@ def _read_float_env(name: str) -> float | None:
     return value
 
 
+def _hard_conflict_errors(inst, schedule: Dict[int, Dict[str, Any]]) -> list[str]:
+    return validate_schedule_against_instance(
+        inst,
+        schedule,
+        strict_rooms=True,
+        require_all_activities=False,
+    )
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print(
@@ -90,11 +100,15 @@ def main() -> int:
         use_objective = use_objective_env not in ("0", "false", "False", "no")
         retry_without_objective = _read_bool_env("TT_RETRY_NO_OBJECTIVE", True)
         phased_solve = _read_bool_env("TT_PHASED_SOLVE", False)
+        enforce_hard_conflict_free = _read_bool_env("TT_ENFORCE_HARD_CONFLICT_FREE", True)
         log_progress_env = os.getenv("TT_CP_LOG", "").strip().lower()
         log_progress = log_progress_env not in ("", "0", "false", "no")
         workers = _read_int_env("TT_CP_WORKERS")
         attempts: list[dict[str, object]] = []
-        meta: dict[str, object] = {"attempts": attempts}
+        meta: dict[str, object] = {
+            "attempts": attempts,
+            "enforce_hard_conflict_free": bool(enforce_hard_conflict_free),
+        }
 
         from ortools.sat.python import cp_model
 
@@ -196,6 +210,38 @@ def main() -> int:
         traceback.print_exc()
         return 4
 
+    if enforce_hard_conflict_free:
+        try:
+            post_extract_errors = _hard_conflict_errors(inst, schedule)
+        except Exception as e:
+            post_extract_errors = [f"Hard-conflict validation failed: {e}"]
+        if post_extract_errors:
+            meta["hard_conflicts"] = {
+                "count": len(post_extract_errors),
+                "sample": post_extract_errors[:25],
+                "stage": "post_extract",
+            }
+            try:
+                with open(out_path, "wb") as f:
+                    pickle.dump(
+                        {
+                            "status": -3,
+                            "schedule": {},
+                            "error": (
+                                "Solver returned a schedule with hard conflicts; "
+                                "strict conflict gate rejected it."
+                            ),
+                            "meta": meta,
+                        },
+                        f,
+                    )
+            except Exception as write_err:
+                print(f"[error] failed to write result pickle: {write_err}", file=sys.stderr)
+                traceback.print_exc()
+                return 5
+            print(f"[warn] strict hard-conflict gate rejected solution ({len(post_extract_errors)} errors)")
+            return 0
+
     if phased_solve and improve_total_seconds > 0:
         try:
             improver = LocalSearchImprover(inst)
@@ -217,7 +263,13 @@ def main() -> int:
                     max_seconds=slice_budget,
                 )
                 candidate_penalty = int(improver.compute_soft_penalty(candidate))
-                accepted = candidate_penalty <= best_penalty
+                candidate_hard_errors: list[str] = []
+                if enforce_hard_conflict_free:
+                    try:
+                        candidate_hard_errors = _hard_conflict_errors(inst, candidate)
+                    except Exception as e:
+                        candidate_hard_errors = [f"Hard-conflict validation failed: {e}"]
+                accepted = (not candidate_hard_errors) and (candidate_penalty <= best_penalty)
                 if accepted:
                     best_schedule = {a_id: info.copy() for a_id, info in candidate.items()}
                     best_penalty = candidate_penalty
@@ -226,6 +278,7 @@ def main() -> int:
                         "round": round_idx,
                         "slice_seconds": slice_budget,
                         "candidate_penalty": candidate_penalty,
+                        "hard_conflicts": len(candidate_hard_errors),
                         "accepted": accepted,
                         "best_penalty": best_penalty,
                     }
@@ -241,6 +294,38 @@ def main() -> int:
             }
         except Exception as e:
             meta["improvement"] = {"enabled": True, "error": str(e)}
+
+    if enforce_hard_conflict_free:
+        try:
+            final_hard_errors = _hard_conflict_errors(inst, schedule)
+        except Exception as e:
+            final_hard_errors = [f"Hard-conflict validation failed: {e}"]
+        if final_hard_errors:
+            meta["hard_conflicts"] = {
+                "count": len(final_hard_errors),
+                "sample": final_hard_errors[:25],
+                "stage": "final",
+            }
+            try:
+                with open(out_path, "wb") as f:
+                    pickle.dump(
+                        {
+                            "status": -3,
+                            "schedule": {},
+                            "error": (
+                                "Final schedule contains hard conflicts after improvement; "
+                                "strict conflict gate rejected it."
+                            ),
+                            "meta": meta,
+                        },
+                        f,
+                    )
+            except Exception as write_err:
+                print(f"[error] failed to write result pickle: {write_err}", file=sys.stderr)
+                traceback.print_exc()
+                return 5
+            print(f"[warn] strict hard-conflict gate rejected final schedule ({len(final_hard_errors)} errors)")
+            return 0
 
     # Persist exactly what the UI expects
     try:

@@ -107,6 +107,45 @@ Optional solver time limit (seconds) for the UI worker:
   - `enforce_staff_weekly_caps`
   - `enforce_room_availability`
 
+### Windows Installer (`.exe`)
+
+Build a distributable Windows installer for the desktop app:
+
+1. Install:
+   - Python 3.12+
+   - Inno Setup 6
+2. From a PowerShell terminal at repo root, run:
+
+```powershell
+.\scripts\windows\build_installer.ps1
+```
+
+Outputs:
+- Portable app folder: `dist/Scheduler/`
+- Installer executable: `dist/installer/Scheduler-Setup-v1.0.exe`
+
+Useful flags:
+- `-SkipTests`: skip pytest before packaging
+- `-SkipInstaller`: build only `dist/Scheduler` (no setup `.exe`)
+
+### macOS/Linux Packaging
+
+Build a distributable desktop package on Unix-like systems:
+
+```bash
+chmod +x ./scripts/unix/build_installer.sh
+./scripts/unix/build_installer.sh
+```
+
+Outputs:
+- macOS: `dist/Scheduler-macos-v1.0.zip` (or `dist/Scheduler.app` portable bundle)
+- Linux: `dist/Scheduler-linux-v1.0.tar.gz` (plus `dist/Scheduler/`)
+
+Useful flags:
+- `--skip-tests`: skip pytest before packaging
+- `--skip-package`: build only portable app folder (`dist/Scheduler`)
+- `--python /path/to/python`: use a specific Python interpreter
+
 ### Test and CI commands
 
 Run the same checks used in CI:

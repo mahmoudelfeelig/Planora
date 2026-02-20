@@ -177,6 +177,7 @@ def generate_custom_instance(
     num_programs: int,
     groups_per_program: int,
     courses_per_program: int,
+    course_names: List[str] | None = None,
     num_professors: int,
     num_tas: int,
     professor_course_map: Dict[int, List[int]] | None = None,
@@ -215,6 +216,16 @@ def generate_custom_instance(
     # Optional custom room set.
     if room_specs is not None:
         inst.rooms = _build_custom_rooms(room_specs)
+
+    # Optional course naming override (cycled if fewer names than courses).
+    if course_names:
+        clean_names = [str(name).strip() for name in course_names if str(name).strip()]
+        if clean_names:
+            for idx, c_id in enumerate(sorted(inst.courses.keys()), start=1):
+                name = clean_names[(idx - 1) % len(clean_names)]
+                code_base = "".join(ch for ch in name.upper() if ch.isalnum())[:8] or "CRS"
+                inst.courses[c_id].name = name
+                inst.courses[c_id].code = f"{code_base}-{int(c_id):03d}"
 
     # Build custom staff set.
     staff: Dict[int, StaffMember] = {}
