@@ -8,7 +8,7 @@ version = "1.0"
 description = "University timetabling scheduler using OR-Tools CP-SAT with optional local search and a PyQt desktop UI."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "GPL-3.0-or-later" }
+license = { text = "AGPL-3.0-or-later" }
 authors = [
   { name = "Scheduler Project Contributors" }
 ]

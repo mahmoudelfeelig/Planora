@@ -181,4 +181,4 @@ PYTHON_BIN=.venv/bin/python ./scripts/freeze_release_artifacts.sh v1.0
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later). See `LICENSE`.
+This project is licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later). See `LICENSE`.
