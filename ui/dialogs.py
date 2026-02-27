@@ -60,6 +60,14 @@ class EditActivityDialog(QDialog):
             self.day_combo.setCurrentIndex(idx)
         layout.addRow("Day:", self.day_combo)
 
+        self.week_combo = QComboBox()
+        for w in inst.weeks:
+            self.week_combo.addItem(str(int(w)), int(w))
+        idx = self.week_combo.findData(int(week))
+        if idx >= 0:
+            self.week_combo.setCurrentIndex(idx)
+        layout.addRow("Week:", self.week_combo)
+
         self.slot_combo = QComboBox()
         for s in range(inst.slots_per_day):
             self.slot_combo.addItem(str(s + 1), s)
@@ -130,6 +138,10 @@ class EditActivityDialog(QDialog):
         if idx >= 0:
             self.day_combo.setCurrentIndex(idx)
 
+        idx = self.week_combo.findData(int(info["week"]))
+        if idx >= 0:
+            self.week_combo.setCurrentIndex(idx)
+
         idx = self.slot_combo.findData(info["slot"])
         if idx >= 0:
             self.slot_combo.setCurrentIndex(idx)
@@ -148,13 +160,23 @@ class EditActivityDialog(QDialog):
             self.lock_time_cb.setChecked(False)
             self.lock_room_cb.setChecked(False)
 
-    def get_values(self) -> Tuple[int, str, int, int, int, bool, bool]:
+    def get_values(self) -> Tuple[int, int, str, int, int, int, bool, bool]:
         a_id = self.activity_combo.currentData()
+        week = self.week_combo.currentData()
         day = self.day_combo.currentData()
         slot = self.slot_combo.currentData()
         room_id = self.room_combo.currentData()
         staff_id = self.staff_combo.currentData()
-        return a_id, day, slot, room_id, staff_id, bool(self.lock_time_cb.isChecked()), bool(self.lock_room_cb.isChecked())
+        return (
+            a_id,
+            week,
+            day,
+            slot,
+            room_id,
+            staff_id,
+            bool(self.lock_time_cb.isChecked()),
+            bool(self.lock_room_cb.isChecked()),
+        )
 
 
 class MoveConflictDialog(QDialog):

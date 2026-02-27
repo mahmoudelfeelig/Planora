@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import pytest
 
-PyQt6 = pytest.importorskip("PyQt6")
+PyQt6 = pytest.importorskip("PyQt6.QtWidgets")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 

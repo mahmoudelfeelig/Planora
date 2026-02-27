@@ -93,6 +93,10 @@ ROOM_TYPE_CHOICES: Tuple[str, ...] = (
     "SPECIALIZED_LAB",
 )
 ROOM_CATEGORY_CHOICES: Tuple[str, ...] = ("SMALL", "MEDIUM", "BIG")
+ROOM_CAPACITY_MODE_CHOICES: Tuple[Tuple[str, str], ...] = (
+    ("Categorical (SMALL/MEDIUM/BIG)", "categorical"),
+    ("Numeric (exact capacity)", "numeric"),
+)
 COURSE_LAB_TYPE_CHOICES: Tuple[str, ...] = ("NONE", "NORMAL", "SPECIAL")
 
 
@@ -491,6 +495,8 @@ class MainWindow(QMainWindow):
 
         self._build_menus()
         self._ensure_custom_generator_seeded()
+        self._load_custom_config_local(silent=True)
+        self._apply_room_capacity_mode()
         self._load_constraint_controls_from_instance(None)
         self._apply_control_tooltips()
         self._refresh_history_buttons()
@@ -690,6 +696,18 @@ class MainWindow(QMainWindow):
         self.workers_preset_combo.setToolTip(
             "CP-SAT worker preset: Min=1 thread, Medium=about half cores, Max=all available cores."
         )
+        self.custom_save_local_btn.setToolTip(
+            "Save the current custom-generator table state to a local auto-reload file."
+        )
+        self.custom_save_cfg_btn.setToolTip(
+            "Export current custom-generator settings to a JSON file."
+        )
+        self.custom_load_cfg_btn.setToolTip(
+            "Import custom-generator settings from a JSON file."
+        )
+        self.custom_room_capacity_mode_combo.setToolTip(
+            "Categorical mode locks capacities to SMALL/MEDIUM/BIG defaults; numeric mode uses exact room capacities."
+        )
         self.improve_runs_spin.setToolTip("Maximum local-search iterations.")
         self.ls_time_spin.setToolTip("Maximum local-search runtime (seconds).")
         self.selected_activity_combo.setToolTip(
@@ -791,6 +809,12 @@ class MainWindow(QMainWindow):
         self.custom_reset_programs_btn.clicked.connect(self._reset_custom_program_table)
         self.custom_reset_course_patterns_btn.clicked.connect(
             self._reset_custom_course_pattern_table
+        )
+        self.custom_save_local_btn.clicked.connect(self.on_save_custom_config_local)
+        self.custom_save_cfg_btn.clicked.connect(self.on_save_custom_config_file)
+        self.custom_load_cfg_btn.clicked.connect(self.on_load_custom_config_file)
+        self.custom_room_capacity_mode_combo.currentIndexChanged.connect(
+            self._on_room_capacity_mode_changed
         )
         self.staff_add_course_btn.clicked.connect(self._on_add_course_to_selected_staff)
         self.custom_programs_spin.valueChanged.connect(self._on_custom_size_changed)
@@ -930,6 +954,8 @@ class MainWindow(QMainWindow):
                 self._reset_custom_room_table()
             if hasattr(self, "staff_course_picker_combo"):
                 self._refresh_staff_course_picker()
+            if hasattr(self, "custom_room_capacity_mode_combo"):
+                self._apply_room_capacity_mode()
             self._normalize_custom_table_item_types()
         except Exception:
             traceback.print_exc()
@@ -1013,6 +1039,18 @@ class MainWindow(QMainWindow):
         counts_form.addRow("Groups per program", self.custom_groups_per_program_spin)
         counts_form.addRow("Courses per program", self.custom_courses_per_program_spin)
         counts_form.addRow("Course names (CSV)", self.custom_course_names_edit)
+        cfg_row = QWidget()
+        cfg_row_layout = QHBoxLayout(cfg_row)
+        cfg_row_layout.setContentsMargins(0, 0, 0, 0)
+        cfg_row_layout.setSpacing(6)
+        self.custom_save_local_btn = QPushButton("Save Local")
+        self.custom_save_cfg_btn = QPushButton("Save Config...")
+        self.custom_load_cfg_btn = QPushButton("Load Config...")
+        cfg_row_layout.addWidget(self.custom_save_local_btn)
+        cfg_row_layout.addWidget(self.custom_save_cfg_btn)
+        cfg_row_layout.addWidget(self.custom_load_cfg_btn)
+        cfg_row_layout.addStretch(1)
+        counts_form.addRow("Custom config", cfg_row)
         layout.addWidget(
             self._build_collapsible_section("Scenario Size", counts_box, collapsed=True)
         )
@@ -1042,13 +1080,14 @@ class MainWindow(QMainWindow):
         )
         plan_layout.addWidget(self.custom_program_table)
 
-        self.custom_course_pattern_table = QTableWidget(0, 7)
+        self.custom_course_pattern_table = QTableWidget(0, 8)
         self.custom_course_pattern_table.setHorizontalHeaderLabels(
             [
                 "Course ID",
                 "Course Name",
                 "LEC Count",
                 "TUT Count",
+                "Lab Count",
                 "Lab Type",
                 "Lab Dur",
                 "Lab Tag",
@@ -1067,7 +1106,8 @@ class MainWindow(QMainWindow):
 
         plan_hint = QLabel(
             "Program rows allow different groups/courses per program and courses per group.\n"
-            "Course pattern rows allow per-course LEC/TUT totals and lab type (NONE/NORMAL/SPECIAL)."
+            "Course pattern rows allow per-course LEC/TUT/LAB totals and lab type (NONE/NORMAL/SPECIAL).\n"
+            "Course structure is inferred from counts (e.g., lab-only, lec-only, tut-only)."
         )
         plan_hint.setWordWrap(True)
         plan_layout.addWidget(plan_hint)
@@ -1101,9 +1141,15 @@ class MainWindow(QMainWindow):
         staff_controls.addWidget(self.staff_add_course_btn)
         staff_controls.addStretch(1)
         staff_layout.addLayout(staff_controls)
-        self.custom_staff_table = QTableWidget(0, 4)
+        self.custom_staff_table = QTableWidget(0, 5)
         self.custom_staff_table.setHorizontalHeaderLabels(
-            ["Staff", "Role", "Course IDs (csv)", "Available Days (csv)"]
+            [
+                "Staff",
+                "Role",
+                "Course IDs (csv)",
+                "Available Days (csv)",
+                "Available Weeks (csv or ALL)",
+            ]
         )
         self.custom_staff_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.custom_staff_table.horizontalHeader().setSectionsClickable(True)
@@ -1129,7 +1175,14 @@ class MainWindow(QMainWindow):
         room_controls.addWidget(QLabel("Total rooms"))
         room_controls.addWidget(self.custom_room_count_spin)
         room_controls.addWidget(self.custom_reset_rooms_btn)
-        room_controls.addWidget(QLabel("Category defaults: SMALL/MEDIUM/BIG"))
+        room_controls.addWidget(QLabel("Capacity mode"))
+        self.custom_room_capacity_mode_combo = QComboBox()
+        for label, mode in ROOM_CAPACITY_MODE_CHOICES:
+            self.custom_room_capacity_mode_combo.addItem(str(label), str(mode))
+        numeric_idx = self.custom_room_capacity_mode_combo.findData("numeric")
+        if numeric_idx >= 0:
+            self.custom_room_capacity_mode_combo.setCurrentIndex(numeric_idx)
+        room_controls.addWidget(self.custom_room_capacity_mode_combo)
         room_controls.addStretch(1)
         room_layout.addLayout(room_controls)
         self.custom_room_table = QTableWidget(0, 5)
@@ -1152,7 +1205,7 @@ class MainWindow(QMainWindow):
 
         hint = QLabel(
             "Use mode 'custom' to generate from these tables.\n"
-            "Room category and capacity are interchangeable: either can drive the other."
+            "Room capacity mode controls whether category labels or exact capacities are authoritative."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -1251,6 +1304,12 @@ class MainWindow(QMainWindow):
                 "Room consistency",
                 1,
                 "Penalizes moving a course between many different rooms over time.",
+            ),
+            (
+                "same_kind_week",
+                "Same-course weekly bunching",
+                3,
+                "Penalizes placing multiple lecture/tutorial sessions of the same course into one week for a group.",
             ),
         ]
         for key, label, default, help_text in soft_defs:
@@ -1359,6 +1418,34 @@ class MainWindow(QMainWindow):
         item = self.custom_room_table.item(row, col)
         return str(item.text()).strip() if item is not None else ""
 
+    def _room_capacity_mode(self) -> str:
+        if not hasattr(self, "custom_room_capacity_mode_combo"):
+            return "numeric"
+        data = self.custom_room_capacity_mode_combo.currentData()
+        mode = str(data if data is not None else self.custom_room_capacity_mode_combo.currentText()).strip().lower()
+        return "categorical" if mode.startswith("cat") else "numeric"
+
+    def _on_room_capacity_mode_changed(self, _index: int) -> None:
+        self._apply_room_capacity_mode()
+        # Re-normalize room rows to the active authority (category or numeric).
+        for row in range(self.custom_room_table.rowCount()):
+            cap_item = self.custom_room_table.item(row, 3)
+            if cap_item is not None:
+                self._on_room_table_item_changed(cap_item)
+
+    def _apply_room_capacity_mode(self) -> None:
+        mode = self._room_capacity_mode()
+        for row in range(self.custom_room_table.rowCount()):
+            cap_item = self.custom_room_table.item(row, 3)
+            if cap_item is not None:
+                if mode == "categorical":
+                    cap_item.setFlags(cap_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                else:
+                    cap_item.setFlags(cap_item.flags() | Qt.ItemFlag.ItemIsEditable)
+            cat_combo = self.custom_room_table.cellWidget(row, 2)
+            if isinstance(cat_combo, QComboBox):
+                cat_combo.setEnabled(mode == "categorical")
+
     def _reset_custom_staff_table(self) -> None:
         rows = int(self.custom_num_profs_spin.value()) + int(self.custom_num_tas_spin.value())
         was_sorting = self.custom_staff_table.isSortingEnabled()
@@ -1374,6 +1461,7 @@ class MainWindow(QMainWindow):
             self.custom_staff_table.setItem(row, 1, role_item)
             self.custom_staff_table.setItem(row, 2, QTableWidgetItem(""))
             self.custom_staff_table.setItem(row, 3, QTableWidgetItem(",".join(self.inst.days if self.inst else ["MON", "TUE", "WED", "THU", "FRI", "SAT"])))
+            self.custom_staff_table.setItem(row, 4, QTableWidgetItem("ALL"))
             row += 1
         for idx in range(1, int(self.custom_num_tas_spin.value()) + 1):
             name_item = NaturalSortTableItem(f"TA-{idx}")
@@ -1383,6 +1471,7 @@ class MainWindow(QMainWindow):
             self.custom_staff_table.setItem(row, 1, role_item)
             self.custom_staff_table.setItem(row, 2, QTableWidgetItem(""))
             self.custom_staff_table.setItem(row, 3, QTableWidgetItem(",".join(self.inst.days if self.inst else ["MON", "TUE", "WED", "THU", "FRI", "SAT"])))
+            self.custom_staff_table.setItem(row, 4, QTableWidgetItem("ALL"))
             row += 1
         self.custom_staff_table.blockSignals(False)
         self.custom_staff_table.setSortingEnabled(was_sorting)
@@ -1405,6 +1494,7 @@ class MainWindow(QMainWindow):
             self.custom_room_table.setItem(row, 3, self._make_numeric_item(cap))
             self.custom_room_table.setItem(row, 4, QTableWidgetItem("" if rtype != "SPECIALIZED_LAB" else "LAB1"))
         self.custom_room_table.blockSignals(False)
+        self._apply_room_capacity_mode()
         self.custom_room_table.setSortingEnabled(was_sorting)
 
     def _on_custom_size_changed(self, *_args: Any) -> None:
@@ -1460,7 +1550,7 @@ class MainWindow(QMainWindow):
 
     def _find_course_lab_combo_row(self, combo: QComboBox) -> int:
         for row in range(self.custom_course_pattern_table.rowCount()):
-            if self.custom_course_pattern_table.cellWidget(row, 4) is combo:
+            if self.custom_course_pattern_table.cellWidget(row, 5) is combo:
                 return row
         return -1
 
@@ -1468,7 +1558,7 @@ class MainWindow(QMainWindow):
         value_norm = str(value).strip().upper()
         if value_norm not in COURSE_LAB_TYPE_CHOICES:
             value_norm = "NONE"
-        self.custom_course_pattern_table.setItem(row, 4, self._make_locked_item(value_norm))
+        self.custom_course_pattern_table.setItem(row, 5, self._make_locked_item(value_norm))
         combo = QComboBox(self.custom_course_pattern_table)
         combo.addItems(list(COURSE_LAB_TYPE_CHOICES))
         combo.blockSignals(True)
@@ -1477,7 +1567,7 @@ class MainWindow(QMainWindow):
             combo.setCurrentIndex(idx)
         combo.blockSignals(False)
         combo.currentTextChanged.connect(self._on_course_lab_type_changed)
-        self.custom_course_pattern_table.setCellWidget(row, 4, combo)
+        self.custom_course_pattern_table.setCellWidget(row, 5, combo)
 
     def _course_pattern_table_text(self, row: int, col: int) -> str:
         widget = self.custom_course_pattern_table.cellWidget(row, col)
@@ -1497,12 +1587,23 @@ class MainWindow(QMainWindow):
             return
         self._custom_course_pattern_table_internal_change = True
         try:
-            lab_type = self._course_pattern_table_text(row, 4).upper()
-            tag_item = self.custom_course_pattern_table.item(row, 6)
+            lab_type = self._course_pattern_table_text(row, 5).upper()
+            lab_count_item = self.custom_course_pattern_table.item(row, 4)
+            try:
+                lab_count = max(0, int(str(lab_count_item.text()).strip())) if lab_count_item else 0
+            except Exception:
+                lab_count = 0
+            tag_item = self.custom_course_pattern_table.item(row, 7)
             if tag_item is None:
                 tag_item = QTableWidgetItem("")
-                self.custom_course_pattern_table.setItem(row, 6, tag_item)
-            if lab_type == "SPECIAL":
+                self.custom_course_pattern_table.setItem(row, 7, tag_item)
+            if lab_count <= 0:
+                if lab_type != "NONE":
+                    idx = sender.findText("NONE")
+                    if idx >= 0:
+                        sender.setCurrentIndex(idx)
+                tag_item.setText("")
+            elif lab_type == "SPECIAL":
                 if not str(tag_item.text()).strip():
                     tag_item.setText("LAB1")
             else:
@@ -1529,12 +1630,15 @@ class MainWindow(QMainWindow):
                 "tutorial_count": self.custom_course_pattern_table.item(row, 3).text()
                 if self.custom_course_pattern_table.item(row, 3) is not None
                 else "12",
-                "lab_type": self._course_pattern_table_text(row, 4).upper() or "NONE",
-                "lab_duration": self.custom_course_pattern_table.item(row, 5).text()
-                if self.custom_course_pattern_table.item(row, 5) is not None
-                else "2",
-                "lab_tag": self.custom_course_pattern_table.item(row, 6).text()
+                "lab_count": self.custom_course_pattern_table.item(row, 4).text()
+                if self.custom_course_pattern_table.item(row, 4) is not None
+                else "0",
+                "lab_type": self._course_pattern_table_text(row, 5).upper() or "NONE",
+                "lab_duration": self.custom_course_pattern_table.item(row, 6).text()
                 if self.custom_course_pattern_table.item(row, 6) is not None
+                else "2",
+                "lab_tag": self.custom_course_pattern_table.item(row, 7).text()
+                if self.custom_course_pattern_table.item(row, 7) is not None
                 else "",
             }
 
@@ -1551,10 +1655,18 @@ class MainWindow(QMainWindow):
             prev = existing.get(c_id, {})
             lec = str(prev.get("lecture_count", "12"))
             tut = str(prev.get("tutorial_count", "12"))
+            default_lab_count = "12" if str(prev.get("lab_type", "NONE")).upper() in {"NORMAL", "SPECIAL"} else "0"
+            lab_count = str(prev.get("lab_count", default_lab_count))
             lab_type = str(prev.get("lab_type", "NONE")).upper()
             lab_dur = str(prev.get("lab_duration", "2"))
             lab_tag = str(prev.get("lab_tag", ""))
             if lab_type not in COURSE_LAB_TYPE_CHOICES:
+                lab_type = "NONE"
+            try:
+                lab_count_int = max(0, int(str(lab_count).strip()))
+            except Exception:
+                lab_count_int = 0
+            if lab_count_int <= 0:
                 lab_type = "NONE"
             self.custom_course_pattern_table.setItem(
                 row, 0, self._make_locked_item(str(c_id), numeric=True)
@@ -1568,14 +1680,17 @@ class MainWindow(QMainWindow):
             self.custom_course_pattern_table.setItem(
                 row, 3, self._make_numeric_item(tut)
             )
+            self.custom_course_pattern_table.setItem(
+                row, 4, self._make_numeric_item(lab_count_int)
+            )
             self._set_course_lab_type_cell(row, lab_type)
             self.custom_course_pattern_table.setItem(
-                row, 5, self._make_numeric_item(lab_dur)
+                row, 6, self._make_numeric_item(lab_dur)
             )
             self.custom_course_pattern_table.setItem(
                 row,
-                6,
-                QTableWidgetItem(lab_tag if lab_type == "SPECIAL" else ""),
+                7,
+                QTableWidgetItem(lab_tag if lab_type == "SPECIAL" and lab_count_int > 0 else ""),
             )
         self._custom_course_pattern_table_internal_change = False
         self.custom_course_pattern_table.blockSignals(False)
@@ -1632,6 +1747,7 @@ class MainWindow(QMainWindow):
             return
         self._room_table_internal_change = True
         try:
+            mode = self._room_capacity_mode()
             if col == 1:
                 room_type = self._room_table_text(row, 1).upper()
                 tags_item = self.custom_room_table.item(row, 4)
@@ -1640,16 +1756,18 @@ class MainWindow(QMainWindow):
                         tags_item.setText("")
                     elif not str(tags_item.text()).strip():
                         tags_item.setText("LAB1")
-            if col == 2:
+            if mode == "categorical":
                 cat = self._room_table_text(row, 2).upper()
-                if cat in ROOM_CATEGORY_CAPACITY:
-                    cap_item.setText(str(ROOM_CATEGORY_CAPACITY[cat]))
-            elif col == 3:
+                if cat not in ROOM_CATEGORY_CAPACITY:
+                    cat = "MEDIUM"
+                    cat_item.setText(cat)
+                cap_item.setText(str(ROOM_CATEGORY_CAPACITY[cat]))
+            else:
                 try:
                     cap = max(1, int(str(cap_item.text()).strip()))
                 except Exception:
                     cap = ROOM_CATEGORY_CAPACITY["MEDIUM"]
-                    cap_item.setText(str(cap))
+                cap_item.setText(str(cap))
                 inferred_cat = self._infer_room_category(cap)
                 cat_item.setText(inferred_cat)
                 cat_combo = self.custom_room_table.cellWidget(row, 2)
@@ -1682,6 +1800,22 @@ class MainWindow(QMainWindow):
             if day in valid:
                 out.append(day)
         return out
+
+    @staticmethod
+    def _parse_csv_weeks(raw: str) -> List[int]:
+        text = str(raw).strip()
+        if not text or text.upper() == "ALL":
+            return []
+        out: List[int] = []
+        for token in text.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                out.append(int(token))
+            except Exception:
+                continue
+        return sorted(set(out))
 
     @staticmethod
     def _parse_csv_names(raw: str) -> List[str]:
@@ -1727,6 +1861,8 @@ class MainWindow(QMainWindow):
         ta_course_map: Dict[int, List[int]] = {}
         prof_days: Dict[int, List[str]] = {}
         ta_days: Dict[int, List[str]] = {}
+        prof_weeks: Dict[int, List[int]] = {}
+        ta_weeks: Dict[int, List[int]] = {}
         program_overrides: List[Dict[str, Any]] = []
         course_patterns: List[Dict[str, Any]] = []
         prof_idx = 0
@@ -1735,21 +1871,26 @@ class MainWindow(QMainWindow):
             role_item = self.custom_staff_table.item(row, 1)
             courses_item = self.custom_staff_table.item(row, 2)
             days_item = self.custom_staff_table.item(row, 3)
+            weeks_item = self.custom_staff_table.item(row, 4)
             role = str(role_item.text()).strip().upper() if role_item else ""
             courses = self._parse_csv_ints(courses_item.text() if courses_item else "")
             days = self._parse_csv_days(days_item.text() if days_item else "")
+            weeks = self._parse_csv_weeks(weeks_item.text() if weeks_item else "")
             if role == "PROF":
                 prof_idx += 1
                 if courses:
                     prof_course_map[prof_idx] = courses
                 prof_days[prof_idx] = days
+                prof_weeks[prof_idx] = weeks
             elif role == "TA":
                 ta_idx += 1
                 if courses:
                     ta_course_map[ta_idx] = courses
                 ta_days[ta_idx] = days
+                ta_weeks[ta_idx] = weeks
 
         room_specs: List[Dict[str, Any]] = []
+        room_capacity_mode = self._room_capacity_mode()
         for row in range(self.custom_room_table.rowCount()):
             name_item = self.custom_room_table.item(row, 0)
             cap_item = self.custom_room_table.item(row, 3)
@@ -1762,12 +1903,16 @@ class MainWindow(QMainWindow):
             except Exception:
                 capacity = ROOM_CATEGORY_CAPACITY.get(category, 150)
             tags = [t.strip().upper() for t in str(tags_item.text()).split(",") if t.strip()] if tags_item else []
+            cap_field: int | None = int(capacity)
+            if room_capacity_mode == "categorical":
+                cap_field = None
             room_specs.append(
                 {
                     "name": name,
                     "room_type": room_type,
                     "category": category,
-                    "capacity": capacity,
+                    "capacity": cap_field,
+                    "capacity_mode": room_capacity_mode,
                     "tags": tags,
                 }
             )
@@ -1804,22 +1949,28 @@ class MainWindow(QMainWindow):
             cid_item = self.custom_course_pattern_table.item(row, 0)
             lec_item = self.custom_course_pattern_table.item(row, 2)
             tut_item = self.custom_course_pattern_table.item(row, 3)
-            dur_item = self.custom_course_pattern_table.item(row, 5)
-            tag_item = self.custom_course_pattern_table.item(row, 6)
+            lab_count_item = self.custom_course_pattern_table.item(row, 4)
+            dur_item = self.custom_course_pattern_table.item(row, 6)
+            tag_item = self.custom_course_pattern_table.item(row, 7)
             try:
                 c_id = int(str(cid_item.text()).strip()) if cid_item is not None else row + 1
                 lecture_count = int(str(lec_item.text()).strip()) if lec_item is not None else 12
                 tutorial_count = int(str(tut_item.text()).strip()) if tut_item is not None else 12
+                lab_count = int(str(lab_count_item.text()).strip()) if lab_count_item is not None else 0
                 lab_duration = int(str(dur_item.text()).strip()) if dur_item is not None else 2
             except Exception:
                 continue
-            lab_type = self._course_pattern_table_text(row, 4).upper() or "NONE"
+            lab_type = self._course_pattern_table_text(row, 5).upper() or "NONE"
             lab_tag = str(tag_item.text()).strip().upper() if tag_item is not None else ""
+            if int(lab_count) <= 0:
+                lab_type = "NONE"
+                lab_tag = ""
             course_patterns.append(
                 {
                     "course_id": int(c_id),
                     "lecture_count": int(lecture_count),
                     "tutorial_count": int(tutorial_count),
+                    "lab_count": int(max(0, lab_count)),
                     "lab_type": str(lab_type),
                     "lab_duration": int(lab_duration),
                     "lab_tag": str(lab_tag),
@@ -1839,9 +1990,303 @@ class MainWindow(QMainWindow):
             "ta_course_map": ta_course_map,
             "professor_days": prof_days,
             "ta_days": ta_days,
+            "professor_weeks": prof_weeks,
+            "ta_weeks": ta_weeks,
             "room_specs": room_specs,
+            "room_capacity_mode": room_capacity_mode,
             "seed": 42,
         }
+
+    @staticmethod
+    def _local_custom_config_path() -> str:
+        return os.path.join(os.path.expanduser("~"), ".scheduler_custom_config.json")
+
+    @staticmethod
+    def _write_custom_config(path: str, config: Dict[str, Any]) -> None:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, sort_keys=True)
+
+    @staticmethod
+    def _read_custom_config(path: str) -> Dict[str, Any]:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("Custom config must be a JSON object.")
+        return data
+
+    def _apply_custom_generation_config(self, config: Dict[str, Any]) -> None:
+        if not isinstance(config, dict):
+            raise ValueError("Invalid custom configuration payload.")
+
+        def _ival(key: str, default: int) -> int:
+            try:
+                return int(config.get(key, default))
+            except Exception:
+                return int(default)
+
+        num_programs = max(1, _ival("num_programs", int(self.custom_programs_spin.value())))
+        groups_per_program = max(
+            1, _ival("groups_per_program", int(self.custom_groups_per_program_spin.value()))
+        )
+        courses_per_program = max(
+            1, _ival("courses_per_program", int(self.custom_courses_per_program_spin.value()))
+        )
+        num_professors = max(1, _ival("num_professors", int(self.custom_num_profs_spin.value())))
+        num_tas = max(1, _ival("num_tas", int(self.custom_num_tas_spin.value())))
+        course_names = config.get("course_names", [])
+        if not isinstance(course_names, list):
+            course_names = []
+        course_names_text = ",".join(str(v).strip() for v in course_names if str(v).strip())
+
+        for spin, value in (
+            (self.custom_programs_spin, num_programs),
+            (self.custom_groups_per_program_spin, groups_per_program),
+            (self.custom_courses_per_program_spin, courses_per_program),
+            (self.custom_num_profs_spin, num_professors),
+            (self.custom_num_tas_spin, num_tas),
+        ):
+            spin.blockSignals(True)
+            spin.setValue(int(value))
+            spin.blockSignals(False)
+        self.custom_course_names_edit.blockSignals(True)
+        self.custom_course_names_edit.setText(course_names_text)
+        self.custom_course_names_edit.blockSignals(False)
+
+        self._reset_custom_program_table()
+        self._reset_custom_course_pattern_table()
+        self._reset_custom_staff_table()
+
+        program_overrides = config.get("program_overrides", [])
+        if isinstance(program_overrides, list):
+            for row_cfg in program_overrides:
+                if not isinstance(row_cfg, dict):
+                    continue
+                try:
+                    pid = int(row_cfg.get("program_id"))
+                    pname = str(row_cfg.get("program_name", "")).strip() or f"Program-{pid}"
+                    groups = max(1, int(row_cfg.get("groups", groups_per_program)))
+                    courses = max(1, int(row_cfg.get("courses", courses_per_program)))
+                    cpg = max(1, int(row_cfg.get("courses_per_group", courses)))
+                except Exception:
+                    continue
+                row = int(pid) - 1
+                if not (0 <= row < self.custom_program_table.rowCount()):
+                    continue
+                self.custom_program_table.setItem(row, 1, NaturalSortTableItem(pname))
+                self.custom_program_table.setItem(row, 2, self._make_numeric_item(groups))
+                self.custom_program_table.setItem(row, 3, self._make_numeric_item(courses))
+                self.custom_program_table.setItem(
+                    row, 4, self._make_numeric_item(min(courses, cpg))
+                )
+
+        self._reset_custom_course_pattern_table()
+        course_patterns = config.get("course_patterns", [])
+        if isinstance(course_patterns, list):
+            by_course: Dict[int, Dict[str, Any]] = {}
+            for row_cfg in course_patterns:
+                if not isinstance(row_cfg, dict):
+                    continue
+                try:
+                    c_id = int(row_cfg.get("course_id"))
+                except Exception:
+                    continue
+                by_course[int(c_id)] = row_cfg
+            for row in range(self.custom_course_pattern_table.rowCount()):
+                cid_item = self.custom_course_pattern_table.item(row, 0)
+                if cid_item is None:
+                    continue
+                try:
+                    c_id = int(str(cid_item.text()).strip())
+                except Exception:
+                    continue
+                row_cfg = by_course.get(int(c_id))
+                if not row_cfg:
+                    continue
+                try:
+                    lec = max(0, int(row_cfg.get("lecture_count", 12)))
+                    tut = max(0, int(row_cfg.get("tutorial_count", 12)))
+                    lab_count = max(
+                        0,
+                        int(
+                            row_cfg.get(
+                                "lab_count",
+                                12 if str(row_cfg.get("lab_type", "NONE")).strip().upper() in {"NORMAL", "SPECIAL"} else 0,
+                            )
+                        ),
+                    )
+                    lab_type = str(row_cfg.get("lab_type", "NONE")).strip().upper()
+                    lab_dur = max(1, int(row_cfg.get("lab_duration", 2)))
+                    lab_tag = str(row_cfg.get("lab_tag", "")).strip().upper()
+                except Exception:
+                    continue
+                self.custom_course_pattern_table.setItem(row, 2, self._make_numeric_item(lec))
+                self.custom_course_pattern_table.setItem(row, 3, self._make_numeric_item(tut))
+                self.custom_course_pattern_table.setItem(
+                    row, 4, self._make_numeric_item(lab_count)
+                )
+                if lab_count <= 0:
+                    lab_type = "NONE"
+                lab_combo = self.custom_course_pattern_table.cellWidget(row, 5)
+                if isinstance(lab_combo, QComboBox):
+                    idx = lab_combo.findText(lab_type)
+                    if idx >= 0:
+                        lab_combo.setCurrentIndex(idx)
+                self.custom_course_pattern_table.setItem(
+                    row, 6, self._make_numeric_item(lab_dur)
+                )
+                self.custom_course_pattern_table.setItem(
+                    row, 7, QTableWidgetItem(lab_tag if lab_type == "SPECIAL" and lab_count > 0 else "")
+                )
+
+        professor_course_map = config.get("professor_course_map", {}) or {}
+        ta_course_map = config.get("ta_course_map", {}) or {}
+        professor_days = config.get("professor_days", {}) or {}
+        ta_days = config.get("ta_days", {}) or {}
+        professor_weeks = config.get("professor_weeks", {}) or {}
+        ta_weeks = config.get("ta_weeks", {}) or {}
+        for idx in range(1, int(num_professors) + 1):
+            row = idx - 1
+            if row >= self.custom_staff_table.rowCount():
+                break
+            courses = professor_course_map.get(idx, professor_course_map.get(str(idx), [])) or []
+            days = professor_days.get(idx, professor_days.get(str(idx), [])) or []
+            weeks = professor_weeks.get(idx, professor_weeks.get(str(idx), [])) or []
+            self.custom_staff_table.setItem(
+                row, 2, QTableWidgetItem(",".join(str(int(c)) for c in courses if str(c).strip()))
+            )
+            day_text = ",".join(str(d).strip().upper() for d in days if str(d).strip())
+            self.custom_staff_table.setItem(row, 3, QTableWidgetItem(day_text))
+            if weeks:
+                week_text = ",".join(str(int(w)) for w in weeks if str(w).strip())
+            else:
+                week_text = "ALL"
+            self.custom_staff_table.setItem(row, 4, QTableWidgetItem(week_text))
+        for idx in range(1, int(num_tas) + 1):
+            row = int(num_professors) + idx - 1
+            if row >= self.custom_staff_table.rowCount():
+                break
+            courses = ta_course_map.get(idx, ta_course_map.get(str(idx), [])) or []
+            days = ta_days.get(idx, ta_days.get(str(idx), [])) or []
+            weeks = ta_weeks.get(idx, ta_weeks.get(str(idx), [])) or []
+            self.custom_staff_table.setItem(
+                row, 2, QTableWidgetItem(",".join(str(int(c)) for c in courses if str(c).strip()))
+            )
+            day_text = ",".join(str(d).strip().upper() for d in days if str(d).strip())
+            self.custom_staff_table.setItem(row, 3, QTableWidgetItem(day_text))
+            if weeks:
+                week_text = ",".join(str(int(w)) for w in weeks if str(w).strip())
+            else:
+                week_text = "ALL"
+            self.custom_staff_table.setItem(row, 4, QTableWidgetItem(week_text))
+
+        room_specs = config.get("room_specs", [])
+        if isinstance(room_specs, list) and room_specs:
+            self.custom_room_count_spin.blockSignals(True)
+            self.custom_room_count_spin.setValue(max(1, len(room_specs)))
+            self.custom_room_count_spin.blockSignals(False)
+            mode_raw = config.get("room_capacity_mode")
+            if mode_raw is None and room_specs:
+                mode_raw = room_specs[0].get("capacity_mode")
+            mode = str(mode_raw or "numeric").strip().lower()
+            mode = "categorical" if mode.startswith("cat") else "numeric"
+            mode_idx = self.custom_room_capacity_mode_combo.findData(mode)
+            if mode_idx >= 0:
+                self.custom_room_capacity_mode_combo.setCurrentIndex(mode_idx)
+            self._reset_custom_room_table()
+            for row, room_cfg in enumerate(room_specs):
+                if row >= self.custom_room_table.rowCount() or not isinstance(room_cfg, dict):
+                    break
+                name = str(room_cfg.get("name", "")).strip() or f"Room-{row + 1}"
+                rtype = str(room_cfg.get("room_type", "LECTURE")).strip().upper()
+                cat = str(room_cfg.get("category", "MEDIUM")).strip().upper()
+                cap = room_cfg.get("capacity", ROOM_CATEGORY_CAPACITY.get(cat, 150))
+                try:
+                    cap_int = max(1, int(cap))
+                except Exception:
+                    cap_int = int(ROOM_CATEGORY_CAPACITY.get(cat, 150))
+                tags_raw = room_cfg.get("tags", []) or []
+                tags = ",".join(str(t).strip().upper() for t in tags_raw if str(t).strip())
+
+                self.custom_room_table.setItem(row, 0, NaturalSortTableItem(name))
+                type_combo = self.custom_room_table.cellWidget(row, 1)
+                if isinstance(type_combo, QComboBox):
+                    idx = type_combo.findText(rtype)
+                    if idx >= 0:
+                        type_combo.setCurrentIndex(idx)
+                cat_combo = self.custom_room_table.cellWidget(row, 2)
+                if isinstance(cat_combo, QComboBox):
+                    idx = cat_combo.findText(cat)
+                    if idx >= 0:
+                        cat_combo.setCurrentIndex(idx)
+                self.custom_room_table.setItem(row, 3, self._make_numeric_item(cap_int))
+                self.custom_room_table.setItem(row, 4, QTableWidgetItem(tags))
+
+        self._apply_room_capacity_mode()
+        self._refresh_staff_course_picker()
+        self._normalize_custom_table_item_types()
+
+    def on_save_custom_config_local(self) -> None:
+        try:
+            config = self._collect_custom_generation_config()
+            path = self._local_custom_config_path()
+            self._write_custom_config(path, config)
+            self.set_status(f"Saved local custom config to {path}")
+        except Exception as exc:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Custom config error", str(exc))
+
+    def on_save_custom_config_file(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save custom generation config",
+            "custom_generator_config.json",
+            "JSON (*.json)",
+        )
+        if not path:
+            return
+        try:
+            config = self._collect_custom_generation_config()
+            self._write_custom_config(path, config)
+            self.set_status(f"Saved custom config to {path}")
+        except Exception as exc:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Custom config error", str(exc))
+
+    def on_load_custom_config_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load custom generation config",
+            "",
+            "JSON (*.json)",
+        )
+        if not path:
+            return
+        try:
+            config = self._read_custom_config(path)
+            self._apply_custom_generation_config(config)
+            self.set_status(f"Loaded custom config from {path}")
+        except Exception as exc:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Custom config error", str(exc))
+
+    def _load_custom_config_local(self, *, silent: bool = False) -> None:
+        path = self._local_custom_config_path()
+        if not os.path.exists(path):
+            return
+        try:
+            config = self._read_custom_config(path)
+            self._apply_custom_generation_config(config)
+            if not silent:
+                self.set_status(f"Loaded local custom config from {path}")
+        except Exception:
+            if not silent:
+                traceback.print_exc()
+            if not silent:
+                QMessageBox.warning(
+                    self,
+                    "Custom config warning",
+                    f"Failed to load local custom configuration from {path}.",
+                )
 
     def _collect_constraint_settings(self) -> tuple[Dict[str, bool], Dict[str, int]]:
         hard = {
@@ -1880,6 +2325,7 @@ class MainWindow(QMainWindow):
             "single_slot": 6,
             "stability": 1,
             "room_consistency": 1,
+            "same_kind_week": 3,
         }
         hard = hard_defaults
         soft = soft_defaults
@@ -2327,13 +2773,13 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "Held activity targets",
-                "No valid target slots for the held activity under current hard constraints.",
+                f"No valid target slots in week {int(week)} for the held activity under current hard constraints.",
             )
         else:
             QMessageBox.information(
                 self,
                 "Held activity targets",
-                "Valid slots:\n" + "\n".join(valid_targets),
+                f"Valid slots in week {int(week)}:\n" + "\n".join(valid_targets),
             )
 
     def _refresh_quick_actions(self) -> None:
@@ -2438,8 +2884,11 @@ class MainWindow(QMainWindow):
         cell = self._selected_cell_day_slot()
         if cell is None:
             return
+        week = self._current_week()
+        if week is None:
+            return
         day, slot = cell
-        self._attempt_move_held_to(str(day), int(slot))
+        self._attempt_move_held_to(str(day), int(slot), int(week))
         self._refresh_quick_actions()
 
     def on_quick_swap_held_with_selected(self) -> None:
@@ -2495,6 +2944,7 @@ class MainWindow(QMainWindow):
         }
         held = state.get("held_activity_id")
         self.held_activity_id = int(held) if held is not None else None
+        self._sync_instance_activity_weeks_from_schedule(self.current_schedule)
         self._sync_instance_staff_from_schedule(self.current_schedule)
         self._sync_locks_to_instance()
         self.update_table()
@@ -2536,7 +2986,11 @@ class MainWindow(QMainWindow):
     ) -> List[str]:
         if self.inst is None or not schedule:
             return []
+        original_weeks: Dict[int, int] = {}
+        for a_id, act in self.inst.activities.items():
+            original_weeks[int(a_id)] = int(act.week)
         try:
+            self._sync_instance_activity_weeks_from_schedule(schedule)
             return validate_schedule_against_instance(
                 self.inst,
                 schedule,
@@ -2545,6 +2999,11 @@ class MainWindow(QMainWindow):
             )
         except Exception:
             return []
+        finally:
+            for a_id, week in original_weeks.items():
+                act = self.inst.activities.get(int(a_id))
+                if act is not None:
+                    act.week = int(week)
 
     def _collect_conflict_errors(self) -> List[str]:
         return self._validate_schedule_hard_errors(
@@ -2598,7 +3057,10 @@ class MainWindow(QMainWindow):
             course = inst.courses.get(int(info["course_id"]))
             if course is not None:
                 course_code = f" {course.code}"
-            return f"A{a_id}{course_code} ({info['day']} S{int(info['slot']) + 1})"
+            return (
+                f"A{a_id}{course_code} "
+                f"(W{int(info['week'])} {info['day']} S{int(info['slot']) + 1})"
+            )
         return f"A{a_id}"
 
     def _clone_schedule(
@@ -2661,6 +3123,20 @@ class MainWindow(QMainWindow):
                 act.prof_id = sid
             else:
                 act.ta_id = sid
+
+    def _sync_instance_activity_weeks_from_schedule(
+        self, schedule: Dict[int, Dict[str, Any]]
+    ) -> None:
+        if self.inst is None:
+            return
+        for a_id, info in schedule.items():
+            act = self.inst.activities.get(int(a_id))
+            if act is None:
+                continue
+            try:
+                act.week = int(info.get("week", act.week))
+            except Exception:
+                continue
 
     def _touch_time_lock_if_present(self, a_id: int, day: str, slot: int) -> None:
         fixed = self.locked_activities.get(int(a_id))
@@ -2809,8 +3285,9 @@ class MainWindow(QMainWindow):
         schedule = self.current_schedule if schedule_override is None else schedule_override
         a_id = int(self.held_activity_id)
         info = schedule.get(a_id)
-        if info is None or int(info["week"]) != int(week):
+        if info is None:
             return {}
+        origin_week = int(info["week"])
         current_day = str(info["day"])
         current_slot = int(info["slot"])
         room_id = int(info["room_id"])
@@ -2825,6 +3302,7 @@ class MainWindow(QMainWindow):
                     int(slot),
                     room_id,
                     staff_id,
+                    int(week),
                     schedule_override=schedule,
                 )
                 day_slot = (str(day), int(slot))
@@ -2838,10 +3316,15 @@ class MainWindow(QMainWindow):
                 }
                 if ok:
                     if base_penalty is not None:
-                        if str(day) == current_day and int(slot) == current_slot:
+                        if (
+                            int(week) == int(origin_week)
+                            and str(day) == current_day
+                            and int(slot) == current_slot
+                        ):
                             target_penalty = int(base_penalty)
                         else:
                             moved = self._clone_schedule(schedule)
+                            moved[a_id]["week"] = int(week)
                             moved[a_id]["day"] = str(day)
                             moved[a_id]["slot"] = int(slot)
                             target_penalty = self._compute_soft_penalty(moved)
@@ -2857,6 +3340,7 @@ class MainWindow(QMainWindow):
                     int(slot),
                     room_id,
                     staff_id,
+                    int(week),
                     schedule_override=schedule,
                 )
                 analysis[day_slot] = details
@@ -2931,13 +3415,14 @@ class MainWindow(QMainWindow):
         new_slot: int,
         new_room_id: int,
         new_staff_id: int,
+        target_week: int | None = None,
         schedule_override: Dict[int, Dict[str, Any]] | None = None,
     ) -> List[Dict[str, Any]]:
         schedule = self.current_schedule if schedule_override is None else schedule_override
         info = schedule.get(a_id)
         if info is None:
             return []
-        week = int(info["week"])
+        week = int(info["week"]) if target_week is None else int(target_week)
         dur = int(info["duration"])
         groups = set(int(g) for g in info["group_ids"])
         target_slots = set(range(int(new_slot), int(new_slot) + dur))
@@ -2945,7 +3430,7 @@ class MainWindow(QMainWindow):
         for b_id, other in schedule.items():
             if int(b_id) == int(a_id):
                 continue
-            if int(other["week"]) != week or str(other["day"]) != str(new_day):
+            if int(other["week"]) != int(week) or str(other["day"]) != str(new_day):
                 continue
             other_slots = set(
                 range(int(other["slot"]), int(other["slot"]) + int(other["duration"]))
@@ -2974,6 +3459,7 @@ class MainWindow(QMainWindow):
         a_id: int,
         schedule_override: Dict[int, Dict[str, Any]] | None = None,
         *,
+        week: int | None = None,
         limit: int = 20,
         exclude_starts: Set[Tuple[str, int]] | None = None,
     ) -> List[Tuple[str, int]]:
@@ -2984,6 +3470,7 @@ class MainWindow(QMainWindow):
         info = schedule.get(int(a_id))
         if info is None:
             return []
+        target_week = int(info["week"]) if week is None else int(week)
         room_id = int(info["room_id"])
         staff_id = int(info["staff_id"])
         options: List[Tuple[str, int]] = []
@@ -2999,6 +3486,7 @@ class MainWindow(QMainWindow):
                     int(slot),
                     room_id,
                     staff_id,
+                    target_week,
                     schedule_override=schedule,
                 )
                 if ok:
@@ -3011,6 +3499,7 @@ class MainWindow(QMainWindow):
         before_penalty = self._compute_soft_penalty(self.current_schedule)
         after_penalty = self._compute_soft_penalty(schedule)
         self.current_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
+        self._sync_instance_activity_weeks_from_schedule(self.current_schedule)
         self._sync_instance_staff_from_schedule(self.current_schedule)
         self._sync_locks_to_instance()
         self.update_table()
@@ -3024,12 +3513,10 @@ class MainWindow(QMainWindow):
         schedule = self._clone_schedule()
         a = schedule[a_id]
         b = schedule[b_id]
-        if int(a["week"]) != int(b["week"]):
-            return False, "Cross-week swap is not supported."
-        a_day, a_slot = str(a["day"]), int(a["slot"])
-        b_day, b_slot = str(b["day"]), int(b["slot"])
-        a["day"], a["slot"] = b_day, b_slot
-        b["day"], b["slot"] = a_day, a_slot
+        a_week, a_day, a_slot = int(a["week"]), str(a["day"]), int(a["slot"])
+        b_week, b_day, b_slot = int(b["week"]), str(b["day"]), int(b["slot"])
+        a["week"], a["day"], a["slot"] = b_week, b_day, b_slot
+        b["week"], b["day"], b["slot"] = a_week, a_day, a_slot
 
         ok_a, reason_a = self.check_move(
             int(a_id),
@@ -3037,6 +3524,7 @@ class MainWindow(QMainWindow):
             int(a["slot"]),
             int(a["room_id"]),
             int(a["staff_id"]),
+            int(a["week"]),
             schedule_override=schedule,
         )
         if not ok_a:
@@ -3047,13 +3535,12 @@ class MainWindow(QMainWindow):
             int(b["slot"]),
             int(b["room_id"]),
             int(b["staff_id"]),
+            int(b["week"]),
             schedule_override=schedule,
         )
         if not ok_b:
             return False, f"Swap invalid for A{b_id}: {reason_b}"
-        errors = validate_schedule_against_instance(
-            self.inst, schedule, strict_rooms=True, require_all_activities=True
-        )
+        errors = self._validate_schedule_hard_errors(schedule, require_all=True)
         if errors:
             return False, f"Swap leaves {len(errors)} hard conflicts."
 
@@ -3103,9 +3590,7 @@ class MainWindow(QMainWindow):
         )
         if not ok_conflict:
             return False, f"Conflict relocation invalid: {reason_conflict}"
-        errors = validate_schedule_against_instance(
-            self.inst, schedule, strict_rooms=True, require_all_activities=True
-        )
+        errors = self._validate_schedule_hard_errors(schedule, require_all=True)
         if errors:
             return False, f"Plan leaves {len(errors)} hard conflicts."
 
@@ -3123,24 +3608,19 @@ class MainWindow(QMainWindow):
     def _commit_held_plan_move(
         self,
         held_id: int,
+        target_week: int,
         target_day: str,
         target_slot: int,
         schedule: Dict[int, Dict[str, Any]],
         *,
         forced: bool = False,
     ) -> None:
-        errors: List[str] = []
-        try:
-            errors = validate_schedule_against_instance(
-                self.inst, schedule, strict_rooms=True, require_all_activities=True
-            )
-        except Exception:
-            errors = []
+        errors = self._validate_schedule_hard_errors(schedule, require_all=True)
 
         self._push_undo_state()
         self._touch_time_lock_if_present(held_id, str(target_day), int(target_slot))
         title = self._activity_title(held_id, schedule)
-        status = f"Moved {title}"
+        status = f"Moved {title} to week {int(target_week)}"
         if forced:
             status += " (forced)"
         if errors:
@@ -3159,17 +3639,20 @@ class MainWindow(QMainWindow):
         held_id: int,
         target_day: str,
         target_slot: int,
+        target_week: int,
     ) -> None:
         info = self.current_schedule.get(int(held_id))
         if info is None or self.inst is None:
             return
 
+        origin_week = int(info["week"])
         origin_day = str(info["day"])
         origin_slot = int(info["slot"])
         room_id = int(info["room_id"])
         staff_id = int(info["staff_id"])
 
         planned = self._clone_schedule()
+        planned[held_id]["week"] = int(target_week)
         planned[held_id]["day"] = str(target_day)
         planned[held_id]["slot"] = int(target_slot)
         step_note = ""
@@ -3182,11 +3665,17 @@ class MainWindow(QMainWindow):
                 int(target_slot),
                 room_id,
                 staff_id,
+                int(target_week),
                 schedule_override=planned,
             )
             if not conflicts:
                 self._commit_held_plan_move(
-                    held_id, str(target_day), int(target_slot), planned, forced=False
+                    held_id,
+                    int(target_week),
+                    str(target_day),
+                    int(target_slot),
+                    planned,
+                    forced=False,
                 )
                 return
 
@@ -3234,7 +3723,12 @@ class MainWindow(QMainWindow):
             kind = str(decision[0])
             if kind == "force":
                 self._commit_held_plan_move(
-                    held_id, str(target_day), int(target_slot), planned, forced=True
+                    held_id,
+                    int(target_week),
+                    str(target_day),
+                    int(target_slot),
+                    planned,
+                    forced=True,
                 )
                 return
 
@@ -3246,6 +3740,8 @@ class MainWindow(QMainWindow):
                     continue
                 prev_day = str(b_info["day"])
                 prev_slot = int(b_info["slot"])
+                prev_week = int(b_info["week"])
+                b_info["week"] = int(origin_week)
                 b_info["day"] = str(origin_day)
                 b_info["slot"] = int(origin_slot)
                 ok_b, reason_b = self.check_move(
@@ -3254,9 +3750,11 @@ class MainWindow(QMainWindow):
                     int(b_info["slot"]),
                     int(b_info["room_id"]),
                     int(b_info["staff_id"]),
+                    int(origin_week),
                     schedule_override=planned,
                 )
                 if not ok_b:
+                    b_info["week"] = prev_week
                     b_info["day"] = prev_day
                     b_info["slot"] = prev_slot
                     step_note = f"Swap blocked for A{b_id}: {reason_b}"
@@ -3277,6 +3775,7 @@ class MainWindow(QMainWindow):
                     continue
                 prev_day = str(b_info["day"])
                 prev_slot = int(b_info["slot"])
+                prev_week = int(b_info["week"])
                 b_info["day"] = str(b_day)
                 b_info["slot"] = int(b_slot)
                 ok_b, reason_b = self.check_move(
@@ -3285,9 +3784,11 @@ class MainWindow(QMainWindow):
                     int(b_slot),
                     int(b_info["room_id"]),
                     int(b_info["staff_id"]),
+                    int(prev_week),
                     schedule_override=planned,
                 )
                 if not ok_b:
+                    b_info["week"] = prev_week
                     b_info["day"] = prev_day
                     b_info["slot"] = prev_slot
                     step_note = f"Relocation blocked for A{b_id}: {reason_b}"
@@ -3297,7 +3798,9 @@ class MainWindow(QMainWindow):
 
             step_note = f"Unknown action: {kind}"
 
-    def _attempt_move_held_to(self, target_day: str, target_slot: int) -> None:
+    def _attempt_move_held_to(
+        self, target_day: str, target_slot: int, target_week: int | None = None
+    ) -> None:
         if self.inst is None or self.held_activity_id is None:
             return
         held_id = int(self.held_activity_id)
@@ -3305,6 +3808,7 @@ class MainWindow(QMainWindow):
             self._clear_held_activity()
             return
         info = self.current_schedule[held_id]
+        move_week = int(info["week"]) if target_week is None else int(target_week)
         room_id = int(info["room_id"])
         staff_id = int(info["staff_id"])
         ok, reason = self.check_move(
@@ -3313,9 +3817,11 @@ class MainWindow(QMainWindow):
             int(target_slot),
             room_id,
             staff_id,
+            move_week,
         )
         if ok:
             schedule = self._clone_schedule()
+            schedule[held_id]["week"] = int(move_week)
             schedule[held_id]["day"] = str(target_day)
             schedule[held_id]["slot"] = int(target_slot)
             self._push_undo_state()
@@ -3327,13 +3833,20 @@ class MainWindow(QMainWindow):
             return
 
         conflicts = self._find_move_conflicts(
-            held_id, str(target_day), int(target_slot), room_id, staff_id
+            held_id,
+            str(target_day),
+            int(target_slot),
+            room_id,
+            staff_id,
+            int(move_week),
         )
         if not conflicts:
             QMessageBox.warning(self, "Move blocked", reason)
             return
 
-        self._resolve_held_move_conflicts(held_id, str(target_day), int(target_slot))
+        self._resolve_held_move_conflicts(
+            held_id, str(target_day), int(target_slot), int(move_week)
+        )
 
     def on_table_context_menu(self, pos) -> None:
         try:
@@ -3398,7 +3911,7 @@ class MainWindow(QMainWindow):
                     self._toggle_activity_lock(a_id, time_lock=False)
                 return
             if chosen == act_move_held:
-                self._attempt_move_held_to(str(day), int(col))
+                self._attempt_move_held_to(str(day), int(col), int(week))
                 return
             if chosen == act_swap_here:
                 other_ids = [a for a in act_ids if a != int(self.held_activity_id)]
@@ -3696,6 +4209,7 @@ class MainWindow(QMainWindow):
         self._set_manual_highlight_base(self.current_schedule)
         self.locked_activities = {}
         self.held_activity_id = None
+        self._sync_instance_activity_weeks_from_schedule(self.current_schedule)
         self._sync_instance_staff_from_schedule(self.current_schedule)
         self._sync_locks_to_instance()
         self.update_table()
@@ -4014,7 +4528,13 @@ class MainWindow(QMainWindow):
                     progress_every=progress_every,
                     progress_hook=_progress_hook,
                     stop_hook=lambda: bool(self._improve_stop_requested),
-                    probe_activities=7,
+                    probe_activities=max(
+                        8,
+                        min(
+                            18,
+                            len(best_schedule) // 120 + 8,
+                        ),
+                    ),
                 )
 
                 total_done += int(max(0, min(iter_budget, round_progress_done)))
@@ -4636,10 +5156,7 @@ class MainWindow(QMainWindow):
                 if self.held_activity_id is not None and self.held_activity_id in self.current_schedule
                 else None
             )
-            held_week_ok = (
-                held_id is not None
-                and int(self.current_schedule[held_id]["week"]) == int(week)
-            )
+            held_week_ok = held_id is not None
             held_target_map: Dict[Tuple[str, int], bool] = {}
             held_base_score: int | None = None
             held_delta_map: Dict[Tuple[str, int], int] = {}
@@ -4781,6 +5298,7 @@ class MainWindow(QMainWindow):
             "thin_day": 3,
             "stability": 1,
             "single_slot": 6,
+            "same_kind_week": 3,
         }
         overrides = getattr(inst, "soft_weights", None)
         if isinstance(overrides, dict):
@@ -4799,6 +5317,7 @@ class MainWindow(QMainWindow):
         W_THIN_DAY = weights["thin_day"]
         W_STABILITY = weights["stability"]
         W_SINGLE_SLOT = weights["single_slot"]
+        W_SAME_KIND_WEEK = weights["same_kind_week"]
 
         group_occ: Dict[Tuple[int, int, str, int], int] = {}
         for g_id in inst.groups.keys():
@@ -4868,6 +5387,21 @@ class MainWindow(QMainWindow):
                 active_days = sum(day_active[g_id, w, d] for d in days)
                 if active_days > 3:
                     pen += W_ACTIVE_DAYS * (active_days - 3)
+
+                same_kind_counts: Dict[Tuple[int, str], int] = {}
+                for info in schedule.values():
+                    if int(info.get("week")) != int(w):
+                        continue
+                    if int(g_id) not in set(int(x) for x in info.get("group_ids", [])):
+                        continue
+                    kind = str(info.get("kind", ""))
+                    if kind not in ("LEC", "TUT"):
+                        continue
+                    key = (int(info.get("course_id", -1)), kind)
+                    same_kind_counts[key] = int(same_kind_counts.get(key, 0)) + 1
+                for cnt in same_kind_counts.values():
+                    if int(cnt) > 1:
+                        pen += int(W_SAME_KIND_WEEK) * int(cnt - 1)
 
             for wi in range(1, len(weeks)):
                 w_prev = weeks[wi - 1]
@@ -4967,8 +5501,19 @@ class MainWindow(QMainWindow):
             if dlg.exec() != QDialog.DialogCode.Accepted:
                 return
 
-            a_id, new_day, new_slot, new_room, new_staff, lock_time, lock_room = dlg.get_values()
-            ok, reason = self.check_move(a_id, new_day, new_slot, new_room, new_staff)
+            (
+                a_id,
+                new_week,
+                new_day,
+                new_slot,
+                new_room,
+                new_staff,
+                lock_time,
+                lock_room,
+            ) = dlg.get_values()
+            ok, reason = self.check_move(
+                a_id, new_day, new_slot, new_room, new_staff, int(new_week)
+            )
             if not ok:
                 QMessageBox.warning(self, "Invalid move", reason)
                 return
@@ -4976,6 +5521,7 @@ class MainWindow(QMainWindow):
             self._push_undo_state()
             updated_schedule = self._clone_schedule()
             info = updated_schedule[a_id]
+            info["week"] = int(new_week)
             info["day"] = new_day
             info["slot"] = new_slot
             info["room_id"] = new_room
@@ -5012,6 +5558,7 @@ class MainWindow(QMainWindow):
         new_slot: int,
         new_room_id: int,
         new_staff_id: int,
+        new_week: int | None = None,
         schedule_override: Dict[int, Dict[str, Any]] | None = None,
     ) -> Tuple[bool, str]:
         inst = self.inst
@@ -5028,7 +5575,12 @@ class MainWindow(QMainWindow):
             return False, "Unknown room."
         act = inst.activities[a_id]
         info = schedule[a_id]
-        w = info["week"]
+        try:
+            w = int(info["week"]) if new_week is None else int(new_week)
+        except Exception:
+            return False, "Invalid week."
+        if int(w) not in set(int(x) for x in inst.weeks):
+            return False, "Unknown week."
         dur = info["duration"]
         groups = info["group_ids"]
         hard_flags = getattr(inst, "hard_constraints", {}) or {}
@@ -5069,6 +5621,11 @@ class MainWindow(QMainWindow):
                 return False, "TA cannot teach this course."
         if new_day not in staff.available_days:
             return False, "Staff unavailable on that day."
+        allowed_weeks = getattr(staff, "available_weeks", None)
+        if allowed_weeks is not None:
+            allowed_week_set = {int(v) for v in allowed_weeks}
+            if allowed_week_set and int(w) not in allowed_week_set:
+                return False, "Staff unavailable in that week."
 
         day_load = 0
         week_load = 0
@@ -5077,7 +5634,7 @@ class MainWindow(QMainWindow):
                 continue
             if b["staff_id"] != new_staff_id:
                 continue
-            if b["week"] == w:
+            if int(b["week"]) == int(w):
                 week_load += b["duration"]
                 if b["day"] == new_day:
                     day_load += b["duration"]
@@ -5162,7 +5719,7 @@ class MainWindow(QMainWindow):
         for b_id, b in schedule.items():
             if b_id == a_id:
                 continue
-            if b["week"] != w or b["day"] != new_day:
+            if int(b["week"]) != int(w) or b["day"] != new_day:
                 continue
             other_slots = set(range(b["slot"], b["slot"] + b["duration"]))
             if not (new_slots & other_slots):

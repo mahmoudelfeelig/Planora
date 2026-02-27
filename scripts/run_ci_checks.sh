@@ -2,6 +2,7 @@
 set -euo pipefail
 
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
+export QT_OPENGL="${QT_OPENGL:-software}"
 export PYTHONPATH="."
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python || command -v python3)}"
 
