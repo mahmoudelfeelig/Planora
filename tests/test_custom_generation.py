@@ -135,3 +135,97 @@ def test_generate_custom_instance_supports_program_and_course_overrides():
     c4_labs = [a for a in inst.activities.values() if a.course_id == 4 and a.kind == "LAB"]
     assert c4_labs
     assert all(a.requires_specialization is None for a in c4_labs)
+
+
+def test_generate_custom_instance_infers_structure_from_counts():
+    inst = generate_custom_instance(
+        num_programs=1,
+        groups_per_program=1,
+        courses_per_program=4,
+        course_patterns=[
+            {
+                "course_id": 1,
+                "lecture_count": 0,
+                "tutorial_count": 0,
+                "lab_count": 18,
+                "lab_type": "SPECIAL",
+                "lab_duration": 2,
+                "lab_tag": "LAB3",
+            },
+            {
+                "course_id": 2,
+                "lecture_count": 0,
+                "tutorial_count": 24,
+                "lab_count": 0,
+                "lab_type": "NONE",
+                "lab_duration": 2,
+                "lab_tag": "",
+            },
+            {
+                "course_id": 3,
+                "lecture_count": 18,
+                "tutorial_count": 0,
+                "lab_count": 0,
+                "lab_type": "NONE",
+                "lab_duration": 2,
+                "lab_tag": "",
+            },
+            {
+                "course_id": 4,
+                "lecture_count": 12,
+                "tutorial_count": 0,
+                "lab_count": 12,
+                "lab_type": "NORMAL",
+                "lab_duration": 1,
+                "lab_tag": "",
+            },
+        ],
+        num_professors=2,
+        num_tas=2,
+        seed=31,
+    )
+
+    c1 = inst.courses[1]
+    c2 = inst.courses[2]
+    c3 = inst.courses[3]
+    c4 = inst.courses[4]
+
+    assert c1.structure_type == "LAB_ONLY"
+    assert c1.lecture_count == 0
+    assert c1.tutorial_count == 0
+    assert c1.lab_weeks == 18
+
+    assert c2.structure_type == "LEC_TUT"
+    assert c2.lecture_count == 0
+    assert c2.tutorial_count == 24
+    assert c2.lab_weeks == 0
+
+    assert c3.structure_type == "LEC_ONLY"
+    assert c3.lecture_count == 18
+    assert c3.tutorial_count == 0
+    assert c3.lab_weeks == 0
+
+    assert c4.structure_type == "LEC_TUT_LAB"
+    assert c4.lecture_count == 12
+    assert c4.tutorial_count == 0
+    assert c4.lab_weeks == 12
+
+    c1_labs = [a for a in inst.activities.values() if a.course_id == 1 and a.kind == "LAB"]
+    assert len(c1_labs) == 18
+    assert all(a.requires_specialization == "LAB3" for a in c1_labs)
+
+    c2_lecs = [a for a in inst.activities.values() if a.course_id == 2 and a.kind == "LEC"]
+    c2_tuts = [a for a in inst.activities.values() if a.course_id == 2 and a.kind == "TUT"]
+    assert len(c2_lecs) == 0
+    assert len(c2_tuts) == 24
+
+    c3_lecs = [a for a in inst.activities.values() if a.course_id == 3 and a.kind == "LEC"]
+    c3_tuts = [a for a in inst.activities.values() if a.course_id == 3 and a.kind == "TUT"]
+    assert len(c3_lecs) == 18
+    assert len(c3_tuts) == 0
+
+    c4_tuts = [a for a in inst.activities.values() if a.course_id == 4 and a.kind == "TUT"]
+    c4_labs = [a for a in inst.activities.values() if a.course_id == 4 and a.kind == "LAB"]
+    assert len(c4_tuts) == 0
+    assert len(c4_labs) == 12
+    assert all(a.requires_specialization is None for a in c4_labs)

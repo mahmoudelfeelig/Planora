@@ -112,6 +112,21 @@ def _normalize_days(raw_days: List[str] | Set[str] | None) -> Set[str]:
     return valid or set(DAYS)
 
 
+def _normalize_weeks(raw_weeks: List[int] | Set[int] | None) -> Set[int]:
+    valid_weeks = set(int(w) for w in WEEKS)
+    if not raw_weeks:
+        return set(valid_weeks)
+    out: Set[int] = set()
+    for raw in raw_weeks:
+        try:
+            w = int(raw)
+        except Exception:
+            continue
+        if w in valid_weeks:
+            out.add(int(w))
+    return out or set(valid_weeks)
+
+
 def _build_course_owner_map(
     *,
     course_ids: List[int],
@@ -142,10 +157,25 @@ def _build_course_owner_map(
 
 
 def _room_capacity_from_spec(spec: Dict[str, Any]) -> int:
+    mode = str(spec.get("capacity_mode", "numeric")).strip().lower()
+    if mode.startswith("cat"):
+        category = str(spec.get("category", "MEDIUM")).strip().upper()
+        return ROOM_CATEGORY_CAPACITY.get(category, ROOM_CATEGORY_CAPACITY["MEDIUM"])
     if spec.get("capacity") is not None:
         return max(1, int(spec["capacity"]))
     category = str(spec.get("category", "MEDIUM")).strip().upper()
     return ROOM_CATEGORY_CAPACITY.get(category, ROOM_CATEGORY_CAPACITY["MEDIUM"])
+
+
+def _normalize_session_count(value: Any, *, default: int, allow_zero: bool) -> int:
+    allowed = {12, 18, 24}
+    if allow_zero:
+        allowed.add(0)
+    try:
+        parsed = int(value)
+    except Exception:
+        return int(default)
+    return int(parsed) if parsed in allowed else int(default)
 
 
 def _build_custom_rooms(room_specs: List[Dict[str, Any]]) -> Dict[int, Room]:
@@ -172,6 +202,100 @@ def _build_custom_rooms(room_specs: List[Dict[str, Any]]) -> Dict[int, Room]:
     return rooms
 
 
+def _eligible_room_ids_for_activity(inst: Instance, act: Activity) -> List[int]:
+    need = sum(int(inst.groups[g_id].size) for g_id in act.group_ids if g_id in inst.groups)
+    eligible: List[int] = []
+    for r_id, room in inst.rooms.items():
+        if int(room.capacity) < int(need):
+            continue
+        r_type = str(room.room_type)
+        if str(act.kind) == "LEC":
+            if r_type == "LECTURE":
+                eligible.append(int(r_id))
+        elif str(act.kind) == "TUT":
+            if r_type in ("TUTORIAL", "LECTURE"):
+                eligible.append(int(r_id))
+        else:  # LAB
+            tag = getattr(act, "requires_specialization", None)
+            if tag:
+                tags = set(str(t).strip().upper() for t in (room.specialization_tags or []))
+                if r_type == "SPECIALIZED_LAB" and str(tag).strip().upper() in tags:
+                    eligible.append(int(r_id))
+            else:
+                if r_type in ("COMPUTER_LAB", "SPECIALIZED_LAB"):
+                    eligible.append(int(r_id))
+    return eligible
+
+
+def _ensure_activity_room_coverage(inst: Instance) -> None:
+    """
+    Inject fallback rooms when a custom configuration leaves activities without
+    any eligible room. This preserves solvability in user-defined scenarios.
+    """
+    fallback_by_key: Dict[Tuple[str, str], int] = {}
+    next_room_id = (max((int(r_id) for r_id in inst.rooms.keys()), default=0) + 1)
+    full_availability = {(d, s) for d in inst.days for s in range(int(inst.slots_per_day))}
+
+    def _ensure_room_for_key(key: Tuple[str, str], need_capacity: int) -> int:
+        nonlocal next_room_id
+        existing_id = fallback_by_key.get(key)
+        if existing_id is not None and existing_id in inst.rooms:
+            room = inst.rooms[int(existing_id)]
+            if int(room.capacity) < int(need_capacity):
+                room.capacity = int(need_capacity)
+            return int(existing_id)
+
+        kind, tag = key
+        if kind == "LEC":
+            room_type = "LECTURE"
+            name = f"Auto-Lecture-{next_room_id}"
+            tags: Set[str] = set()
+            baseline = 120
+        elif kind == "TUT":
+            room_type = "TUTORIAL"
+            name = f"Auto-Tutorial-{next_room_id}"
+            tags = set()
+            baseline = 80
+        elif kind == "LAB_TAG":
+            room_type = "SPECIALIZED_LAB"
+            name = f"Auto-SpecialLab-{next_room_id}"
+            tags = {str(tag).strip().upper()} if str(tag).strip() else {"LAB1"}
+            baseline = 60
+        else:  # LAB_GENERIC
+            room_type = "COMPUTER_LAB"
+            name = f"Auto-CompLab-{next_room_id}"
+            tags = set()
+            baseline = 60
+
+        room_id = int(next_room_id)
+        next_room_id += 1
+        inst.rooms[room_id] = Room(
+            id=int(room_id),
+            name=str(name),
+            capacity=max(int(baseline), int(need_capacity)),
+            room_type=str(room_type),
+            specialization_tags=set(tags),
+            availability=set(full_availability),
+        )
+        fallback_by_key[key] = int(room_id)
+        return int(room_id)
+
+    for act in inst.activities.values():
+        if _eligible_room_ids_for_activity(inst, act):
+            continue
+        need = sum(int(inst.groups[g_id].size) for g_id in act.group_ids if g_id in inst.groups)
+        if str(act.kind) == "LEC":
+            _ensure_room_for_key(("LEC", ""), need)
+        elif str(act.kind) == "TUT":
+            _ensure_room_for_key(("TUT", ""), need)
+        else:
+            tag = str(getattr(act, "requires_specialization", "") or "").strip().upper()
+            if tag:
+                _ensure_room_for_key(("LAB_TAG", tag), need)
+            else:
+                _ensure_room_for_key(("LAB_GENERIC", ""), need)
+
+
 def generate_custom_instance(
     *,
     num_programs: int,
@@ -186,7 +310,10 @@ def generate_custom_instance(
     ta_course_map: Dict[int, List[int]] | None = None,
     professor_days: Dict[int, List[str]] | None = None,
     ta_days: Dict[int, List[str]] | None = None,
+    professor_weeks: Dict[int, List[int]] | None = None,
+    ta_weeks: Dict[int, List[int]] | None = None,
     room_specs: List[Dict[str, Any]] | None = None,
+    room_capacity_mode: str | None = None,
     seed: int = 42,
 ) -> Instance:
     """
@@ -196,9 +323,11 @@ def generate_custom_instance(
       - course maps use 1-based local staff indexes (1..num_professors / 1..num_tas)
       - all courses are assigned exactly one professor and one TA
       - when maps are partial/empty, remaining courses are assigned round-robin
+      - professor_weeks / ta_weeks are optional week-availability overrides (empty -> all weeks)
       - program_overrides rows may define: program_id, program_name, groups, courses, courses_per_group
-      - course_patterns rows may define: course_id, lecture_count, tutorial_count,
-        lab_type (NONE/NORMAL/SPECIAL), lab_duration, lab_tag
+      - course_patterns rows may define: course_id, lecture_count, tutorial_count, lab_count,
+        lab_type (NONE/NORMAL/SPECIAL), lab_duration, lab_tag.
+        Course structure is inferred from counts (e.g., lab-only or tut-only).
     """
     if num_programs < 1:
         raise ValueError("num_programs must be >= 1")
@@ -269,31 +398,32 @@ def generate_custom_instance(
             continue
         lecture_count = raw.get("lecture_count", 12)
         tutorial_count = raw.get("tutorial_count", 12)
+        lab_count = raw.get(
+            "lab_count",
+            12 if str(raw.get("lab_type", "NONE")).strip().upper() in {"NORMAL", "SPECIAL"} else 0,
+        )
         lab_type = str(raw.get("lab_type", "NONE")).strip().upper()
         lab_duration = raw.get("lab_duration", 2)
         lab_tag = str(raw.get("lab_tag", "LAB1")).strip().upper() or "LAB1"
-        try:
-            lecture_count = int(lecture_count)
-        except Exception:
-            lecture_count = 12
-        try:
-            tutorial_count = int(tutorial_count)
-        except Exception:
-            tutorial_count = 12
+        lecture_count = _normalize_session_count(lecture_count, default=12, allow_zero=True)
+        tutorial_count = _normalize_session_count(tutorial_count, default=12, allow_zero=True)
+        lab_count = _normalize_session_count(lab_count, default=0, allow_zero=True)
         try:
             lab_duration = int(lab_duration)
         except Exception:
             lab_duration = 2
-        if lecture_count not in (12, 18, 24):
-            lecture_count = 12
-        if tutorial_count not in (0, 12, 18, 24):
-            tutorial_count = 12
         if lab_type not in {"NONE", "NORMAL", "SPECIAL"}:
             lab_type = "NONE"
+        if lab_count <= 0:
+            lab_type = "NONE"
+        elif lab_type == "NONE":
+            # Count drives structure; NONE here means user did not pick subtype.
+            lab_type = "NORMAL"
         lab_duration = max(1, min(2, lab_duration))
         course_pattern_overrides[c_id] = {
             "lecture_count": lecture_count,
             "tutorial_count": tutorial_count,
+            "lab_count": lab_count,
             "lab_type": lab_type,
             "lab_duration": lab_duration,
             "lab_tag": lab_tag,
@@ -313,6 +443,11 @@ def generate_custom_instance(
 
     # Optional custom room set.
     if room_specs is not None:
+        if room_capacity_mode is not None:
+            mode_norm = str(room_capacity_mode).strip().lower()
+            for spec in room_specs:
+                if isinstance(spec, dict):
+                    spec.setdefault("capacity_mode", mode_norm)
         inst.rooms = _build_custom_rooms(room_specs)
 
     # Optional course naming override (cycled if fewer names than courses).
@@ -341,6 +476,7 @@ def generate_custom_instance(
             available_days=_normalize_days((professor_days or {}).get(idx)),
             max_slots_per_day=None,
             max_slots_per_week=None,
+            available_weeks=_normalize_weeks((professor_weeks or {}).get(idx)),
             can_teach_courses=set(),
             prefers_block=False,
             blocks_only=False,
@@ -356,6 +492,7 @@ def generate_custom_instance(
             available_days=_normalize_days((ta_days or {}).get(idx)),
             max_slots_per_day=None,
             max_slots_per_week=None,
+            available_weeks=_normalize_weeks((ta_weeks or {}).get(idx)),
             can_teach_courses=set(),
             prefers_block=False,
             blocks_only=False,
@@ -389,6 +526,7 @@ def generate_custom_instance(
         act.ta_id = int(course.ta_id)
 
     inst.staff = staff
+    _ensure_activity_room_coverage(inst)
     return inst
 
 
@@ -417,8 +555,8 @@ def _generate_university(
 
     Enforced in data:
       - Week 1 contains only LEC activities.
-      - Per-course totals: LEC = 12 and TUT = 12, achieved by adding one extra tutorial in a later week.
-      - Labs-only courses skip week 1 and compensate with one extra 2-slot lab later to keep 12 labs.
+      - Per-course totals are encoded in course metadata and mirrored by generated activities.
+      - Tutorials/labs skip week 1 by construction.
 
     Model support:
       - Tutorials can use dedicated TUTORIAL rooms or overflow into LECTURE rooms.
@@ -671,38 +809,60 @@ def _generate_university(
                     else None
                 )
                 if override:
-                    lecture_total = int(override.get("lecture_count", 12))
-                    tutorial_total = int(override.get("tutorial_count", 12))
-                    if lecture_total not in (12, 18, 24):
-                        lecture_total = 12
-                    if tutorial_total not in (0, 12, 18, 24):
-                        tutorial_total = 12
+                    lecture_total = _normalize_session_count(
+                        override.get("lecture_count", 12), default=12, allow_zero=True
+                    )
+                    tutorial_total = _normalize_session_count(
+                        override.get("tutorial_count", 12), default=12, allow_zero=True
+                    )
+                    lab_weeks = _normalize_session_count(
+                        override.get("lab_count", override.get("lab_weeks", 0)),
+                        default=0,
+                        allow_zero=True,
+                    )
                     if is_block_course:
                         # Block lecture courses are fixed to 4x3-slot blocks.
                         lecture_total = 12
                     lab_type = str(override.get("lab_type", "NONE")).strip().upper()
                     if lab_type not in {"NONE", "NORMAL", "SPECIAL"}:
                         lab_type = "NONE"
-                    lab_duration = int(override.get("lab_duration", 2))
-                    lab_duration = max(1, min(2, lab_duration))
-                    if lab_type == "NONE":
-                        if tutorial_total > 0:
-                            structure = "LEC_TUT"
-                        else:
-                            structure = "LEC_ONLY"
+                    try:
+                        lab_duration = int(override.get("lab_duration", 2))
+                    except Exception:
+                        lab_duration = 2
+                    if lab_weeks <= 0:
                         lab_weeks = 0
                         lab_duration = 0
+                        lab_type = "NONE"
                     else:
-                        structure = "LEC_TUT_LAB"
-                        if tutorial_total == 0:
-                            tutorial_total = 12
-                        lab_weeks = 12
+                        lab_duration = max(1, min(2, lab_duration))
+                        if lab_type == "NONE":
+                            # Counts decide structure; NONE here means "no subtype selected".
+                            lab_type = "NORMAL"
                         course_lab_mode[c_id] = lab_type
                         if lab_type == "SPECIAL":
                             course_special_lab_tag[c_id] = (
                                 str(override.get("lab_tag", "LAB1")).strip().upper()
                                 or "LAB1"
                             )
+
+                    has_lec = lecture_total > 0
+                    has_tut = tutorial_total > 0
+                    has_lab = lab_weeks > 0
+                    if not has_lec and not has_tut and not has_lab:
+                        # Avoid empty courses in custom generation.
+                        lecture_total = 12
+                        has_lec = True
+
+                    if has_lab and not has_lec and not has_tut:
+                        structure = "LAB_ONLY"
+                    elif has_lab:
+                        structure = "LEC_TUT_LAB"
+                    elif has_lec and not has_tut:
+                        structure = "LEC_ONLY"
+                    else:
+                        # Includes tut-only and lec+tut cases.
+                        structure = "LEC_TUT"
                 else:
                     if target_profile:
                         lecture_total = 12
@@ -874,6 +1034,7 @@ def _generate_university(
     )
 
     _check_group_week_load(inst, hard_cap=max_group_load_slots)
+    _ensure_activity_room_coverage(inst)
     return inst
 
 
@@ -921,6 +1082,7 @@ def _build_staff_pool(
             id=s_id, name=f"Prof-{s_id}", is_prof=True,
             available_days=days,
             max_slots_per_day=None, max_slots_per_week=8,
+            available_weeks=set(WEEKS),
             can_teach_courses=set(),
             prefers_block=True, blocks_only=True,
         )
@@ -933,6 +1095,7 @@ def _build_staff_pool(
             id=s_id, name=f"Prof-{s_id}", is_prof=True,
             available_days=set(DAYS),
             max_slots_per_day=None, max_slots_per_week=None,
+            available_weeks=set(WEEKS),
             can_teach_courses=set(),
             prefers_block=False, blocks_only=False,
         )
@@ -954,6 +1117,7 @@ def _build_staff_pool(
                 available_days=avail,
                 max_slots_per_day=None,
                 max_slots_per_week=None,
+                available_weeks=set(WEEKS),
                 can_teach_courses=set(),
                 prefers_block=False,
                 blocks_only=False,
@@ -967,6 +1131,7 @@ def _build_staff_pool(
                 id=s_id, name=f"TA-{s_id}", is_prof=False,
                 available_days=set(DAYS),
                 max_slots_per_day=None, max_slots_per_week=None,
+                available_weeks=set(WEEKS),
                 can_teach_courses=set(),
                 prefers_block=False, blocks_only=False,
             )

@@ -29,7 +29,7 @@ class Course:
     structure_type: str            # "LEC_ONLY", "LEC_TUT", "LEC_TUT_LAB", "LAB_ONLY"
     lecture_count: int             # total over all weeks (12/18/24)
     tutorial_count: int            # 0 or 12/18/24
-    lab_weeks: int                 # number of weeks with labs (0 or 12)
+    lab_weeks: int                 # number of lab sessions over semester (0/12/18/24 in custom mode)
     lab_duration: int              # 1 or 2 consecutive slots
     share_lecture_group_ids: List[int] = field(default_factory=list)
 
@@ -49,6 +49,8 @@ class StaffMember:
     can_teach_courses: Set[int] = field(default_factory=set)
     prefers_block: bool = False
     blocks_only: bool = False
+    # None means all instance weeks are allowed.
+    available_weeks: Optional[Set[int]] = None
 
 
 @dataclass

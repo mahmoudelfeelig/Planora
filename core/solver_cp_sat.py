@@ -338,11 +338,25 @@ class TimetableSolver:
             hi = lo + self.S - 1
             sunday_range = (lo, hi)
 
+        week_set = set(int(w) for w in self.weeks)
         for a_id, act in inst.activities.items():
             sid = self.activity_staff[a_id]
             staff = inst.staff[sid]
             available_days = set(getattr(staff, "available_days", self.days))
+            available_weeks = getattr(staff, "available_weeks", None)
+            if available_weeks is None:
+                allowed_weeks = set(week_set)
+            else:
+                allowed_weeks = {int(w) for w in available_weeks if int(w) in week_set}
+                if not allowed_weeks:
+                    allowed_weeks = set(week_set)
             allowed_day_idx: Set[int] = {i for i, d in enumerate(self.days) if d in available_days}
+
+            if int(act.week) not in allowed_weeks:
+                raise ValueError(
+                    f"Activity {a_id} week {int(act.week)} is outside staff "
+                    f"{sid} available weeks {sorted(allowed_weeks)}"
+                )
 
             max_start_slot = self.S - act.duration
             if max_start_slot < 0:
@@ -839,6 +853,7 @@ class TimetableSolver:
             "stability": 1,
             "room_consistency": 1,
             "single_slot": 6,
+            "same_kind_week": 3,
         }
         overrides = getattr(inst, "soft_weights", None)
         if isinstance(overrides, dict):

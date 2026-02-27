@@ -74,6 +74,7 @@ class LocalSearchImprover:
             "stability": 1,
             "room_consistency": 1,
             "single_slot": 6,
+            "same_kind_week": 3,
         }
         overrides = getattr(self.inst, "soft_weights", None)
         if isinstance(overrides, dict):
@@ -423,6 +424,7 @@ class LocalSearchImprover:
             "stability": 1,
             "room_consistency": 1,
             "single_slot": 6,
+            "same_kind_week": 3,
         }
         overrides = getattr(inst, "soft_weights", None)
         if isinstance(overrides, dict):
@@ -442,6 +444,7 @@ class LocalSearchImprover:
         W_STABILITY = weights["stability"]
         W_ROOM_CONSISTENCY = weights["room_consistency"]
         W_SINGLE_SLOT = weights["single_slot"]
+        W_SAME_KIND_WEEK = weights["same_kind_week"]
 
         penalty = 0
 
@@ -540,6 +543,26 @@ class LocalSearchImprover:
                 continue
             if len(rooms) > 1:
                 penalty += W_ROOM_CONSISTENCY * (len(rooms) - 1)
+
+        # Weekly concentration of identical lecture/tutorial sessions
+        # for the same (group, course, kind). This term is relevant for
+        # interactive cross-week edits where weeks can be shifted manually.
+        for g_id in inst.groups.keys():
+            for w in weeks:
+                counts: Dict[Tuple[int, str], int] = {}
+                for info in schedule.values():
+                    if int(info["week"]) != int(w):
+                        continue
+                    kind = str(info.get("kind", ""))
+                    if kind not in ("LEC", "TUT"):
+                        continue
+                    if int(g_id) not in set(int(x) for x in info.get("group_ids", [])):
+                        continue
+                    key = (int(info["course_id"]), kind)
+                    counts[key] = int(counts.get(key, 0)) + 1
+                for cnt in counts.values():
+                    if int(cnt) > 1:
+                        penalty += int(W_SAME_KIND_WEEK) * int(cnt - 1)
 
         return penalty
 
@@ -1230,7 +1253,7 @@ class LocalSearchImprover:
                         schedule,
                         int(group_id),
                         int(week),
-                        max_steps=2,
+                        max_steps=3,
                     )
                     move: Dict[str, Any] | None = None
                     if single_move is not None and compound_move is not None:
@@ -1312,18 +1335,19 @@ class LocalSearchImprover:
         if kick_steps is None:
             kick_steps = max(2, min(14, max(1, len(activity_ids) // 20)))
         if probe_activities is None:
-            probe_activities = max(4, min(14, len(activity_ids) // 150 + 4))
+            probe_activities = max(6, min(20, len(activity_ids) // 120 + 6))
         no_improve_iters = 0
         restarts_used = 0
         self._refresh_entity_badness()
 
         # Group-first deterministic pass:
         # week-by-week scan and best-delta relocations for high-penalty groups.
-        systematic_budget = max(4, min(220, int(iterations) // 2))
+        systematic_budget = max(8, min(320, int(iterations * 0.7)))
         systematic_seconds = None
         if max_seconds is not None:
-            # Reserve most of the budget for stochastic improvement.
-            systematic_seconds = max(0.35, min(3.0, float(max_seconds) * 0.35))
+            # Reserve enough budget for stochastic improvement, but strengthen
+            # deterministic group/week improvements first.
+            systematic_seconds = max(0.45, min(4.0, float(max_seconds) * 0.45))
         current_pen, systematic_moves = self._systematic_group_week_sweep(
             current,
             int(current_pen),
@@ -1546,5 +1570,34 @@ class LocalSearchImprover:
                 except Exception:
                     # keep search running even if the hook fails
                     pass
+
+        # Final deterministic polish from the best-known state to harvest
+        # remaining obvious week/group time improvements.
+        try:
+            if best:
+                polish = {a_id: info.copy() for a_id, info in best.items()}
+                self._build_state(polish)
+                self._refresh_entity_badness()
+                polish_pen = int(self.compute_soft_penalty(polish))
+                polish_seconds = None
+                if max_seconds is not None:
+                    elapsed = float(time.perf_counter() - start_ts)
+                    remaining = max(0.0, float(max_seconds) - elapsed)
+                    polish_seconds = min(remaining, max(0.0, float(max_seconds) * 0.20))
+                polish_pen, _ = self._systematic_group_week_sweep(
+                    polish,
+                    int(polish_pen),
+                    max_moves=max(8, min(140, int(iterations) // 3)),
+                    max_passes=2,
+                    start_ts=float(time.perf_counter()),
+                    max_seconds=polish_seconds,
+                    stop_hook=stop_hook,
+                )
+                if int(polish_pen) < int(best_pen):
+                    best_pen = int(polish_pen)
+                    best = {a_id: info.copy() for a_id, info in polish.items()}
+        except Exception:
+            # Never fail the whole improve call because of polish stage.
+            pass
 
         return best

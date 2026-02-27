@@ -10,7 +10,7 @@ SPEC_WEEKS = list(range(1, 13))
 SPEC_SLOTS_PER_DAY = 5
 SPEC_DURATIONS = {1, 2, 3}
 SPEC_COUNTS = {12, 18, 24}
-SPEC_LAB_WEEKS = {0, 12}
+SPEC_LAB_WEEKS = {0, 12, 18, 24}
 SPEC_LAB_DURATION = {0, 1, 2}
 
 
@@ -214,6 +214,11 @@ def validate_schedule_against_instance(
                 errors.append(f"A{a_id} staff {staff_id} cannot teach course {act.course_id}")
             if day not in getattr(staff, "available_days", set()):
                 errors.append(f"A{a_id} staff {staff_id} unavailable on {day}")
+            allowed_weeks = getattr(staff, "available_weeks", None)
+            if week is not None and allowed_weeks is not None:
+                allowed = {int(w) for w in allowed_weeks}
+                if allowed and int(week) not in allowed:
+                    errors.append(f"A{a_id} staff {staff_id} unavailable in week {int(week)}")
 
         if room_id is None:
             if strict_rooms:

@@ -61,12 +61,21 @@ def normalize_instance_for_spec(inst: Instance) -> None:
     inst.days = pruned_days
 
     valid_days = set(inst.days)
+    valid_weeks = set(int(w) for w in inst.weeks)
     for s in inst.staff.values():
         avail = {d for d in getattr(s, "available_days", []) or [] if d in valid_days}
         if not avail and valid_days:
             print(f"[WARN] Staff '{s.name}' has no valid availability; defaulting to all days.")
             avail = set(valid_days)
         s.available_days = avail
+        weeks = {
+            int(w) for w in (getattr(s, "available_weeks", None) or valid_weeks)
+            if int(w) in valid_weeks
+        }
+        if not weeks and valid_weeks:
+            print(f"[WARN] Staff '{s.name}' has no valid week availability; defaulting to all weeks.")
+            weeks = set(valid_weeks)
+        s.available_weeks = weeks
 
     # Warn if any specialized lab tag has no room (keeps your strict matching)
     tags_present = defaultdict(int)
@@ -170,6 +179,7 @@ def compute_group_penalties(inst: Instance, schedule: Dict[int, Dict[str, Any]])
         "thin_day": 3,
         "stability": 1,
         "single_slot": 6,
+        "same_kind_week": 3,
     }
     overrides = getattr(inst, "soft_weights", None)
     if isinstance(overrides, dict):
@@ -188,6 +198,7 @@ def compute_group_penalties(inst: Instance, schedule: Dict[int, Dict[str, Any]])
     W_THIN_DAY = weights["thin_day"]
     W_STABILITY = weights["stability"]
     W_SINGLE_SLOT = weights["single_slot"]
+    W_SAME_KIND_WEEK = weights["same_kind_week"]
 
     group_occ: Dict[tuple, int] = {}
     for g_id in inst.groups.keys():
@@ -239,6 +250,20 @@ def compute_group_penalties(inst: Instance, schedule: Dict[int, Dict[str, Any]])
                 if first_slot is not None and first_slot >= 2: pen += W_LATE_START
             active_days = sum(day_active[g_id, w, d] for d in days)
             if active_days > 3: pen += W_ACTIVE_DAYS * (active_days - 3)
+            same_kind_counts: Dict[tuple, int] = {}
+            for info in schedule.values():
+                if int(info.get("week")) != int(w):
+                    continue
+                if int(g_id) not in set(int(x) for x in info.get("group_ids", [])):
+                    continue
+                kind = str(info.get("kind", ""))
+                if kind not in ("LEC", "TUT"):
+                    continue
+                key = (int(info.get("course_id", -1)), kind)
+                same_kind_counts[key] = int(same_kind_counts.get(key, 0)) + 1
+            for cnt in same_kind_counts.values():
+                if int(cnt) > 1:
+                    pen += int(W_SAME_KIND_WEEK) * int(cnt - 1)
         for wi in range(1, len(weeks)):
             w_prev = weeks[wi-1]; w_curr = weeks[wi]
             for d in days:

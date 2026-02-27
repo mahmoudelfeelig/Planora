@@ -80,6 +80,11 @@ def instance_from_json(data: Dict[str, Any]) -> Instance:
             can_teach_courses=_to_int_set(s.get("can_teach_courses", [])),
             prefers_block=bool(s.get("prefers_block", False)),
             blocks_only=bool(s.get("blocks_only", False)),
+            available_weeks=(
+                _to_int_set(s.get("available_weeks", []))
+                if s.get("available_weeks") is not None
+                else None
+            ),
         )
         for sid, s in (data.get("staff") or {}).items()
     }
