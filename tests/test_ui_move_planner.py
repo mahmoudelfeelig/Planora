@@ -50,6 +50,7 @@ def test_collect_held_target_map_uses_check_move(qt_app):
             slot,
             room_id,
             staff_id,
+            week=None,
             schedule_override=None,
         ):
             return (day == "MON" and int(slot) == 0), "blocked"

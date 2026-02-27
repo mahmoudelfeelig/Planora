@@ -168,6 +168,7 @@ def test_engine_cli_phased_solve_runs_feasibility_then_improves(monkeypatch, tmp
 
     monkeypatch.setattr(engine_cli, "TimetableSolver", FakeSolver)
     monkeypatch.setattr(engine_cli, "LocalSearchImprover", FakeImprover)
+    monkeypatch.setattr(engine_cli, "validate_schedule_against_instance", lambda *args, **kwargs: [])
     monkeypatch.setenv("TT_ROOM_MODE", "cp_rooms")
     monkeypatch.setenv("TT_CP_WORKERS", "2")
     monkeypatch.setenv("TT_PHASED_SOLVE", "1")

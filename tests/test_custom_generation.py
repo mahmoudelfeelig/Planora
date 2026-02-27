@@ -50,7 +50,9 @@ def test_generate_custom_instance_applies_counts_staff_mapping_and_rooms():
         assert act.prof_id == course.prof_id
         assert act.ta_id == course.ta_id
 
-    assert len(inst.rooms) == 4
+    # Custom generation may inject fallback rooms to preserve solvability when
+    # user-provided room definitions leave an activity without any eligible room.
+    assert len(inst.rooms) >= 4
     assert inst.rooms[1].capacity == ROOM_CATEGORY_CAPACITY["BIG"]
     assert inst.rooms[2].capacity == 110
     assert inst.rooms[3].specialization_tags == {"LAB1"}

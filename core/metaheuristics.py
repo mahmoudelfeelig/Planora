@@ -1345,9 +1345,9 @@ class LocalSearchImprover:
         systematic_budget = max(8, min(320, int(iterations * 0.7)))
         systematic_seconds = None
         if max_seconds is not None:
-            # Reserve enough budget for stochastic improvement, but strengthen
-            # deterministic group/week improvements first.
-            systematic_seconds = max(0.45, min(4.0, float(max_seconds) * 0.45))
+            # Keep deterministic pre-pass proportional to total budget; do not
+            # enforce a hard minimum so tiny max_seconds calls remain responsive.
+            systematic_seconds = max(0.0, float(max_seconds) * 0.45)
         current_pen, systematic_moves = self._systematic_group_week_sweep(
             current,
             int(current_pen),
@@ -1583,19 +1583,23 @@ class LocalSearchImprover:
                 if max_seconds is not None:
                     elapsed = float(time.perf_counter() - start_ts)
                     remaining = max(0.0, float(max_seconds) - elapsed)
-                    polish_seconds = min(remaining, max(0.0, float(max_seconds) * 0.20))
-                polish_pen, _ = self._systematic_group_week_sweep(
-                    polish,
-                    int(polish_pen),
-                    max_moves=max(8, min(140, int(iterations) // 3)),
-                    max_passes=2,
-                    start_ts=float(time.perf_counter()),
-                    max_seconds=polish_seconds,
-                    stop_hook=stop_hook,
-                )
-                if int(polish_pen) < int(best_pen):
-                    best_pen = int(polish_pen)
-                    best = {a_id: info.copy() for a_id, info in polish.items()}
+                    if float(max_seconds) <= 0.2 or remaining <= 0.02:
+                        polish_seconds = 0.0
+                    else:
+                        polish_seconds = min(remaining, max(0.0, float(max_seconds) * 0.20))
+                if polish_seconds is None or float(polish_seconds) > 0.0:
+                    polish_pen, _ = self._systematic_group_week_sweep(
+                        polish,
+                        int(polish_pen),
+                        max_moves=max(8, min(140, int(iterations) // 3)),
+                        max_passes=2,
+                        start_ts=float(time.perf_counter()),
+                        max_seconds=polish_seconds,
+                        stop_hook=stop_hook,
+                    )
+                    if int(polish_pen) < int(best_pen):
+                        best_pen = int(polish_pen)
+                        best = {a_id: info.copy() for a_id, info in polish.items()}
         except Exception:
             # Never fail the whole improve call because of polish stage.
             pass
