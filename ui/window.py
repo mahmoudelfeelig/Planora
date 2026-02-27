@@ -9,6 +9,7 @@ import traceback
 import time
 import re
 import json
+from datetime import datetime, timezone
 from typing import Dict, Any, Tuple, List, Set
 
 # Allow running directly (python ui/window.py) by ensuring repo root on sys.path
@@ -64,9 +65,19 @@ from ui.constants import (
     DEFAULT_TIME_LIMIT,
     DEFAULT_CP_WORKERS,
 )
-from ui.dialogs import EditActivityDialog, MoveConflictDialog, ConflictInspectorDialog
+from ui.dialogs import (
+    EditActivityDialog,
+    MoveConflictDialog,
+    ConflictInspectorDialog,
+    ImportScheduleWizardDialog,
+)
 from ui.styles import DARK_STYLE
-from utils.generator import generate_instance, generate_custom_instance, ROOM_CATEGORY_CAPACITY
+from utils.generator import (
+    generate_instance,
+    generate_custom_instance,
+    ROOM_CATEGORY_CAPACITY,
+    instance_to_json,
+)
 from core.metaheuristics import LocalSearchImprover
 from utils.exporter import (
     export_group_schedules_to_docx,
@@ -76,12 +87,33 @@ from utils.exporter import (
     export_groups_ics_per_id,
     export_staff_ics_per_id,
     export_rooms_ics_per_id,
+    export_calendar_feeds,
 )
 from utils.domain import Instance
-from utils.io import read_scenario, write_scenario, read_instance, read_schedule_csv
+from utils.io import (
+    read_scenario,
+    write_scenario,
+    read_instance,
+    read_schedule_csv,
+    read_schedule_csv_mapped,
+    instance_from_json,
+)
 from utils.compare import compare_schedules, write_comparison_report
 from utils.feasibility import explain_infeasibility
 from utils.specs import validate_instance_against_spec, validate_schedule_against_instance
+from utils.disruption import (
+    apply_staff_outage_week,
+    apply_room_outage_week,
+    build_freeze_locks,
+)
+from utils.conflict_explainer import build_move_explanation_text
+from utils.fairness import compute_fairness_dashboard
+from utils.constraint_templates import (
+    DEFAULT_TEMPLATES,
+    load_templates,
+    save_templates,
+    apply_template_to_instance,
+)
 from main import normalize_instance_for_spec, check_staff_weekly_capacity, stamp_instance_time
 
 
@@ -222,6 +254,18 @@ class MainWindow(QMainWindow):
         self._held_move_analysis_map: Dict[Tuple[str, int], Dict[str, Any]] = {}
         self._undo_stack: List[Dict[str, Any]] = []
         self._redo_stack: List[Dict[str, Any]] = []
+        self._sandbox_base_schedule: Dict[int, Dict[str, Any]] | None = None
+        self._restore_locks_after_solve: Dict[int, Dict[str, Any]] | None = None
+        self._history_store_path = os.path.join(
+            os.path.expanduser("~"), ".scheduler_ui_history.json"
+        )
+        self._audit_log_path = os.path.join(
+            os.path.expanduser("~"), ".scheduler_audit_log.jsonl"
+        )
+        self._template_store_path = os.path.join(
+            os.path.expanduser("~"), ".scheduler_constraint_templates.json"
+        )
+        self.constraint_templates: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
         self.proc: QProcess | None = None
         self._solve_progress_timer: QTimer | None = None
@@ -249,6 +293,8 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._connect_signals()
+        self._load_templates()
+        self._load_persistent_history()
 
     # ----- UI setup -----
 
@@ -469,6 +515,7 @@ class MainWindow(QMainWindow):
         self.workspace_tabs.addTab(schedule_tab, "Schedule")
         self.workspace_tabs.addTab(self._build_generator_tab(), "Generator")
         self.workspace_tabs.addTab(self._build_constraints_tab(), "Constraints")
+        self.workspace_tabs.addTab(self._build_fairness_tab(), "Fairness")
 
         central = QWidget()
         main_layout = QVBoxLayout(central)
@@ -529,6 +576,13 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(180, self._enforce_true_maximized)
         self._sync_top_controls_height()
         self._defer_layout_stabilization()
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        try:
+            self._save_persistent_history()
+        except Exception:
+            pass
+        super().closeEvent(event)
 
     def _apply_responsive_ui(self) -> None:
         w = int(self.width())
@@ -708,6 +762,15 @@ class MainWindow(QMainWindow):
         self.custom_room_capacity_mode_combo.setToolTip(
             "Categorical mode locks capacities to SMALL/MEDIUM/BIG defaults; numeric mode uses exact room capacities."
         )
+        self.constraint_template_combo.setToolTip(
+            "Reusable hard/soft constraint profile."
+        )
+        self.constraint_template_apply_btn.setToolTip(
+            "Apply selected template to controls and current instance."
+        )
+        self.constraint_template_save_btn.setToolTip(
+            "Save current hard/soft settings as a reusable template."
+        )
         self.improve_runs_spin.setToolTip("Maximum local-search iterations.")
         self.ls_time_spin.setToolTip("Maximum local-search runtime (seconds).")
         self.selected_activity_combo.setToolTip(
@@ -719,6 +782,9 @@ class MainWindow(QMainWindow):
         self.quick_swap_btn.setToolTip("Swap timeslots between held and selected activity.")
         self.quick_time_lock_btn.setToolTip("Toggle time lock for selected activity.")
         self.quick_room_lock_btn.setToolTip("Toggle room lock for selected activity.")
+        self.quick_explain_btn.setToolTip(
+            "Explain why the held move is valid/blocked and show actionable fixes."
+        )
         self.quick_targets_btn.setToolTip("Show all valid target slots for the held activity.")
         self.quick_release_btn.setToolTip("Clear held activity selection.")
         self.show_score_deltas_cb.setToolTip(
@@ -779,6 +845,7 @@ class MainWindow(QMainWindow):
         self.quick_swap_btn = QPushButton("Swap Held/Selected")
         self.quick_time_lock_btn = QPushButton("Toggle Time Lock")
         self.quick_room_lock_btn = QPushButton("Toggle Room Lock")
+        self.quick_explain_btn = QPushButton("Explain Move")
         self.quick_targets_btn = QPushButton("Show Held Targets")
         self.quick_release_btn = QPushButton("Release Held")
         row2.addWidget(self.held_slot_label)
@@ -786,6 +853,7 @@ class MainWindow(QMainWindow):
         row2.addWidget(self.quick_swap_btn)
         row2.addWidget(self.quick_time_lock_btn)
         row2.addWidget(self.quick_room_lock_btn)
+        row2.addWidget(self.quick_explain_btn)
         row2.addWidget(self.quick_targets_btn)
         row2.addWidget(self.quick_release_btn)
         row2.addStretch(1)
@@ -827,6 +895,8 @@ class MainWindow(QMainWindow):
         self.custom_program_table.itemChanged.connect(self._on_custom_program_table_item_changed)
         self.custom_room_table.itemChanged.connect(self._on_room_table_item_changed)
         self.apply_constraints_btn.clicked.connect(self.on_apply_constraints_to_instance)
+        self.constraint_template_apply_btn.clicked.connect(self.on_apply_constraint_template)
+        self.constraint_template_save_btn.clicked.connect(self.on_save_constraint_template)
         self.view_type_combo.currentIndexChanged.connect(self.update_entities)
         self.entity_combo.currentIndexChanged.connect(self.update_table)
         self.week_combo.currentIndexChanged.connect(self.update_table)
@@ -839,6 +909,7 @@ class MainWindow(QMainWindow):
         self.quick_swap_btn.clicked.connect(self.on_quick_swap_held_with_selected)
         self.quick_time_lock_btn.clicked.connect(self.on_quick_toggle_time_lock)
         self.quick_room_lock_btn.clicked.connect(self.on_quick_toggle_room_lock)
+        self.quick_explain_btn.clicked.connect(self.on_quick_explain_move)
         self.quick_targets_btn.clicked.connect(self.on_quick_show_held_targets)
         self.quick_release_btn.clicked.connect(self.on_quick_release_held)
         self.show_score_deltas_cb.toggled.connect(lambda _v: self.update_table())
@@ -865,6 +936,8 @@ class MainWindow(QMainWindow):
         act_csv.triggered.connect(self.on_export_csv)
         act_ics = QAction("Export ICS", self)
         act_ics.triggered.connect(self.on_export_ics)
+        act_feed = QAction("Export Calendar Feeds", self)
+        act_feed.triggered.connect(self.on_export_calendar_feeds)
 
         self.export_menu.addAction(act_docx)
         self.export_menu.addAction(act_pdf)
@@ -872,6 +945,7 @@ class MainWindow(QMainWindow):
         self.export_menu.addAction(act_reports)
         self.export_menu.addAction(act_csv)
         self.export_menu.addAction(act_ics)
+        self.export_menu.addAction(act_feed)
 
         # Project menu
         act_save = QAction("Save Project", self)
@@ -892,6 +966,20 @@ class MainWindow(QMainWindow):
         act_load_inst.triggered.connect(self.on_load_instance)
         act_load_sched = QAction("Load Schedule (CSV)", self)
         act_load_sched.triggered.connect(self.on_load_schedule)
+        act_import_wizard = QAction("Import Schedule Wizard (CSV)", self)
+        act_import_wizard.triggered.connect(self.on_import_schedule_wizard)
+        act_disruption = QAction("Auto-Repair Disruption...", self)
+        act_disruption.triggered.connect(self.on_auto_repair_disruption)
+        act_sandbox_start = QAction("Sandbox: Start Branch", self)
+        act_sandbox_start.triggered.connect(self.on_sandbox_start)
+        act_sandbox_compare = QAction("Sandbox: Compare", self)
+        act_sandbox_compare.triggered.connect(self.on_sandbox_compare)
+        act_sandbox_apply = QAction("Sandbox: Apply Branch", self)
+        act_sandbox_apply.triggered.connect(self.on_sandbox_apply)
+        act_sandbox_discard = QAction("Sandbox: Discard Branch", self)
+        act_sandbox_discard.triggered.connect(self.on_sandbox_discard)
+        act_audit_log = QAction("Show Audit Log Path", self)
+        act_audit_log.triggered.connect(self.on_show_audit_log_path)
 
         self.project_menu.addAction(act_save)
         self.project_menu.addAction(act_load)
@@ -904,6 +992,16 @@ class MainWindow(QMainWindow):
         self.project_menu.addSeparator()
         self.project_menu.addAction(act_load_inst)
         self.project_menu.addAction(act_load_sched)
+        self.project_menu.addAction(act_import_wizard)
+        self.project_menu.addSeparator()
+        self.project_menu.addAction(act_disruption)
+        self.project_menu.addSeparator()
+        self.project_menu.addAction(act_sandbox_start)
+        self.project_menu.addAction(act_sandbox_compare)
+        self.project_menu.addAction(act_sandbox_apply)
+        self.project_menu.addAction(act_sandbox_discard)
+        self.project_menu.addSeparator()
+        self.project_menu.addAction(act_audit_log)
 
     def _build_collapsible_section(
         self,
@@ -1335,9 +1433,69 @@ class MainWindow(QMainWindow):
         soft_help.setWordWrap(True)
         layout.addWidget(soft_help)
 
+        template_row = QHBoxLayout()
+        template_row.addWidget(QLabel("Template"))
+        self.constraint_template_combo = QComboBox()
+        template_row.addWidget(self.constraint_template_combo)
+        self.constraint_template_apply_btn = QPushButton("Apply Template")
+        self.constraint_template_save_btn = QPushButton("Save As Template")
+        template_row.addWidget(self.constraint_template_apply_btn)
+        template_row.addWidget(self.constraint_template_save_btn)
+        template_row.addStretch(1)
+        layout.addLayout(template_row)
+
         self.apply_constraints_btn = QPushButton("Apply Constraints To Current Instance")
         layout.addWidget(self.apply_constraints_btn)
         layout.addStretch(1)
+        return tab
+
+    def _build_fairness_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        self.fairness_summary_label = QLabel("Generate/solve to view fairness dashboard.")
+        self.fairness_summary_label.setWordWrap(True)
+        layout.addWidget(self.fairness_summary_label)
+
+        self.fairness_group_table = QTableWidget(0, 8)
+        self.fairness_group_table.setHorizontalHeaderLabels(
+            [
+                "Group",
+                "Total Slots",
+                "Active Days",
+                "Single Days",
+                "Gap Slots",
+                "Late Events",
+                "Avg Weekly Load",
+                "Fairness Score",
+            ]
+        )
+        self.fairness_group_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.fairness_group_table.setSortingEnabled(True)
+        layout.addWidget(QLabel("Group Fairness"))
+        layout.addWidget(self.fairness_group_table)
+
+        self.fairness_staff_table = QTableWidget(0, 9)
+        self.fairness_staff_table.setHorizontalHeaderLabels(
+            [
+                "Staff",
+                "Role",
+                "Total Slots",
+                "Active Days",
+                "Single Days",
+                "Gap Slots",
+                "Late Events",
+                "Avg Weekly Load",
+                "Fairness Score",
+            ]
+        )
+        self.fairness_staff_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.fairness_staff_table.setSortingEnabled(True)
+        layout.addWidget(QLabel("Staff Fairness"))
+        layout.addWidget(self.fairness_staff_table)
         return tab
 
     @staticmethod
@@ -2288,6 +2446,225 @@ class MainWindow(QMainWindow):
                     f"Failed to load local custom configuration from {path}.",
                 )
 
+    def _append_audit_log(self, event: str, details: Dict[str, Any] | None = None) -> None:
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            return
+        row = {
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "user": str(
+                os.getenv("USERNAME")
+                or os.getenv("USER")
+                or os.getenv("LOGNAME")
+                or "unknown"
+            ),
+            "event": str(event),
+            "details": details or {},
+        }
+        try:
+            with open(self._audit_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(row, sort_keys=True) + "\n")
+        except Exception:
+            pass
+
+    def _state_to_json_ready(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        out = {
+            "current_schedule": {},
+            "locked_activities": {},
+            "held_activity_id": state.get("held_activity_id"),
+        }
+        cur = state.get("current_schedule") or {}
+        if isinstance(cur, dict):
+            out["current_schedule"] = {
+                str(int(a_id)): dict(info)
+                for a_id, info in cur.items()
+                if isinstance(info, dict)
+            }
+        locks = state.get("locked_activities") or {}
+        if isinstance(locks, dict):
+            out["locked_activities"] = {
+                str(int(a_id)): dict(lock)
+                for a_id, lock in locks.items()
+                if isinstance(lock, dict)
+            }
+        return out
+
+    @staticmethod
+    def _state_from_json_ready(state: Dict[str, Any]) -> Dict[str, Any]:
+        cur = state.get("current_schedule") or {}
+        locks = state.get("locked_activities") or {}
+        return {
+            "current_schedule": {
+                int(a_id): dict(info)
+                for a_id, info in cur.items()
+                if isinstance(info, dict)
+            },
+            "locked_activities": {
+                int(a_id): dict(lock)
+                for a_id, lock in locks.items()
+                if isinstance(lock, dict)
+            },
+            "held_activity_id": state.get("held_activity_id"),
+        }
+
+    def _save_persistent_history(self) -> None:
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            return
+        if self.inst is None:
+            return
+        try:
+            payload = {
+                "saved_at_utc": datetime.now(timezone.utc).isoformat(),
+                "instance": instance_to_json(self.inst),
+                "base_schedule": {
+                    str(int(a_id)): dict(info)
+                    for a_id, info in self.base_schedule.items()
+                    if isinstance(info, dict)
+                },
+                "state": self._state_to_json_ready(self._snapshot_state()),
+                "undo": [
+                    self._state_to_json_ready(s)
+                    for s in self._undo_stack[-60:]
+                    if isinstance(s, dict)
+                ],
+                "redo": [
+                    self._state_to_json_ready(s)
+                    for s in self._redo_stack[-60:]
+                    if isinstance(s, dict)
+                ],
+            }
+            with open(self._history_store_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, sort_keys=True)
+        except Exception:
+            pass
+
+    def _load_persistent_history(self) -> None:
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            return
+        if not os.path.exists(self._history_store_path):
+            return
+        try:
+            with open(self._history_store_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if not isinstance(payload, dict):
+                return
+            inst_raw = payload.get("instance")
+            if not isinstance(inst_raw, dict):
+                return
+            inst = instance_from_json(inst_raw)
+            self.inst = inst
+            base_raw = payload.get("base_schedule", {})
+            if isinstance(base_raw, dict):
+                self.base_schedule = {
+                    int(a_id): dict(info)
+                    for a_id, info in base_raw.items()
+                    if isinstance(info, dict)
+                }
+            state_raw = payload.get("state", {})
+            state = self._state_from_json_ready(state_raw if isinstance(state_raw, dict) else {})
+            self.current_schedule = {
+                int(a_id): dict(info)
+                for a_id, info in (state.get("current_schedule") or {}).items()
+            }
+            self.locked_activities = {
+                int(a_id): dict(lock)
+                for a_id, lock in (state.get("locked_activities") or {}).items()
+            }
+            held = state.get("held_activity_id")
+            self.held_activity_id = int(held) if held is not None else None
+            self._undo_stack = [
+                self._state_from_json_ready(s)
+                for s in (payload.get("undo") or [])
+                if isinstance(s, dict)
+            ]
+            self._redo_stack = [
+                self._state_from_json_ready(s)
+                for s in (payload.get("redo") or [])
+                if isinstance(s, dict)
+            ]
+            self._sync_instance_activity_weeks_from_schedule(self.current_schedule)
+            self._sync_instance_staff_from_schedule(self.current_schedule)
+            self._sync_locks_to_instance()
+            self._load_constraint_controls_from_instance(self.inst)
+            self.populate_weeks()
+            self.update_entities()
+            self.update_table()
+            self.update_quality_summary()
+            self._refresh_history_buttons()
+            self.set_status("Restored previous workspace history.")
+        except Exception:
+            # Corrupted history should never break app startup.
+            pass
+
+    def _load_templates(self) -> None:
+        self.constraint_templates = load_templates(self._template_store_path)
+        if not self.constraint_templates:
+            self.constraint_templates = dict(DEFAULT_TEMPLATES)
+        self.constraint_template_combo.blockSignals(True)
+        self.constraint_template_combo.clear()
+        for name in sorted(self.constraint_templates.keys(), key=lambda x: str(x).lower()):
+            self.constraint_template_combo.addItem(str(name), str(name))
+        self.constraint_template_combo.blockSignals(False)
+
+    def on_apply_constraint_template(self) -> None:
+        name = self.constraint_template_combo.currentData()
+        if not name:
+            return
+        template = self.constraint_templates.get(str(name))
+        if not isinstance(template, dict):
+            return
+        hard = template.get("hard", {})
+        soft = template.get("soft", {})
+        if isinstance(hard, dict):
+            self.hard_week1_cb.setChecked(bool(hard.get("week1_lectures_only", True)))
+            self.hard_block_prof_cb.setChecked(
+                bool(hard.get("enforce_block_professor_rules", True))
+            )
+            self.hard_staff_daily_cb.setChecked(
+                bool(hard.get("enforce_staff_daily_caps", True))
+            )
+            self.hard_staff_weekly_cb.setChecked(
+                bool(hard.get("enforce_staff_weekly_caps", True))
+            )
+            self.hard_room_availability_cb.setChecked(
+                bool(hard.get("enforce_room_availability", True))
+            )
+        if isinstance(soft, dict):
+            for key, spin in self.soft_weight_spins.items():
+                if key in soft:
+                    try:
+                        spin.setValue(int(soft[key]))
+                    except Exception:
+                        pass
+        if self.inst is not None:
+            apply_template_to_instance(self.inst, template)
+        self._append_audit_log("constraint_template_applied", {"name": str(name)})
+        self.set_status(f"Applied constraint template: {name}")
+
+    def on_save_constraint_template(self) -> None:
+        name, ok = QInputDialog.getText(
+            self,
+            "Save constraint template",
+            "Template name:",
+            text="Custom Template",
+        )
+        if not ok:
+            return
+        clean_name = str(name).strip()
+        if not clean_name:
+            return
+        hard, soft = self._collect_constraint_settings()
+        self.constraint_templates[clean_name] = {
+            "hard": {str(k): bool(v) for k, v in hard.items()},
+            "soft": {str(k): int(v) for k, v in soft.items()},
+        }
+        save_templates(self._template_store_path, self.constraint_templates)
+        self._load_templates()
+        idx = self.constraint_template_combo.findData(clean_name)
+        if idx >= 0:
+            self.constraint_template_combo.setCurrentIndex(idx)
+        self._append_audit_log("constraint_template_saved", {"name": clean_name})
+        self.set_status(f"Saved constraint template: {clean_name}")
+
     def _collect_constraint_settings(self) -> tuple[Dict[str, bool], Dict[str, int]]:
         hard = {
             "week1_lectures_only": self.hard_week1_cb.isChecked(),
@@ -2844,6 +3221,7 @@ class MainWindow(QMainWindow):
         self.quick_time_lock_btn.setEnabled(has_selected_activity)
         self.quick_room_lock_btn.setEnabled(has_selected_activity)
         self.quick_move_btn.setEnabled(has_held and has_selected_slot)
+        self.quick_explain_btn.setEnabled(has_held and has_selected_slot)
         self.quick_swap_btn.setEnabled(
             has_held and has_selected_activity and int(self.held_activity_id) != int(self.selected_activity_id)
         )
@@ -2890,6 +3268,47 @@ class MainWindow(QMainWindow):
         day, slot = cell
         self._attempt_move_held_to(str(day), int(slot), int(week))
         self._refresh_quick_actions()
+
+    def on_quick_explain_move(self) -> None:
+        if self.inst is None or self.held_activity_id is None:
+            return
+        cell = self._selected_cell_day_slot()
+        week = self._current_week()
+        if cell is None or week is None:
+            return
+        held_id = int(self.held_activity_id)
+        info = self.current_schedule.get(held_id)
+        if info is None:
+            return
+        target_day, target_slot = cell
+        ok, reason = self.check_move(
+            held_id,
+            str(target_day),
+            int(target_slot),
+            int(info["room_id"]),
+            int(info["staff_id"]),
+            int(week),
+        )
+        conflicts = []
+        if not ok:
+            conflicts = self._find_move_conflicts(
+                held_id,
+                str(target_day),
+                int(target_slot),
+                int(info["room_id"]),
+                int(info["staff_id"]),
+                int(week),
+            )
+        text = build_move_explanation_text(
+            activity_id=int(held_id),
+            target_week=int(week),
+            target_day=str(target_day),
+            target_slot=int(target_slot),
+            valid=bool(ok),
+            reason=str(reason),
+            conflicts=conflicts,
+        )
+        QMessageBox.information(self, "Move Explanation", text)
 
     def on_quick_swap_held_with_selected(self) -> None:
         if self.held_activity_id is None or self.selected_activity_id is None:
@@ -2950,11 +3369,13 @@ class MainWindow(QMainWindow):
         self.update_table()
         self.update_quality_summary()
         self.set_status(status)
+        self._save_persistent_history()
 
     def _reset_history(self) -> None:
         self._undo_stack = []
         self._redo_stack = []
         self._refresh_history_buttons()
+        self._save_persistent_history()
 
     def _push_undo_state(self) -> None:
         if self.inst is None:
@@ -2964,6 +3385,7 @@ class MainWindow(QMainWindow):
             self._undo_stack.pop(0)
         self._redo_stack = []
         self._refresh_history_buttons()
+        self._save_persistent_history()
 
     def _refresh_history_buttons(self) -> None:
         self.undo_button.setEnabled(bool(self._undo_stack))
@@ -3506,6 +3928,16 @@ class MainWindow(QMainWindow):
         self.update_quality_summary()
         self.set_status(status + self._format_score_status_suffix(before_penalty, after_penalty))
         self._refresh_history_buttons()
+        self._append_audit_log(
+            "schedule_commit",
+            {
+                "status": str(status),
+                "before_soft_penalty": before_penalty,
+                "after_soft_penalty": after_penalty,
+                "activities": int(len(self.current_schedule)),
+            },
+        )
+        self._save_persistent_history()
 
     def _attempt_swap_timeslots(self, a_id: int, b_id: int) -> Tuple[bool, str]:
         if a_id not in self.current_schedule or b_id not in self.current_schedule:
@@ -3841,7 +4273,16 @@ class MainWindow(QMainWindow):
             int(move_week),
         )
         if not conflicts:
-            QMessageBox.warning(self, "Move blocked", reason)
+            explanation = build_move_explanation_text(
+                activity_id=int(held_id),
+                target_week=int(move_week),
+                target_day=str(target_day),
+                target_slot=int(target_slot),
+                valid=False,
+                reason=str(reason),
+                conflicts=[],
+            )
+            QMessageBox.warning(self, "Move blocked", explanation)
             return
 
         self._resolve_held_move_conflicts(
@@ -4055,6 +4496,11 @@ class MainWindow(QMainWindow):
         self.update_table()
         self.update_quality_summary()
         self._load_constraint_controls_from_instance(self.inst)
+        self._append_audit_log(
+            "generate_instance",
+            {"mode": str(mode), "activities": int(len(self.inst.activities))},
+        )
+        self._save_persistent_history()
 
     def _start_solver_process(self, *, keep_locks: bool) -> None:
         if self.inst is None:
@@ -4178,7 +4624,354 @@ class MainWindow(QMainWindow):
         self.proc.start()
 
     def on_solve(self):
+        self._restore_locks_after_solve = None
+        self._append_audit_log("solve_started", {"keep_locks": False})
         self._start_solver_process(keep_locks=False)
+
+    def on_show_audit_log_path(self) -> None:
+        QMessageBox.information(
+            self,
+            "Audit log",
+            f"Audit log file:\n{self._audit_log_path}",
+        )
+        self.set_status(f"Audit log: {self._audit_log_path}")
+
+    def on_export_calendar_feeds(self) -> None:
+        if not self.current_schedule or self.inst is None:
+            self.set_status("No schedule to export")
+            return
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Export calendar feeds (choose folder)",
+            "",
+        )
+        if not path:
+            return
+        try:
+            manifest = export_calendar_feeds(self.inst, self.current_schedule, path)
+            feed_count = sum(
+                len(v) for v in (manifest.get("feeds", {}) or {}).values() if isinstance(v, list)
+            )
+            self.set_status(f"Calendar feeds exported ({feed_count} files)")
+            self._append_audit_log(
+                "calendar_feeds_exported",
+                {"path": str(path), "feed_files": int(feed_count)},
+            )
+        except Exception as exc:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Export error", str(exc))
+            self.set_status("Export error")
+
+    def _read_csv_preview_rows(
+        self, path: str, *, max_rows: int = 20
+    ) -> Tuple[List[str], List[Dict[str, Any]]]:
+        import csv
+
+        headers: List[str] = []
+        rows: List[Dict[str, Any]] = []
+        with open(path, "r", newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            headers = [str(h) for h in (reader.fieldnames or [])]
+            for idx, row in enumerate(reader):
+                if idx >= int(max_rows):
+                    break
+                rows.append({str(k): row.get(k) for k in headers})
+        return headers, rows
+
+    def _load_validated_schedule(self, schedule: Dict[int, Dict[str, Any]], *, source: str) -> None:
+        if self.inst is None:
+            return
+        filtered = {}
+        missing = 0
+        invalid = 0
+        inst = self.inst
+        for a_id, info in schedule.items():
+            if int(a_id) not in inst.activities:
+                missing += 1
+                continue
+            act = inst.activities[int(a_id)]
+            day = info.get("day")
+            slot = int(info.get("slot", -1))
+            dur = int(info.get("duration", act.duration))
+            staff_id = info.get("staff_id")
+            week = int(info.get("week", act.week))
+            if day not in inst.days:
+                invalid += 1
+                continue
+            if slot < 0 or slot + dur > inst.slots_per_day:
+                invalid += 1
+                continue
+            if dur not in (1, 2, 3):
+                invalid += 1
+                continue
+            if staff_id is not None and int(staff_id) not in inst.staff:
+                invalid += 1
+                continue
+            if act.kind == "LEC" and staff_id is not None and not inst.staff.get(int(staff_id)).is_prof:
+                invalid += 1
+                continue
+            if act.kind != "LEC" and staff_id is not None and inst.staff.get(int(staff_id)).is_prof:
+                invalid += 1
+                continue
+            filtered[int(a_id)] = dict(info)
+
+        self.base_schedule = filtered
+        self.current_schedule = {a_id: info.copy() for a_id, info in filtered.items()}
+        self._set_manual_highlight_base(self.current_schedule)
+        self.held_activity_id = None
+        self._reset_history()
+        errors = validate_schedule_against_instance(
+            self.inst,
+            self.current_schedule,
+            strict_rooms=False,
+            require_all_activities=False,
+        )
+        if errors:
+            msg = "Schedule violates hard rules:\n" + "\n".join(f"- {e}" for e in errors[:20])
+            if len(errors) > 20:
+                msg += f"\n... and {len(errors) - 20} more"
+            QMessageBox.critical(self, "Invalid schedule", msg)
+            self.base_schedule = {}
+            self._set_manual_highlight_base({})
+            self.current_schedule = {}
+            self.held_activity_id = None
+            self.clear_table()
+            self.set_status("Load error")
+            return
+        self.populate_weeks()
+        self.update_entities()
+        self.update_table()
+        self.update_quality_summary()
+        msg = f"Loaded schedule {source}"
+        if missing:
+            msg += f" ({missing} activities ignored)"
+        if invalid:
+            msg += f" ({invalid} invalid rows skipped)"
+        self.set_status(msg)
+        self._append_audit_log(
+            "schedule_imported",
+            {
+                "source": str(source),
+                "loaded_rows": int(len(self.current_schedule)),
+                "missing_rows": int(missing),
+                "invalid_rows": int(invalid),
+            },
+        )
+        self._save_persistent_history()
+
+    def on_import_schedule_wizard(self) -> None:
+        if self.inst is None:
+            self.set_status("Load instance first")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import schedule (wizard)",
+            "",
+            "CSV files (*.csv)",
+        )
+        if not path:
+            return
+        try:
+            headers, preview_rows = self._read_csv_preview_rows(path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Import error", str(exc))
+            return
+        if not headers:
+            QMessageBox.warning(self, "Import error", "No CSV headers found.")
+            return
+        dlg = ImportScheduleWizardDialog(self, headers, preview_rows)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            schedule = read_schedule_csv_mapped(
+                path,
+                field_map=dlg.selected_mapping(),
+                group_separator=dlg.group_separator(),
+            )
+        except Exception as exc:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Import error", str(exc))
+            return
+        self._load_validated_schedule(schedule, source=path)
+
+    def on_sandbox_start(self) -> None:
+        if not self.current_schedule:
+            self.set_status("No schedule to branch")
+            return
+        self._sandbox_base_schedule = self._clone_schedule()
+        self.set_status(
+            "Sandbox branch started. Make edits, then use Sandbox Compare/Apply/Discard."
+        )
+        self._append_audit_log(
+            "sandbox_started", {"activities": int(len(self._sandbox_base_schedule))}
+        )
+
+    def on_sandbox_compare(self) -> None:
+        if self._sandbox_base_schedule is None:
+            self.set_status("Start sandbox first")
+            return
+        summary = compare_schedules(self._sandbox_base_schedule, self.current_schedule)
+        base_soft = self._compute_soft_penalty(self._sandbox_base_schedule)
+        cur_soft = self._compute_soft_penalty(self.current_schedule)
+        cur_hard = len(self._collect_conflict_errors()) if self.current_schedule else 0
+        msg = [
+            "Sandbox Comparison",
+            f"Soft penalty: {base_soft} -> {cur_soft} (Δ {int((cur_soft or 0) - (base_soft or 0)):+d})",
+            f"Hard conflicts now: {cur_hard}",
+            f"Changed time: {summary.get('changed_time', 0)}",
+            f"Changed room: {summary.get('changed_room', 0)}",
+            f"Changed staff: {summary.get('changed_staff', 0)}",
+        ]
+        QMessageBox.information(self, "Sandbox Compare", "\n".join(msg))
+
+    def on_sandbox_apply(self) -> None:
+        if self._sandbox_base_schedule is None:
+            self.set_status("No sandbox branch active")
+            return
+        self.base_schedule = self._clone_schedule()
+        self._set_manual_highlight_base(self.current_schedule)
+        self._sandbox_base_schedule = None
+        self.set_status("Sandbox branch applied as new base schedule.")
+        self._append_audit_log("sandbox_applied", {"activities": int(len(self.base_schedule))})
+        self._save_persistent_history()
+
+    def on_sandbox_discard(self) -> None:
+        if self._sandbox_base_schedule is None:
+            self.set_status("No sandbox branch active")
+            return
+        self._push_undo_state()
+        self.current_schedule = {
+            int(a_id): info.copy()
+            for a_id, info in self._sandbox_base_schedule.items()
+        }
+        self._sandbox_base_schedule = None
+        self._sync_instance_activity_weeks_from_schedule(self.current_schedule)
+        self._sync_instance_staff_from_schedule(self.current_schedule)
+        self.update_table()
+        self.update_quality_summary()
+        self.set_status("Sandbox changes discarded; branch baseline restored.")
+        self._append_audit_log("sandbox_discarded", {})
+
+    def on_auto_repair_disruption(self) -> None:
+        if self.inst is None or not self.current_schedule:
+            self.set_status("No schedule to repair")
+            return
+        disruption_type, ok = QInputDialog.getItem(
+            self,
+            "Auto-Repair Disruption",
+            "Disruption type:",
+            ["Staff outage (week)", "Room outage (week)"],
+            0,
+            False,
+        )
+        if not ok:
+            return
+        if not self.inst.weeks:
+            self.set_status("Instance has no weeks configured")
+            return
+        week_labels = [f"W{int(w)}" for w in self.inst.weeks]
+        week_choice, ok = QInputDialog.getItem(
+            self,
+            "Auto-Repair Disruption",
+            "Affected week:",
+            week_labels,
+            0,
+            False,
+        )
+        if not ok:
+            return
+        week = int(str(week_choice).lstrip("Ww").strip())
+        prior_locks = {
+            int(a_id): dict(lock)
+            for a_id, lock in self.locked_activities.items()
+            if isinstance(lock, dict)
+        }
+        updated = self._clone_schedule()
+        affected: Set[int] = set()
+        unresolved: Set[int] = set()
+
+        if str(disruption_type).startswith("Staff"):
+            options = []
+            for sid, s in sorted(self.inst.staff.items()):
+                options.append(f"{int(sid)}: {s.name}")
+            choice, ok = QInputDialog.getItem(
+                self,
+                "Staff outage",
+                "Unavailable staff:",
+                options,
+                0,
+                False,
+            )
+            if not ok:
+                return
+            staff_id = int(str(choice).split(":", 1)[0].strip())
+            staff = self.inst.staff.get(int(staff_id))
+            if staff is not None:
+                weeks = getattr(staff, "available_weeks", None)
+                if weeks is None:
+                    weeks = set(int(w) for w in self.inst.weeks)
+                weeks = {int(w) for w in weeks if int(w) != int(week)}
+                staff.available_weeks = weeks
+            updated, affected, unresolved = apply_staff_outage_week(
+                self.inst,
+                updated,
+                staff_id=int(staff_id),
+                week=int(week),
+            )
+        else:
+            options = []
+            for rid, r in sorted(self.inst.rooms.items()):
+                options.append(f"{int(rid)}: {r.name}")
+            choice, ok = QInputDialog.getItem(
+                self,
+                "Room outage",
+                "Unavailable room:",
+                options,
+                0,
+                False,
+            )
+            if not ok:
+                return
+            room_id = int(str(choice).split(":", 1)[0].strip())
+            updated, affected, unresolved = apply_room_outage_week(
+                self.inst,
+                updated,
+                room_id=int(room_id),
+                week=int(week),
+            )
+
+        if not affected:
+            self.set_status("No activities affected by selected disruption.")
+            return
+        self._push_undo_state()
+        self._commit_schedule(
+            updated,
+            f"Applied disruption pre-repair for week {week} "
+            f"(affected={len(affected)}, unresolved={len(unresolved)})",
+        )
+        freeze_locks = build_freeze_locks(
+            self.current_schedule,
+            unlocked_activity_ids=affected,
+        )
+        self.locked_activities = freeze_locks
+        self._sync_locks_to_instance()
+        self._restore_locks_after_solve = prior_locks
+        self._append_audit_log(
+            "auto_repair_started",
+            {
+                "type": str(disruption_type),
+                "week": int(week),
+                "affected": int(len(affected)),
+                "unresolved": int(len(unresolved)),
+            },
+        )
+        if unresolved:
+            QMessageBox.warning(
+                self,
+                "Auto-repair warning",
+                f"{len(unresolved)} activity(ies) had no direct replacement; solver will try to recover.",
+            )
+        self._start_solver_process(keep_locks=True)
 
     def on_undo(self) -> None:
         if not self._undo_stack:
@@ -4189,6 +4982,7 @@ class MainWindow(QMainWindow):
         self._redo_stack.append(current)
         self._restore_state(prev, "Undo applied")
         self._refresh_history_buttons()
+        self._append_audit_log("undo_applied", {"undo_depth": len(self._undo_stack)})
 
     def on_redo(self) -> None:
         if not self._redo_stack:
@@ -4199,6 +4993,7 @@ class MainWindow(QMainWindow):
         self._undo_stack.append(current)
         self._restore_state(nxt, "Redo applied")
         self._refresh_history_buttons()
+        self._append_audit_log("redo_applied", {"redo_depth": len(self._redo_stack)})
 
     def on_revert_to_base(self) -> None:
         if not self.base_schedule:
@@ -4235,6 +5030,18 @@ class MainWindow(QMainWindow):
                 return
         self.set_status(f"Conflicts found: {len(errors)}")
 
+    def _restore_locks_if_needed(self) -> None:
+        if self._restore_locks_after_solve is None:
+            return
+        self.locked_activities = {
+            int(a_id): dict(lock)
+            for a_id, lock in self._restore_locks_after_solve.items()
+            if isinstance(lock, dict)
+        }
+        self._restore_locks_after_solve = None
+        self._sync_locks_to_instance()
+        self._refresh_history_buttons()
+
     def on_clear_locks(self):
         if self.locked_activities:
             self._push_undo_state()
@@ -4257,6 +5064,8 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(
             self, "Solver error", output or f"QProcess error: {error}"
         )
+        self._append_audit_log("solve_error", {"error": str(error)})
+        self._restore_locks_if_needed()
         self.proc = None
         self._solver_output_log = ""
         self.set_status("Solve error")
@@ -4286,11 +5095,15 @@ class MainWindow(QMainWindow):
                 "Solver crashed",
                 output or f"Solver exited with code {exit_code}",
             )
+            self._append_audit_log("solve_crash", {"exit_code": int(exit_code)})
+            self._restore_locks_if_needed()
             self.set_status(f"Solver failed (code {exit_code})")
             return
 
         if not self.tmp_res_path or not os.path.exists(self.tmp_res_path):
             QMessageBox.critical(self, "Result error", "Result file not found.")
+            self._append_audit_log("solve_result_missing", {})
+            self._restore_locks_if_needed()
             self.set_status("Solve error")
             return
 
@@ -4300,6 +5113,8 @@ class MainWindow(QMainWindow):
         except Exception as e:
             traceback.print_exc()
             QMessageBox.critical(self, "Result error", f"Cannot read result: {e}")
+            self._append_audit_log("solve_result_read_error", {"error": str(e)})
+            self._restore_locks_if_needed()
             self.set_status("Solve error")
             return
         finally:
@@ -4327,6 +5142,11 @@ class MainWindow(QMainWindow):
             self.set_status(f"No feasible schedule (status {status})")
             msg = self._build_no_feasible_message(res, int(status))
             QMessageBox.information(self, "No feasible schedule", msg)
+            self._append_audit_log(
+                "solve_no_feasible",
+                {"status": int(status), "attempts": self._format_solver_attempts(res)},
+            )
+            self._restore_locks_if_needed()
             return
 
         self.base_schedule = res.get("schedule", {})
@@ -4358,6 +5178,10 @@ class MainWindow(QMainWindow):
                 f"Conflicts: {len(base_hard_errors)}\n\n"
                 f"{sample}",
             )
+            self._append_audit_log(
+                "solve_rejected_hard_conflicts", {"count": len(base_hard_errors)}
+            )
+            self._restore_locks_if_needed()
             return
 
         self.current_schedule = {
@@ -4410,6 +5234,12 @@ class MainWindow(QMainWindow):
         self.update_entities()
         self.update_table()
         self.update_quality_summary()
+        self._append_audit_log(
+            "solve_finished",
+            {"status": int(status), "activities": int(len(self.current_schedule))},
+        )
+        self._restore_locks_if_needed()
+        self._save_persistent_history()
 
     def on_improve(self):
         if not self.current_schedule or self.inst is None:
@@ -4804,6 +5634,8 @@ class MainWindow(QMainWindow):
         self.update_table()
         self.update_quality_summary()
         self.set_status(f"Loaded {path}")
+        self._append_audit_log("project_loaded", {"path": str(path)})
+        self._save_persistent_history()
 
     def on_compare(self):
         if not self.current_schedule:
@@ -4914,6 +5746,8 @@ class MainWindow(QMainWindow):
         self.update_table()
         self.update_quality_summary()
         self.set_status(f"Loaded instance {path}")
+        self._append_audit_log("instance_loaded", {"path": str(path)})
+        self._save_persistent_history()
 
     def on_load_schedule(self):
         if self.inst is None:
@@ -4937,80 +5771,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Load error", str(e))
             self.set_status("Load error")
             return
-
-        # Validate and filter out activities that are not in the instance
-        filtered = {}
-        missing = 0
-        invalid = 0
-        inst = self.inst
-        for a_id, info in schedule.items():
-            if a_id not in inst.activities:
-                missing += 1
-                continue
-            act = inst.activities[a_id]
-            day = info.get("day")
-            slot = int(info.get("slot", -1))
-            dur = int(info.get("duration", act.duration))
-            staff_id = info.get("staff_id")
-            week = int(info.get("week", act.week))
-            if day not in inst.days:
-                invalid += 1
-                continue
-            if slot < 0 or slot + dur > inst.slots_per_day:
-                invalid += 1
-                continue
-            if dur not in (1, 2, 3):
-                invalid += 1
-                continue
-            if week != act.week:
-                invalid += 1
-                continue
-            if dur != act.duration:
-                invalid += 1
-                continue
-            if staff_id is not None and int(staff_id) not in inst.staff:
-                invalid += 1
-                continue
-            if act.kind == "LEC" and staff_id is not None and not inst.staff.get(int(staff_id)).is_prof:
-                invalid += 1
-                continue
-            if act.kind != "LEC" and staff_id is not None and inst.staff.get(int(staff_id)).is_prof:
-                invalid += 1
-                continue
-            filtered[a_id] = info
-
-        self.base_schedule = filtered
-        self.current_schedule = {a_id: info.copy() for a_id, info in filtered.items()}
-        self._set_manual_highlight_base(self.current_schedule)
-        self.held_activity_id = None
-        self._reset_history()
-        # Allow importing partially specified schedules (room_id may be blank).
-        # Room consistency can still be repaired/validated after solving/exporting.
-        errors = validate_schedule_against_instance(
-            self.inst, self.current_schedule, strict_rooms=False, require_all_activities=False
-        )
-        if errors:
-            msg = "Schedule violates hard rules:\n" + "\n".join(f"- {e}" for e in errors[:20])
-            if len(errors) > 20:
-                msg += f"\n... and {len(errors) - 20} more"
-            QMessageBox.critical(self, "Invalid schedule", msg)
-            self.base_schedule = {}
-            self._set_manual_highlight_base({})
-            self.current_schedule = {}
-            self.held_activity_id = None
-            self.clear_table()
-            self.set_status("Load error")
-            return
-        self.populate_weeks()
-        self.update_entities()
-        self.update_table()
-        self.update_quality_summary()
-        msg = f"Loaded schedule {path}"
-        if missing:
-            msg += f" ({missing} activities ignored)"
-        if invalid:
-            msg += f" ({invalid} invalid rows skipped)"
-        self.set_status(msg)
+        self._load_validated_schedule(schedule, source=str(path))
 
     # ----- table rendering -----
 
@@ -5426,6 +6187,7 @@ class MainWindow(QMainWindow):
     def update_quality_summary(self):
         if self.inst is None or not self.current_schedule:
             self.quality_label.setText("")
+            self._update_fairness_dashboard()
             return
 
         global_penalty = None
@@ -5462,6 +6224,103 @@ class MainWindow(QMainWindow):
 
         text = " | ".join(header_parts) + "\nGroup quality:\n" + " | ".join(parts)
         self.quality_label.setText(text)
+        self._update_fairness_dashboard()
+
+    def _update_fairness_dashboard(self) -> None:
+        if not hasattr(self, "fairness_group_table") or not hasattr(
+            self, "fairness_staff_table"
+        ):
+            return
+        if self.inst is None or not self.current_schedule:
+            self.fairness_group_table.setRowCount(0)
+            self.fairness_staff_table.setRowCount(0)
+            self.fairness_summary_label.setText(
+                "Generate/solve to view fairness dashboard."
+            )
+            return
+        try:
+            dashboard = compute_fairness_dashboard(self.inst, self.current_schedule)
+        except Exception as exc:
+            self.fairness_summary_label.setText(
+                f"Fairness dashboard unavailable: {exc}"
+            )
+            return
+
+        group_rows = list(dashboard.get("groups", []))
+        staff_rows = list(dashboard.get("staff", []))
+        g_tbl = self.fairness_group_table
+        s_tbl = self.fairness_staff_table
+        g_tbl.setSortingEnabled(False)
+        g_tbl.setRowCount(len(group_rows))
+        for row_idx, row in enumerate(group_rows):
+            g_tbl.setItem(row_idx, 0, NaturalSortTableItem(str(row.get("name", ""))))
+            g_tbl.setItem(
+                row_idx, 1, NumericTableItem(str(int(row.get("total_slots", 0))))
+            )
+            g_tbl.setItem(
+                row_idx, 2, NumericTableItem(str(int(row.get("active_days", 0))))
+            )
+            g_tbl.setItem(
+                row_idx, 3, NumericTableItem(str(int(row.get("single_days", 0))))
+            )
+            g_tbl.setItem(
+                row_idx, 4, NumericTableItem(str(int(row.get("gap_slots", 0))))
+            )
+            g_tbl.setItem(
+                row_idx, 5, NumericTableItem(str(int(row.get("late_events", 0))))
+            )
+            g_tbl.setItem(
+                row_idx,
+                6,
+                NumericTableItem(str(float(row.get("avg_weekly_load", 0.0)))),
+            )
+            g_tbl.setItem(
+                row_idx,
+                7,
+                NumericTableItem(str(float(row.get("fairness_score", 0.0)))),
+            )
+        g_tbl.setSortingEnabled(True)
+
+        s_tbl.setSortingEnabled(False)
+        s_tbl.setRowCount(len(staff_rows))
+        for row_idx, row in enumerate(staff_rows):
+            s_tbl.setItem(row_idx, 0, NaturalSortTableItem(str(row.get("name", ""))))
+            s_tbl.setItem(row_idx, 1, QTableWidgetItem(str(row.get("role", ""))))
+            s_tbl.setItem(
+                row_idx, 2, NumericTableItem(str(int(row.get("total_slots", 0))))
+            )
+            s_tbl.setItem(
+                row_idx, 3, NumericTableItem(str(int(row.get("active_days", 0))))
+            )
+            s_tbl.setItem(
+                row_idx, 4, NumericTableItem(str(int(row.get("single_days", 0))))
+            )
+            s_tbl.setItem(
+                row_idx, 5, NumericTableItem(str(int(row.get("gap_slots", 0))))
+            )
+            s_tbl.setItem(
+                row_idx, 6, NumericTableItem(str(int(row.get("late_events", 0))))
+            )
+            s_tbl.setItem(
+                row_idx,
+                7,
+                NumericTableItem(str(float(row.get("avg_weekly_load", 0.0)))),
+            )
+            s_tbl.setItem(
+                row_idx,
+                8,
+                NumericTableItem(str(float(row.get("fairness_score", 0.0)))),
+            )
+        s_tbl.setSortingEnabled(True)
+
+        summary = dashboard.get("summary", {})
+        g_sum = summary.get("groups", {}) if isinstance(summary, dict) else {}
+        s_sum = summary.get("staff", {}) if isinstance(summary, dict) else {}
+        self.fairness_summary_label.setText(
+            "Fairness summary | "
+            f"Groups mean score: {float(g_sum.get('mean_fairness_score', 0.0)):.2f} | "
+            f"Staff mean score: {float(s_sum.get('mean_fairness_score', 0.0)):.2f}"
+        )
 
     # ----- manual edit -----
 

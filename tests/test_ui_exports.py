@@ -99,3 +99,30 @@ def test_ui_export_ics_calls_exporter(monkeypatch, qt_app, tmp_path: Path):
     finally:
         win.close()
         win.deleteLater()
+
+
+def test_ui_export_calendar_feeds_calls_exporter(monkeypatch, qt_app, tmp_path: Path):
+    win = ui_window.MainWindow()
+    try:
+        inst = generate_instance("small_demo")
+        win.inst = inst
+        win.current_schedule = _fake_schedule(inst)
+
+        monkeypatch.setattr(
+            ui_window.QFileDialog,
+            "getExistingDirectory",
+            lambda *args, **kwargs: str(tmp_path),
+        )
+
+        called = {}
+
+        def fake_export_feeds(*args, **kwargs):
+            called["ok"] = True
+            return {"feeds": {"groups": [], "staff": [], "rooms": []}}
+
+        monkeypatch.setattr(ui_window, "export_calendar_feeds", fake_export_feeds)
+        win.on_export_calendar_feeds()
+        assert called.get("ok") is True
+    finally:
+        win.close()
+        win.deleteLater()

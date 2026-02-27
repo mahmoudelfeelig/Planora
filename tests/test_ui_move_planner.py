@@ -119,3 +119,39 @@ def test_find_move_conflicts_detects_overlap_reasons(qt_app):
     finally:
         win.close()
         win.deleteLater()
+
+
+def test_quick_explain_move_shows_message(monkeypatch, qt_app):
+    win = ui_window.MainWindow()
+    try:
+        inst = generate_instance("small_demo")
+        win.inst = inst
+        win.current_schedule = _build_single_activity_schedule(inst)
+        held_id = next(iter(win.current_schedule.keys()))
+        win.held_activity_id = int(held_id)
+        win.populate_weeks()
+        win.update_entities()
+        win.update_table()
+        win.selected_cell_row = 0
+        win.selected_cell_col = 0
+        week = int(win.current_schedule[held_id]["week"])
+        idx = win.week_combo.findData(week)
+        if idx >= 0:
+            win.week_combo.setCurrentIndex(idx)
+
+        monkeypatch.setattr(
+            win,
+            "check_move",
+            lambda *args, **kwargs: (False, "Room capacity too small."),
+        )
+        shown = {}
+
+        def fake_info(_parent, _title, text):
+            shown["text"] = str(text)
+
+        monkeypatch.setattr(ui_window.QMessageBox, "information", fake_info)
+        win.on_quick_explain_move()
+        assert "Suggested fixes" in shown["text"]
+    finally:
+        win.close()
+        win.deleteLater()

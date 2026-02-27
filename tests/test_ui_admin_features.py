@@ -170,3 +170,87 @@ def test_move_conflict_dialog_force_and_refresh(qt_app):
     finally:
         dlg.close()
         dlg.deleteLater()
+
+
+def test_sandbox_discard_restores_branch_baseline(qt_app):
+    win = ui_window.MainWindow()
+    try:
+        inst = generate_instance("small_demo")
+        win.inst = inst
+        a_id, schedule = _single_activity_schedule(inst)
+        win.base_schedule = {k: v.copy() for k, v in schedule.items()}
+        win.current_schedule = {k: v.copy() for k, v in schedule.items()}
+        win.populate_weeks()
+        win.update_entities()
+        win.update_table()
+
+        win.on_sandbox_start()
+        changed = {k: v.copy() for k, v in win.current_schedule.items()}
+        changed[a_id]["slot"] = 1
+        win._commit_schedule(changed, "sandbox edit")
+        assert int(win.current_schedule[a_id]["slot"]) == 1
+        win.on_sandbox_discard()
+        assert int(win.current_schedule[a_id]["slot"]) == 0
+    finally:
+        win.close()
+        win.deleteLater()
+
+
+def test_auto_repair_disruption_freezes_unaffected_and_starts_solver(monkeypatch, qt_app):
+    win = ui_window.MainWindow()
+    try:
+        inst = generate_instance("small_demo")
+        win.inst = inst
+        act_ids = list(inst.activities.keys())[:2]
+        schedule = {}
+        for idx, a_id in enumerate(act_ids):
+            act = inst.activities[a_id]
+            schedule[int(a_id)] = {
+                "week": int(act.week),
+                "day": inst.days[0],
+                "slot": idx,
+                "duration": int(act.duration),
+                "room_id": next(iter(inst.rooms.keys())),
+                "staff_id": int(act.prof_id if act.kind == "LEC" else act.ta_id),
+                "course_id": int(act.course_id),
+                "group_ids": list(act.group_ids),
+                "kind": str(act.kind),
+            }
+        win.current_schedule = schedule
+        win.base_schedule = {k: v.copy() for k, v in schedule.items()}
+
+        answers = iter(
+            [
+                ("Staff outage (week)", True),
+                (f"W{inst.weeks[0]}", True),
+                ("1: Prof-1", True),
+            ]
+        )
+        monkeypatch.setattr(
+            ui_window.QInputDialog,
+            "getItem",
+            lambda *args, **kwargs: next(answers),
+        )
+
+        changed = {k: v.copy() for k, v in schedule.items()}
+        first_aid = int(act_ids[0])
+        changed[first_aid]["staff_id"] = int(changed[first_aid]["staff_id"])
+        monkeypatch.setattr(
+            ui_window,
+            "apply_staff_outage_week",
+            lambda inst_arg, sched_arg, **kwargs: (changed, {first_aid}, set()),
+        )
+
+        called = {}
+
+        def fake_start_solver(*, keep_locks: bool):
+            called["keep_locks"] = bool(keep_locks)
+
+        monkeypatch.setattr(win, "_start_solver_process", fake_start_solver)
+        win.on_auto_repair_disruption()
+        assert called["keep_locks"] is True
+        # Unaffected activity should be frozen.
+        assert len(win.locked_activities) >= 1
+    finally:
+        win.close()
+        win.deleteLater()

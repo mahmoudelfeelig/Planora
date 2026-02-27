@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QLineEdit,
 )
 
 from utils.domain import Instance
@@ -341,6 +342,149 @@ class MoveConflictDialog(QDialog):
 
     def get_decision(self) -> Tuple | None:
         return self._decision
+
+
+class ImportScheduleWizardDialog(QDialog):
+    REQUIRED_FIELDS: Tuple[Tuple[str, str], ...] = (
+        ("activity_id", "Activity ID"),
+        ("week", "Week"),
+        ("day", "Day"),
+        ("slot", "Slot"),
+        ("duration", "Duration"),
+        ("course_id", "Course ID"),
+        ("kind", "Kind"),
+    )
+    OPTIONAL_FIELDS: Tuple[Tuple[str, str], ...] = (
+        ("staff_id", "Staff ID"),
+        ("room_id", "Room ID"),
+        ("group_ids", "Group IDs"),
+    )
+
+    def __init__(
+        self,
+        parent,
+        headers: List[str],
+        preview_rows: List[Dict[str, Any]],
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Import Schedule Wizard")
+        self._headers = [str(h) for h in headers]
+        self._preview_rows = list(preview_rows)
+        self._field_combos: Dict[str, QComboBox] = {}
+
+        root = QVBoxLayout(self)
+        intro = QLabel(
+            "Map CSV columns to scheduler fields. Required fields must be mapped before import."
+        )
+        intro.setWordWrap(True)
+        root.addWidget(intro)
+
+        form = QFormLayout()
+        for key, label in list(self.REQUIRED_FIELDS) + list(self.OPTIONAL_FIELDS):
+            combo = QComboBox()
+            if key in dict(self.OPTIONAL_FIELDS):
+                combo.addItem("<skip>", "")
+            for h in self._headers:
+                combo.addItem(str(h), str(h))
+            preferred = self._pick_preferred_header(key)
+            if preferred:
+                idx = combo.findData(str(preferred))
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+            self._field_combos[str(key)] = combo
+            form.addRow(f"{label}:", combo)
+        self.group_separator_edit = QLineEdit(";")
+        self.group_separator_edit.setMaxLength(4)
+        form.addRow("Group separator:", self.group_separator_edit)
+        root.addLayout(form)
+
+        self.preview_table = QTableWidget(0, len(self._headers))
+        self.preview_table.setHorizontalHeaderLabels(self._headers)
+        self.preview_table.verticalHeader().setVisible(False)
+        root.addWidget(self.preview_table)
+        self._populate_preview()
+
+        self.validation_label = QLabel("")
+        self.validation_label.setWordWrap(True)
+        root.addWidget(self.validation_label)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+        self._refresh_validation()
+        for combo in self._field_combos.values():
+            combo.currentIndexChanged.connect(self._refresh_validation)
+
+    def _pick_preferred_header(self, field_key: str) -> str | None:
+        normalized = {h.lower(): h for h in self._headers}
+        direct = normalized.get(str(field_key).lower())
+        if direct:
+            return str(direct)
+        compact = str(field_key).replace("_", "").lower()
+        for h in self._headers:
+            if str(h).replace("_", "").replace(" ", "").lower() == compact:
+                return str(h)
+        return None
+
+    def _populate_preview(self) -> None:
+        rows = self._preview_rows[:12]
+        self.preview_table.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            for c, h in enumerate(self._headers):
+                self.preview_table.setItem(r, c, QTableWidgetItem(str(row.get(h, ""))))
+        self.preview_table.resizeColumnsToContents()
+
+    def _mapping(self) -> Dict[str, str]:
+        out: Dict[str, str] = {}
+        for key, combo in self._field_combos.items():
+            data = combo.currentData()
+            out[str(key)] = str(data or "")
+        return out
+
+    def _refresh_validation(self) -> None:
+        mapping = self._mapping()
+        missing: List[str] = []
+        duplicates: List[str] = []
+        used: Dict[str, str] = {}
+        for key, _label in self.REQUIRED_FIELDS:
+            col = str(mapping.get(str(key), "")).strip()
+            if not col:
+                missing.append(str(key))
+                continue
+            prev = used.get(col)
+            if prev is not None:
+                duplicates.append(f"{prev}/{key}")
+            used[col] = str(key)
+        if missing:
+            self.validation_label.setText(
+                "Missing required mappings: " + ", ".join(missing)
+            )
+            return
+        if duplicates:
+            self.validation_label.setText(
+                "Required mappings reuse same source column: " + ", ".join(duplicates)
+            )
+            return
+        self.validation_label.setText("Mapping looks valid.")
+
+    def _on_accept(self) -> None:
+        mapping = self._mapping()
+        for key, _ in self.REQUIRED_FIELDS:
+            if not str(mapping.get(key, "")).strip():
+                self._refresh_validation()
+                return
+        self.accept()
+
+    def selected_mapping(self) -> Dict[str, str]:
+        return self._mapping()
+
+    def group_separator(self) -> str:
+        sep = str(self.group_separator_edit.text() or ";").strip()
+        return sep or ";"
 
 
 class ConflictInspectorDialog(QDialog):
