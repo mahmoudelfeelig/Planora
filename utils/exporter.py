@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import Dict, Any, Iterable, List, Optional
 import csv
 import re
+import json
+import hashlib
 from pathlib import Path
 from datetime import date, time, datetime, timedelta, timezone
 
@@ -559,3 +561,62 @@ def export_rooms_ics_per_id(inst: Instance, schedule: Dict[int, Dict[str, Any]],
         parts.append(_ics_footer())
         name = f"room_{rid}_{_slug(r.name)}.ics"
         _write_ics("\n".join(parts), base / name)
+
+
+def export_calendar_feeds(
+    inst: Instance,
+    schedule: Dict[int, Dict[str, Any]],
+    out_dir: str,
+    *,
+    week0_monday: Optional[date] = None,
+) -> Dict[str, Any]:
+    """
+    Export sync-friendly ICS feeds with a manifest:
+      out_dir/
+        groups/*.ics
+        staff/*.ics
+        rooms/*.ics
+        manifest.json
+    """
+    base = Path(out_dir)
+    groups_dir = base / "groups"
+    staff_dir = base / "staff"
+    rooms_dir = base / "rooms"
+    export_groups_ics_per_id(inst, schedule, str(groups_dir), week0_monday=week0_monday)
+    export_staff_ics_per_id(inst, schedule, str(staff_dir), week0_monday=week0_monday)
+    export_rooms_ics_per_id(inst, schedule, str(rooms_dir), week0_monday=week0_monday)
+
+    def _collect(folder: Path) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        for p in sorted(folder.glob("*.ics")):
+            data = p.read_bytes()
+            sha = hashlib.sha256(data).hexdigest()
+            rows.append(
+                {
+                    "file": str(p.relative_to(base)).replace("\\", "/"),
+                    "size": int(len(data)),
+                    "sha256": str(sha),
+                }
+            )
+        return rows
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    manifest: Dict[str, Any] = {
+        "generated_at_utc": str(generated_at),
+        "sync_hint": "Re-export this feed package after timetable changes.",
+        "counts": {
+            "groups": int(len(inst.groups)),
+            "staff": int(len(inst.staff)),
+            "rooms": int(len(inst.rooms)),
+        },
+        "feeds": {
+            "groups": _collect(groups_dir),
+            "staff": _collect(staff_dir),
+            "rooms": _collect(rooms_dir),
+        },
+    }
+    base.mkdir(parents=True, exist_ok=True)
+    (base / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    return manifest

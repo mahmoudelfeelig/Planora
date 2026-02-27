@@ -191,6 +191,91 @@ def read_schedule_csv(path: str | Path) -> Dict[int, Dict[str, Any]]:
     return schedule
 
 
+def _parse_groups_field(raw: Any, *, separator: str = ";") -> List[int]:
+    if raw is None:
+        return []
+    text = str(raw).strip()
+    if not text:
+        return []
+    out: List[int] = []
+    for part in text.split(separator):
+        token = str(part).strip()
+        if not token:
+            continue
+        out.append(int(token))
+    return out
+
+
+def read_schedule_csv_mapped(
+    path: str | Path,
+    *,
+    field_map: Dict[str, str],
+    group_separator: str = ";",
+) -> Dict[int, Dict[str, Any]]:
+    """
+    Read schedule CSV using custom header mapping.
+    Required mapped logical fields:
+      activity_id, week, day, slot, duration, course_id, kind
+    Optional:
+      room_id, staff_id, group_ids
+    """
+    import csv
+
+    required = ("activity_id", "week", "day", "slot", "duration", "course_id", "kind")
+    for key in required:
+        src = str(field_map.get(key, "")).strip()
+        if not src:
+            raise ValueError(f"Missing mapping for required field: {key}")
+
+    path = Path(path)
+    schedule: Dict[int, Dict[str, Any]] = {}
+    with path.open("r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        headers = set(reader.fieldnames or [])
+        for key in required:
+            src = str(field_map.get(key, "")).strip()
+            if src not in headers:
+                raise ValueError(f"Mapped column not found for {key}: {src}")
+
+        for row in reader:
+            a_id = int(row[str(field_map["activity_id"])])
+            week = int(row[str(field_map["week"])])
+            day = str(row[str(field_map["day"])])
+            slot = int(row[str(field_map["slot"])])
+            duration = int(row[str(field_map["duration"])])
+            course_id = int(row[str(field_map["course_id"])])
+            kind = str(row[str(field_map["kind"])])
+            staff_col = str(field_map.get("staff_id", "")).strip()
+            room_col = str(field_map.get("room_id", "")).strip()
+            groups_col = str(field_map.get("group_ids", "")).strip()
+            staff_raw = row.get(staff_col) if staff_col else None
+            room_raw = row.get(room_col) if room_col else None
+            groups_raw = row.get(groups_col) if groups_col else None
+            staff_id = (
+                int(staff_raw)
+                if staff_raw not in (None, "", "None", "none", "NULL", "null")
+                else None
+            )
+            room_id = (
+                int(room_raw)
+                if room_raw not in (None, "", "None", "none", "NULL", "null")
+                else None
+            )
+            group_ids = _parse_groups_field(groups_raw, separator=str(group_separator))
+            schedule[a_id] = {
+                "week": int(week),
+                "day": str(day),
+                "slot": int(slot),
+                "duration": int(duration),
+                "room_id": room_id,
+                "staff_id": staff_id,
+                "course_id": int(course_id),
+                "group_ids": [int(g) for g in group_ids],
+                "kind": str(kind),
+            }
+    return schedule
+
+
 def write_scenario(path: str | Path, inst: Instance, schedule: Dict[int, Dict[str, Any]], meta: Dict[str, Any] | None = None) -> None:
     path = Path(path)
     meta = meta or {}

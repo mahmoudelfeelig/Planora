@@ -4,7 +4,13 @@ from pathlib import Path
 
 from utils.generator import generate_instance, instance_to_json
 from utils.exporter import export_schedule_to_csv
-from utils.io import instance_from_json, read_schedule_csv, write_scenario, read_scenario
+from utils.io import (
+    instance_from_json,
+    read_schedule_csv,
+    read_schedule_csv_mapped,
+    write_scenario,
+    read_scenario,
+)
 
 
 def test_instance_json_roundtrip():
@@ -98,3 +104,35 @@ def test_scenario_pickle_roundtrip(tmp_path: Path):
     assert len(inst2.activities) == len(inst.activities)
     assert sched2.keys() == schedule.keys()
 
+
+def test_schedule_csv_mapped_reads_custom_headers(tmp_path: Path):
+    path = tmp_path / "mapped.csv"
+    path.write_text(
+        "aid,wk,weekday,start,dur,cid,atype,sid,rid,groups\n"
+        "1,2,MON,3,2,10,LEC,7,4,11|12\n",
+        encoding="utf-8",
+    )
+    loaded = read_schedule_csv_mapped(
+        path,
+        field_map={
+            "activity_id": "aid",
+            "week": "wk",
+            "day": "weekday",
+            "slot": "start",
+            "duration": "dur",
+            "course_id": "cid",
+            "kind": "atype",
+            "staff_id": "sid",
+            "room_id": "rid",
+            "group_ids": "groups",
+        },
+        group_separator="|",
+    )
+    assert 1 in loaded
+    assert int(loaded[1]["week"]) == 2
+    assert str(loaded[1]["day"]) == "MON"
+    assert int(loaded[1]["slot"]) == 3
+    assert int(loaded[1]["duration"]) == 2
+    assert int(loaded[1]["staff_id"]) == 7
+    assert int(loaded[1]["room_id"]) == 4
+    assert loaded[1]["group_ids"] == [11, 12]
