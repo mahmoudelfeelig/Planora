@@ -9,8 +9,12 @@ We assume a fixed set of teaching days (Monday--Saturday) and exclude Sunday.
 We are given:
 \begin{itemize}[leftmargin=*]
   \item groups $g \in \mathcal{G}$ (student cohorts), each with a size $\mathrm{size}(g)$,
-  \item staff $p \in \mathcal{P}$ (professors and TAs), each with an availability set $\mathrm{AvailDays}(p)\subseteq \mathcal{D}$,
+  \item staff $p \in \mathcal{P}$ (professors and TAs), each with
+    day-availability $\mathrm{AvailDays}(p)\subseteq \mathcal{D}$ and optional
+    week-availability $\mathrm{AvailWeeks}(p)\subseteq\mathcal{W}$,
   \item rooms $r \in \mathcal{R}$ with type $\mathrm{type}(r)$ and capacity $\mathrm{cap}(r)$,
+    where capacity can be configured either categorically (\texttt{SMALL/MEDIUM/BIG})
+    or numerically (exact seat counts),
   \item activities $a \in \mathcal{A}$, each with:
     \begin{itemize}[leftmargin=*]
       \item week $\mathrm{week}(a)\in\mathcal{W}$,
@@ -29,4 +33,7 @@ For each activity $a$, choose a start day and start slot $(d,s)$ in week $\mathr
 Hard constraints include resource non-overlap (groups, staff, rooms), staff availability, room eligibility, and several rule-based constraints such as ``week 1 is lectures-only'' and optional staff load caps.
 
 \paragraph{Quality.}
-We also consider soft constraints (e.g., free days, gaps, late starts, stability) expressed as a weighted penalty.
+We also consider soft constraints expressed as a weighted penalty:
+free-day shortfalls, gaps, late starts, stability, room consistency,
+and an additional weekly concentration term discouraging many repeated
+same-course LEC/TUT sessions for one group in one week (useful during manual week-shift editing).

@@ -2,8 +2,8 @@ Key limitations and threats to validity:
 \begin{itemize}[leftmargin=*]
   \item \textbf{Synthetic data bias.} Most results are on generated instances; real institutional datasets may require additional constraints (travel times, precedence chains, split rooms, instructor preferences beyond current model).
   \item \textbf{Short strict budgets.} The strict-room attempt budget in our reported batch is intentionally short, which favors fallback behavior on larger scenarios.
-  \item \textbf{Greedy-room decoupling.} In \texttt{room\_mode=greedy}, room constraints do not guide CP time assignment; room infeasibility can still appear at extraction time in tightly constrained cases.
-  \item \textbf{Local-search maturity.} The current improver includes bad-entity prioritization (worst groups/staff first), deterministic group/week sweeps, bounded 2-step compound lookahead, local-delta scoring, and bounded restarts, but it is still single-solution local search; larger compound neighborhoods and benchmark-tuned parameter control remain future work.
+  \item \textbf{Greedy-room decoupling.} In \texttt{room\_mode=greedy}, room constraints do not guide CP time assignment; even with generation-time room-coverage safeguards, tight overlap patterns can still fail during room extraction.
+  \item \textbf{Local-search maturity.} The current improver includes bad-entity prioritization (worst groups/staff first), deterministic group/week sweeps, bounded 3-step compound lookahead, local-delta scoring, bounded restarts, and a final deterministic polish, but it is still single-solution local search; larger compound neighborhoods and benchmark-tuned parameter control remain future work.
   \item \textbf{Small seed set.} Three seeds per scenario are sufficient for regression checks, but not for strong statistical claims.
 \end{itemize}
 

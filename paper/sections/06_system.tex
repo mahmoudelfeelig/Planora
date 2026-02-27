@@ -38,3 +38,29 @@ The main runtime parameters are:
   \item local-search iteration/time budget.
 \end{itemize}
 The same solver parameterization is used across batch and interactive runs, supporting consistent interpretation of results.
+
+\subsection{Interactive Administration Layer}
+The desktop UI exposes model-consistent administrative edits:
+\begin{itemize}[leftmargin=*]
+  \item hold-and-move operations across days/slots and also across weeks (subject to hard checks),
+  \item immediate conflict diagnostics for candidate targets before committing moves,
+  \item real-time recomputation of global soft penalty deltas for candidate placements.
+\end{itemize}
+Staff week-availability checks are enforced in the same validator path used by solver outputs.
+
+\subsection{Custom Instance Authoring}
+The custom generator tab supports:
+\begin{itemize}[leftmargin=*]
+  \item per-program group/course overrides,
+  \item per-course LEC/TUT/LAB count overrides (including lec-only, tut-only, and lab-only patterns inferred directly from counts),
+  \item staff day/week availability and teaching-course mapping,
+  \item room capacity policy as either categorical or exact numeric mode.
+\end{itemize}
+Custom generation configurations can be saved locally for reuse and exported/imported as JSON profiles.
+
+\subsection{Generation-Time Solvability Safeguard}
+In custom scenarios, users may define room sets that accidentally leave some activities without any eligible room
+(because of type, specialization tag, or capacity).
+To avoid trivial unsatisfiable instances from such configuration mismatches, generation applies a coverage safeguard:
+if an activity has zero eligible rooms, a minimal fallback room of the required class is injected automatically.
+This does not remove hard constraints during solving; it only ensures that each generated activity has at least one feasible room candidate.

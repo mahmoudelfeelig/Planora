@@ -28,19 +28,19 @@
 \maketitle
 
 \begin{abstract}
-We present an end-to-end university timetabling system that schedules lectures, tutorials, and labs over a fixed weekly grid.
-The solver combines a CP-SAT feasibility model (OR-Tools), two room-assignment modes (integrated CP rooming and fast greedy rooming), and an optional local-search post-improver.
-The implementation also includes a phased solve pipeline for UI use: feasibility-first search under a time budget followed by iterative improvement rounds.
-On generated scenarios (\texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, \texttt{target\_case}),
-24/24 reliability runs are feasible under retry/fallback settings.
-For larger scenarios, requested fast greedy rooming is consistently faster than requested strict CP rooming
-(about \(1.59\times\) to \(1.98\times\) in this batch).
-Local-search ablations show additional quality gains after feasibility (up to \(1.13\%\) median penalty reduction on \texttt{block\_profs}).
-We provide model details, system architecture, release-ready reproducibility tooling, and implementation-grounded limitations.
+University course timetabling must satisfy strict feasibility requirements while still producing practical weekly schedules for students and staff.
+This paper presents a complete scheduling approach for lectures, tutorials, and labs under realistic university constraints, including room compatibility, staff availability, and program/group structure.
+Our method first constructs a conflict-free timetable, then improves quality through a post-optimization stage that targets soft preferences such as free-day patterns and compactness.
+Across benchmark-style generated scenarios (\texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, \texttt{target\_case}), reliability experiments obtain feasible schedules in all 24/24 runs with retry/fallback enabled.
+For larger instances, fast greedy room assignment is consistently faster than strict integrated room assignment (approximately \(1.59\times\) to \(1.98\times\) in our batch), while local improvement yields additional quality gains after feasibility (up to \(1.13\%\) median penalty reduction on \texttt{block\_profs}).
+The paper focuses on the mathematical model, algorithmic decisions, and reproducible evaluation protocol needed to deploy the system in practice.
 \end{abstract}
 
 \section{Introduction}
 \input{sections/01_introduction.tex}
+
+\section{Related Work}
+\input{sections/02_related_work.tex}
 
 \section{Problem Definition and Notation}
 \input{sections/02_problem.tex}

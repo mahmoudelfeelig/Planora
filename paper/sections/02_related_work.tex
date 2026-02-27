@@ -1,0 +1,24 @@
+Automated university timetabling is typically studied through three families of methods: exact/constraint-based optimization, metaheuristics, and hybrids.
+Survey work highlights that no single family dominates all instances; performance depends strongly on structure and constraint tightness~\cite{schaerf1999survey,lewis2008metaheuristics,bettinelli2015overview}.
+
+\paragraph{Competition-driven modeling.}
+ITC-style benchmark design emphasized clear hard/soft separation, reproducible formats, and comparable scoring~\cite{mccollum2010itc,bonutti2012benchmarking}.
+Our formulation follows this pattern directly: hard feasibility first, weighted soft penalties second, with explicit validation and reproducibility artifacts.
+
+\paragraph{Metaheuristics.}
+Neighborhood search (tabu, SA, VNS, large-neighborhood variants) is effective for quality improvement after feasibility, especially when incremental delta evaluation is available~\cite{lewis2008metaheuristics}.
+The local-search layer in this work follows that direction, but with bounded deterministic passes before stochastic exploration to improve predictability in interactive runs.
+
+\paragraph{Constraint programming and hybrid solvers.}
+Competition solvers and later systems often combine exact modeling with heuristic guidance~\cite{muller2009hybrid}.
+Modern CP-SAT combines SAT-style propagation, integer reasoning, and linear relaxations in one engine, enabling strong feasibility search under mixed logical/arithmetic constraints~\cite{cpsatlp,ortools,perron_didier_gay_cpsatlp_2023}.
+Relative to pure metaheuristics, our system uses CP-SAT to guarantee hard feasibility (when a feasible model is found) and then applies local search only for soft improvement.
+
+\paragraph{Positioning of this paper.}
+Methodologically, the contribution is not a new global algorithm class, but an implementation-grounded integration of:
+\begin{itemize}[leftmargin=*]
+  \item a CP-SAT hard model with explicit occupancy and rule constraints,
+  \item switchable strict/greedy rooming to trade strictness for runtime,
+  \item bounded post-optimization tuned for interactive administration.
+\end{itemize}
+This placement is closest to practical hybrid workflows used in deployable timetabling tools, while keeping the mathematical model explicit and reproducible.

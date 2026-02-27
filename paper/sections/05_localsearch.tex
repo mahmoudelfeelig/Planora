@@ -6,7 +6,7 @@ The improver is two-stage. First, it runs a deterministic group/week sweep to ex
 
 \paragraph{Deterministic group/week sweep.}
 For each week and for high-penalty groups first, the improver searches feasible relocations and applies the best improving move found.
-Besides single-cluster relocations, it evaluates bounded compound relocations (default: up to 2 chained time moves), so a small temporary loss in step 1 can still be accepted when the total combined delta is better.
+Besides single-cluster relocations, it evaluates bounded compound relocations (default: up to 3 chained time moves), so a small temporary loss in step 1 can still be accepted when the total combined delta is better.
 This pre-pass is explicitly bounded by move count, pass count (default: up to 3 week-wise passes), and wall-clock budget to preserve responsiveness.
 
 \paragraph{Stochastic stage.}
@@ -22,7 +22,7 @@ Compared to purely random local search, candidate generation is guided:
   \item groups and staff are scored by current soft-penalty ``badness''; move selection prioritizes activities attached to the worst entities first,
   \item before stochastic sampling, a deterministic week-wise sweep targets worst group-weeks directly,
   \item activities are further ranked by a pressure score (gaps, thin days, late starts, excess active days, staff day pressure),
-  \item for a selected activity/cluster, the search scans feasible candidates and keeps the best local delta found,
+  \item for each round, a bounded set of high-pressure activities is probed and the best local-delta move among them is selected,
   \item room moves use intersection of allowed-room sets for clustered activities to avoid invalid proposals early.
 \end{itemize}
 
@@ -44,6 +44,8 @@ It evaluates local deltas on affected components only:
   \item adjacent week-pair stability term,
   \item room-consistency keys touched by the move.
 \end{itemize}
+Terms that depend only on week-level session counts (e.g., same-course weekly concentration)
+remain constant under within-week neighborhoods and are still tracked in exact global rescoring.
 An exact global penalty recomputation is triggered periodically for numerical robustness.
 Entity badness scores (groups/staff) are refreshed periodically as the schedule changes, so priority targeting remains aligned with the current worst parts of the timetable.
 
@@ -60,3 +62,7 @@ To reduce plateauing, the improver uses a bounded multi-start policy inside the 
   \item guided search then resumes from this perturbed elite state.
 \end{itemize}
 This preserves hard-feasibility checks while improving search coverage under strict runtime limits.
+
+\subsection{Final Deterministic Polish}
+After stochastic improvement, the implementation runs a short final deterministic polish from the best-known state.
+This captures remaining obvious negative-delta group/week relocations that may be missed in probabilistic exploration near the time-budget limit.

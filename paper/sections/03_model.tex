@@ -5,11 +5,20 @@ CP-SAT is used as the optimization engine, with interval variables for non-overl
 For each week, index time within the week by $t \in \{0,\dots,|\mathcal{D}|S-1\}$ where
 $t = \mathrm{dayIndex}(d)\cdot S + s$.
 
-Each activity $a$ has a set of allowed start indices $T_a$ derived from staff availability, duration feasibility, and optional locks.
+Each activity $a$ has a set of allowed start indices $T_a$ derived from staff
+day/week availability, duration feasibility, and optional locks.
 Introduce binary variables $x_{a,t}\in\{0,1\}$ for $t\in T_a$ indicating that activity $a$ starts at time $t$.
 \begin{align}
 \sum_{t\in T_a} x_{a,t} &= 1 \qquad \forall a\in\mathcal{A}. \label{eq:oneStart}
 \end{align}
+
+\paragraph{Staff week availability.}
+If $\mathrm{week}(a)\notin \mathrm{AvailWeeks}(\mathrm{staff}(a))$, then
+$T_a=\emptyset$ and the instance is infeasible under that assignment policy.
+Equivalently, in feasibility checks and manual edits we enforce:
+\[
+\mathrm{week}(a)\in \mathrm{AvailWeeks}(\mathrm{staff}(a)).
+\]
 
 \subsection{Interval Non-Overlap Constraints}
 Let $\mathrm{Occ}(a,t,\tau)$ be 1 iff slot $\tau$ is covered when activity $a$ starts at $t$, i.e.,
@@ -64,13 +73,26 @@ w_{\mathrm{free}}\,P_{\mathrm{free}}(x)
 +w_{\mathrm{late}}\,P_{\mathrm{late}}(x)\nonumber\\
 &\quad
 +w_{\mathrm{stab}}\,P_{\mathrm{stab}}(x)
-+w_{\mathrm{room}}\,P_{\mathrm{room}}(x),
++w_{\mathrm{room}}\,P_{\mathrm{room}}(x)
++w_{\mathrm{same}}\,P_{\mathrm{same}}(x),
 \label{eq:softobj}
 \end{align}
 where each \(P_{\bullet}(x)\) is a nonnegative linearized penalty term:
 free-day shortfalls, intra-day gaps, late starts, week-to-week instability, and
-room inconsistency (when rooming is integrated in CP).
+room inconsistency (when rooming is integrated in CP), plus weekly concentration
+of same-course LEC/TUT sessions for each group.
 All weights \(w_{\bullet}\ge 0\) are configurable at the instance level.
+
+For the concentration component, let
+\[
+N_{g,c,k,w}=\#\{a\in\mathcal{A}: g\in\mathcal{G}(a),\ \mathrm{course}(a)=c,\ \mathrm{kind}(a)=k,\ \mathrm{week}(a)=w\},
+\]
+for \(k\in\{\mathrm{LEC},\mathrm{TUT}\}\), and define
+\[
+P_{\mathrm{same}}=\sum_{g,c,k,w}\max(0,N_{g,c,k,w}-1).
+\]
+In the current strict CP model, weeks are fixed per activity; therefore this term is
+mainly active in post-solve interactive edits where activities may be shifted across weeks.
 
 If objective mode is disabled, the solver runs in pure feasibility mode:
 find any \(x\) satisfying all hard constraints.
