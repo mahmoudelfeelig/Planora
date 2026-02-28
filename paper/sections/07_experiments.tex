@@ -14,7 +14,7 @@ All runs are produced by the batch driver script \texttt{run\_experiment\_batche
 We evaluate modes \texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, and \texttt{target\_case}
 with seeds \(\{1,2,3\}\).
 
-\paragraph{Batch A: reliability/runtime}
+\paragraph{Batch A reliability/runtime}
 \begin{itemize}[leftmargin=*]
   \item requested room modes: \(\{\texttt{cp\_rooms}, \texttt{greedy}\}\),
   \item objective on first attempt, objective-off retry enabled,
@@ -26,7 +26,7 @@ with seeds \(\{1,2,3\}\).
 \end{itemize}
 This produces 24 runs in total.
 
-\paragraph{Batch B: local-search ablation}
+\paragraph{Batch B local-search ablation}
 \begin{itemize}[leftmargin=*]
   \item requested room mode: \texttt{greedy},
   \item same retry/fallback and CP limits as Batch A,
@@ -105,8 +105,7 @@ Detailed per-run results are provided as supplementary table rows in \texttt{sec
 \legend{Requested \texttt{cp\_rooms}, Requested \texttt{greedy}}
 \end{axis}
 \end{tikzpicture}
-\caption{Runtime comparison for requested room modes (Batch A medians; SD=\texttt{small\_demo}, BP=\texttt{block\_profs}, ML=\texttt{mixed\_large}, TC=\texttt{target\_case}).}
-\label{fig:runtime_compare}
+\caption{Runtime comparison for requested room modes (Batch A medians; SD=\texttt{small\_demo}, BP=\texttt{block\_profs}, ML=\texttt{mixed\_large}, TC=\texttt{target\_case}).}\label{fig:runtime_compare}
 \end{figure}
 
 \begin{figure}[t]
@@ -136,8 +135,7 @@ Detailed per-run results are provided as supplementary table rows in \texttt{sec
 \legend{Final \texttt{cp\_rooms}, Final \texttt{greedy} (fallback)}
 \end{axis}
 \end{tikzpicture}
-\caption{Fallback outcomes when strict room mode is requested (12 runs total).}
-\label{fig:fallback_outcomes}
+\caption{Fallback outcomes when strict room mode is requested (12 runs total).}\label{fig:fallback_outcomes}
 \end{figure}
 
 \begin{figure}[t]
@@ -162,8 +160,7 @@ Detailed per-run results are provided as supplementary table rows in \texttt{sec
 \addplot coordinates {(SD,0.00) (BP,1.13) (ML,0.26) (TC,0.50)};
 \end{axis}
 \end{tikzpicture}
-\caption{Median local-search improvement over base penalty (Batch B).}
-\label{fig:ls_gain}
+\caption{Median local-search improvement over base penalty (Batch B).}\label{fig:ls_gain}
 \end{figure}
 
 \begin{table*}[t]
@@ -184,8 +181,7 @@ target\_case & cp\_rooms & 3 & 100.00 & 98.34 & 11691.00 & - & 3 \\
 target\_case & greedy & 3 & 100.00 & 49.59 & 11691.00 & - & 3 \\
 \bottomrule
 \end{tabular}
-\caption{Aggregated reliability/runtime metrics (Batch A).}
-\label{tab:perf}
+\caption{Aggregated reliability/runtime metrics (Batch A).}\label{tab:perf}
 \end{table*}
 
 \begin{table*}[t]
@@ -202,6 +198,5 @@ small\_demo & 3 & 49.00 & 49.00 & 0.00 & 0.00 \\
 target\_case & 3 & 11691.00 & 11633.00 & 58.00 & 0.50 \\
 \bottomrule
 \end{tabular}
-\caption{Local-search ablation metrics (Batch B).}
-\label{tab:ls}
+\caption{Local-search ablation metrics (Batch B).}\label{tab:ls}
 \end{table*}

@@ -31,11 +31,16 @@ jobs:
             texlive-latex-base \
             texlive-latex-extra \
             texlive-latex-recommended \
+            texlive-publishers \
             texlive-science
 
       - name: Lint with chktex
         working-directory: paper
         run: chktex -q -n1 -n8 main.tex
+
+      - name: Verify IEEEtran availability
+        working-directory: paper
+        run: kpsewhich IEEEtran.cls
 
       - name: Build PDF
         working-directory: paper
