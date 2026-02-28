@@ -156,7 +156,6 @@ class LocalSearchImprover:
             self.staff_week_load[s_id] = {w: 0 for w in weeks}
 
         for a_id, info in schedule.items():
-            act = inst.activities[a_id]
             w = info["week"]; d = info["day"]
             s0 = info["slot"]; dur = info["duration"]
             r = info["room_id"]; st_id = info["staff_id"]
@@ -168,8 +167,8 @@ class LocalSearchImprover:
                 self.staff_use[key][st_id] = a_id
                 for g_id in info["group_ids"]:
                     self.group_use[key][g_id] = a_id
-            self.staff_week_load[st_id][act.week] += dur
-            self.staff_day_load[st_id][act.week][d] += dur
+            self.staff_week_load[st_id][w] += dur
+            self.staff_day_load[st_id][w][d] += dur
 
         # Cache room-consistency keys/counts for fast local room-move deltas.
         self._activity_room_keys = {}
@@ -230,6 +229,15 @@ class LocalSearchImprover:
         if getattr(staff, "blocks_only", False):
             return False  # avoid breaking block-only contiguity rule
         if new_day not in staff.available_days:
+            return False
+        allowed_weeks = getattr(staff, "available_weeks", None)
+        if allowed_weeks is not None:
+            allowed = {int(x) for x in allowed_weeks}
+            if allowed and int(w) not in allowed:
+                return False
+
+        # Time moves keep room fixed, so enforce room availability at target slot.
+        if r is not None and not self._room_available(int(r), str(new_day), int(new_slot), int(dur)):
             return False
 
         # soft block staff: cap distinct teaching days to 2
@@ -1407,6 +1415,8 @@ class LocalSearchImprover:
             probe_ids: List[int] = []
             seen_ids: Set[int] = set()
             probe_target = max(1, int(probe_activities))
+            if int(no_improve_iters) >= max(20, int(restart_after) // 2):
+                probe_target = min(len(activity_ids), max(probe_target, probe_target * 2))
             for _ in range(max(probe_target * 2, 1)):
                 cand = int(self._pick_candidate_activity(current, activity_ids))
                 if cand in seen_ids:
@@ -1507,6 +1517,32 @@ class LocalSearchImprover:
 
             if not moved:
                 no_improve_iters += 1
+                rescue_trigger = max(30, int(restart_after) // 2)
+                if int(no_improve_iters) >= int(rescue_trigger):
+                    rescue_seconds = None
+                    if max_seconds is not None:
+                        remaining = float(max_seconds) - float(time.perf_counter() - start_ts)
+                        if remaining <= 0.0:
+                            break
+                        rescue_seconds = min(0.20, max(0.0, remaining))
+                    rescue_pen, rescue_moves = self._systematic_group_week_sweep(
+                        current,
+                        int(current_pen),
+                        max_moves=max(1, min(4, len(activity_ids) // 60 + 1)),
+                        max_passes=1,
+                        start_ts=float(time.perf_counter()),
+                        max_seconds=rescue_seconds,
+                        stop_hook=stop_hook,
+                    )
+                    if int(rescue_moves) > 0 and int(rescue_pen) <= int(current_pen):
+                        moved = True
+                        accept = True
+                        current_pen = int(rescue_pen)
+                        no_improve_iters = 0
+                        self._refresh_entity_badness()
+                        if int(current_pen) < int(best_pen):
+                            best_pen = int(current_pen)
+                            best = {a_id: info.copy() for a_id, info in current.items()}
                 if progress_hook and progress_every > 0 and (it + 1) % progress_every == 0:
                     try:
                         progress_hook(
@@ -1527,7 +1563,8 @@ class LocalSearchImprover:
                             pass
                     except Exception:
                         pass
-                continue
+                if not moved:
+                    continue
 
             if current_pen < best_pen:
                 best_pen = int(current_pen)

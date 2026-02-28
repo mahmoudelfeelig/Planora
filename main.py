@@ -293,9 +293,9 @@ def print_group_quality(inst: Instance, schedule: Dict[int, Dict[str, Any]]) -> 
 def main():
     MODE = "target_case"
 
-    CP_TIME_LIMIT = float(os.getenv("TT_TIME_LIMIT", "300.0"))
+    CP_TIME_LIMIT = float(os.getenv("TT_TIME_LIMIT", "600.0"))
     CP_WORKERS = int(os.getenv("TT_CP_WORKERS", "8"))
-    LS_ITERATIONS = int(os.getenv("TT_LS_ITERATIONS", "10000"))
+    LS_ITERATIONS = int(os.getenv("TT_LS_ITERATIONS", "1000"))
     LS_START_TEMP = 5.0
     LS_END_TEMP = 0.1
     LS_MAX_SECONDS_ENV = os.getenv("TT_LS_MAX_SECONDS")

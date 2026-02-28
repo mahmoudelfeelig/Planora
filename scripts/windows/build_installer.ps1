@@ -201,6 +201,7 @@ $pyinstallerArgs = @(
     "-m", "PyInstaller",
     "--noconfirm",
     "--clean",
+    "--noupx",
     "--windowed",
     "--onedir",
     "--name", "Scheduler",
@@ -230,6 +231,35 @@ foreach ($mod in $excludeModules) {
 $pyinstallerArgs += "ui/app.py"
 
 Invoke-Python -CommandPath $pythonCmd -PrefixArgs @($pythonPrefixArgs) -Args $pyinstallerArgs
+
+Write-Host "[3/4] Building dedicated solver worker executable..."
+$enginePyinstallerArgs = @(
+    "-m", "PyInstaller",
+    "--noconfirm",
+    "--clean",
+    "--noupx",
+    "--console",
+    "--onefile",
+    "--name", "SchedulerEngine",
+    "--collect-binaries", "ortools",
+    "--collect-data", "ortools",
+    "--hidden-import", "ortools.sat.python.cp_model_helper",
+    "--hidden-import", "ortools.util.python.sorted_interval_list"
+)
+foreach ($mod in $excludeModules) {
+    $enginePyinstallerArgs += @("--exclude-module", $mod)
+}
+$enginePyinstallerArgs += "core/engine_cli.py"
+Invoke-Python -CommandPath $pythonCmd -PrefixArgs @($pythonPrefixArgs) -Args $enginePyinstallerArgs
+
+$engineExe = Join-Path $repoRoot "dist\SchedulerEngine.exe"
+$uiDistDir = Join-Path $repoRoot "dist\Scheduler"
+if (Test-Path $engineExe) {
+    Copy-Item -Path $engineExe -Destination (Join-Path $uiDistDir "SchedulerEngine.exe") -Force
+}
+else {
+    throw "Expected worker executable was not produced: $engineExe"
+}
 
 if ($SkipInstaller) {
     Write-Host "[4/4] Skipping installer generation (--SkipInstaller)."

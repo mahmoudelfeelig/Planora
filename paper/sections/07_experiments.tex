@@ -14,7 +14,7 @@ All runs are produced by the batch driver script \texttt{run\_experiment\_batche
 We evaluate modes \texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, and \texttt{target\_case}
 with seeds \(\{1,2,3\}\).
 
-\paragraph{Batch A: reliability/runtime.}
+\paragraph{Batch A: reliability/runtime}
 \begin{itemize}[leftmargin=*]
   \item requested room modes: \(\{\texttt{cp\_rooms}, \texttt{greedy}\}\),
   \item objective on first attempt, objective-off retry enabled,
@@ -26,7 +26,7 @@ with seeds \(\{1,2,3\}\).
 \end{itemize}
 This produces 24 runs in total.
 
-\paragraph{Batch B: local-search ablation.}
+\paragraph{Batch B: local-search ablation}
 \begin{itemize}[leftmargin=*]
   \item requested room mode: \texttt{greedy},
   \item same retry/fallback and CP limits as Batch A,
@@ -172,7 +172,7 @@ Detailed per-run results are provided as supplementary table rows in \texttt{sec
 \setlength{\tabcolsep}{5pt}
 \begin{tabular}{lrrrrrrr}
 \toprule
-Scenario & Req. mode & Runs & Feasible (\%) & Median CP (s) & Median base penalty & Median LS penalty & Objective retries \\
+Scenario & Req.\ mode & Runs & Feasible (\%) & Median CP (s) & Median base penalty & Median LS penalty & Objective retries \\
 \midrule
 block\_profs & cp\_rooms & 3 & 100.00 & 87.48 & 13220.00 & - & 3 \\
 block\_profs & greedy & 3 & 100.00 & 47.59 & 13220.00 & - & 3 \\

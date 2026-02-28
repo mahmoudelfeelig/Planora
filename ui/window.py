@@ -56,6 +56,9 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QScrollArea,
     QFrame,
+    QListWidget,
+    QListWidgetItem,
+    QAbstractItemView,
 )
 
 from ui.constants import (
@@ -252,6 +255,11 @@ class MainWindow(QMainWindow):
         self.selected_cell_col: int | None = None
         self.selected_activity_id: int | None = None
         self._held_move_analysis_map: Dict[Tuple[str, int], Dict[str, Any]] = {}
+        self._held_analysis_cache_key: Tuple[Any, ...] | None = None
+        self._held_analysis_cache_value: Dict[Tuple[str, int], Dict[str, Any]] = {}
+        self._schedule_revision: int = 0
+        self._conflict_ids_cache_revision: int = -1
+        self._conflict_ids_cache: Set[int] = set()
         self._undo_stack: List[Dict[str, Any]] = []
         self._redo_stack: List[Dict[str, Any]] = []
         self._sandbox_base_schedule: Dict[int, Dict[str, Any]] | None = None
@@ -266,6 +274,11 @@ class MainWindow(QMainWindow):
             os.path.expanduser("~"), ".scheduler_constraint_templates.json"
         )
         self.constraint_templates: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        self._snapshot_store_dir = os.path.join(
+            os.path.expanduser("~"), ".scheduler_history_snapshots"
+        )
+        self._soft_penalty_improver: LocalSearchImprover | None = None
+        self._soft_penalty_improver_inst_ref: Instance | None = None
 
         self.proc: QProcess | None = None
         self._solve_progress_timer: QTimer | None = None
@@ -284,6 +297,8 @@ class MainWindow(QMainWindow):
         self._live_improve_mode: bool = False
         self._improve_running: bool = False
         self._improve_stop_requested: bool = False
+        self._solver_safe_retry_used: bool = False
+        self._last_solver_keep_locks: bool = False
         self._maximize_on_first_show: bool = True
         self.tmp_inst_path: str | None = None
         self.tmp_res_path: str | None = None
@@ -371,7 +386,7 @@ class MainWindow(QMainWindow):
 
         self.ls_time_spin = StepSpinBox()
         self.ls_time_spin.setRange(0, 600)
-        self.ls_time_spin.setValue(10)
+        self.ls_time_spin.setValue(0)
         self.ls_time_spin.setSuffix(" s")
         self.ls_time_spin.setMaximumWidth(120)
 
@@ -488,16 +503,34 @@ class MainWindow(QMainWindow):
         self.table.setWordWrap(True)
         self.table.setMouseTracking(True)
         self.table.viewport().setMouseTracking(True)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        # Keep scrolling on the outer Schedule view, not inside the table widget.
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.table.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
 
         self.workspace_tabs = QTabWidget()
         schedule_tab = QWidget()
-        schedule_layout = QVBoxLayout(schedule_tab)
+        schedule_tab_layout = QVBoxLayout(schedule_tab)
+        schedule_tab_layout.setContentsMargins(0, 0, 0, 0)
+        schedule_tab_layout.setSpacing(0)
+        self.schedule_view_scroll = QScrollArea()
+        self.schedule_view_scroll.setWidgetResizable(True)
+        self.schedule_view_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.schedule_view_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.schedule_view_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        schedule_tab_layout.addWidget(self.schedule_view_scroll)
+        schedule_content = QWidget()
+        self.schedule_view_scroll.setWidget(schedule_content)
+        schedule_layout = QVBoxLayout(schedule_content)
         schedule_layout.setContentsMargins(0, 0, 0, 0)
         schedule_layout.setSpacing(6)
-        schedule_layout.addWidget(self.table, 1)
+        schedule_layout.addWidget(self.table, 0)
         self.schedule_actions_scroll = QScrollArea()
         self.schedule_actions_scroll.setWidget(self._build_schedule_actions_panel())
         self.schedule_actions_scroll.setWidgetResizable(True)
@@ -516,6 +549,7 @@ class MainWindow(QMainWindow):
         self.workspace_tabs.addTab(self._build_generator_tab(), "Generator")
         self.workspace_tabs.addTab(self._build_constraints_tab(), "Constraints")
         self.workspace_tabs.addTab(self._build_fairness_tab(), "Fairness")
+        self.workspace_tabs.addTab(self._build_history_tab(), "History")
 
         central = QWidget()
         main_layout = QVBoxLayout(central)
@@ -635,6 +669,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, "schedule_actions_scroll"):
             self.schedule_actions_scroll.setMinimumWidth(0)
             self.schedule_actions_scroll.updateGeometry()
+        if hasattr(self, "schedule_view_scroll"):
+            self.schedule_view_scroll.setMinimumWidth(0)
+            self.schedule_view_scroll.updateGeometry()
         if self.top_widget is not None:
             top_layout = self.top_widget.layout()
             if top_layout is not None:
@@ -714,10 +751,58 @@ class MainWindow(QMainWindow):
 
         h = self.table.horizontalHeader()
         v = self.table.verticalHeader()
-        h.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        v.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        h.setMinimumSectionSize(110)
-        v.setMinimumSectionSize(34)
+        h.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        v.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        # Keep schedule cells readable, but expand to fill horizontal space when available.
+        base_col_w = 170
+        min_col_w = 130
+        row_h = 78
+        min_row_h = 42
+        h.setDefaultSectionSize(base_col_w)
+        v.setDefaultSectionSize(row_h)
+        h.setMinimumSectionSize(min_col_w)
+        v.setMinimumSectionSize(min_row_h)
+
+        col_count = int(self.table.columnCount())
+        available_w = 0
+        if hasattr(self, "schedule_view_scroll"):
+            try:
+                available_w = int(self.schedule_view_scroll.viewport().width())
+            except Exception:
+                available_w = 0
+        if available_w <= 0:
+            parent = self.table.parentWidget()
+            if parent is not None:
+                try:
+                    available_w = int(parent.width())
+                except Exception:
+                    available_w = 0
+
+        non_col_w = int(v.width()) + (self.table.frameWidth() * 2) + 4
+        target_col_w = int(base_col_w)
+        if available_w > non_col_w and col_count > 0:
+            fill_col_w = int((available_w - non_col_w) // col_count)
+            target_col_w = int(max(min_col_w, max(base_col_w, fill_col_w)))
+
+        for col in range(col_count):
+            self.table.setColumnWidth(col, int(target_col_w))
+
+        # Consume remainder on the last column so the table reaches the right edge.
+        if available_w > 0 and col_count > 0:
+            used_cols = int(target_col_w) * int(col_count)
+            remainder = int(max(0, available_w - non_col_w - used_cols))
+            if remainder > 0:
+                last = int(col_count - 1)
+                self.table.setColumnWidth(last, int(target_col_w + remainder))
+
+        total_w = int(v.width()) + (self.table.frameWidth() * 2) + 4
+        for col in range(col_count):
+            total_w += int(self.table.columnWidth(col))
+        total_h = int(h.height()) + (self.table.frameWidth() * 2) + 4
+        for row in range(self.table.rowCount()):
+            total_h += int(self.table.rowHeight(row))
+        self.table.setMinimumSize(int(total_w), int(total_h))
+        self.table.setMaximumSize(int(total_w), int(total_h))
         self.table.updateGeometry()
         self.table.viewport().update()
 
@@ -732,7 +817,11 @@ class MainWindow(QMainWindow):
         self.revert_button.setToolTip("Restore the current schedule to the base solved schedule.")
         self.conflicts_button.setToolTip("Open a list of current hard-constraint conflicts.")
         self.export_menu_btn.setToolTip("Export schedules/reports.")
-        self.project_menu_btn.setToolTip("Save/load/compare project data.")
+        self.project_menu_btn.setToolTip(
+            "Save/load/compare plus admin tooling: disruption auto-repair, sandbox branches, and history snapshots."
+            "\nAuto-repair: Project > Auto-Repair Disruption... then pick outage type and week to re-solve with unaffected activities frozen."
+            "\nSandbox flow: start a branch, try edits, compare, then apply or discard."
+        )
         self.mode_combo.setToolTip("Instance template used when generating data.")
         self.room_mode_combo.setToolTip(
             "Room assignment strategy: Strict uses CP room variables; Fast uses greedy room assignment."
@@ -771,14 +860,26 @@ class MainWindow(QMainWindow):
         self.constraint_template_save_btn.setToolTip(
             "Save current hard/soft settings as a reusable template."
         )
+        self.apply_constraints_btn.setToolTip(
+            "Apply the currently shown hard/soft controls into the active instance."
+        )
         self.improve_runs_spin.setToolTip("Maximum local-search iterations.")
         self.ls_time_spin.setToolTip("Maximum local-search runtime (seconds).")
         self.selected_activity_combo.setToolTip(
-            "Activities in the currently selected cell."
+            "Activities in the currently selected cell.\n"
+            "Click a timetable cell first, then choose an activity and use the quick actions."
         )
-        self.quick_edit_btn.setToolTip("Edit selected activity time/room/staff and locks.")
-        self.quick_hold_btn.setToolTip("Mark selected activity as held for drag-like moves.")
-        self.quick_move_btn.setToolTip("Move held activity to the selected day/slot.")
+        self.quick_edit_btn.setToolTip(
+            "Click a timetable cell, choose an activity, then edit its time/room/staff/locks."
+        )
+        self.quick_hold_btn.setToolTip(
+            "Click a timetable cell, choose an activity, then hold it for drag-like moves.\n"
+            "Hold mode: hover target slots to preview conflicts and score deltas before moving."
+        )
+        self.quick_move_btn.setToolTip(
+            "Move held activity to the selected day/slot.\n"
+            "Use with hold mode hover previews to choose safer/better targets."
+        )
         self.quick_swap_btn.setToolTip("Swap timeslots between held and selected activity.")
         self.quick_time_lock_btn.setToolTip("Toggle time lock for selected activity.")
         self.quick_room_lock_btn.setToolTip("Toggle room lock for selected activity.")
@@ -790,15 +891,47 @@ class MainWindow(QMainWindow):
         self.show_score_deltas_cb.setToolTip(
             "Show/hide in-grid global soft-score deltas for held-move target slots."
         )
+        self.history_undo5_btn.setToolTip("Undo the last 5 checkpoints at once.")
+        self.history_redo5_btn.setToolTip("Redo the next 5 checkpoints at once.")
+        self.history_save_snapshot_btn.setToolTip(
+            "Save the current schedule/locks/held state to a dedicated JSON snapshot file."
+        )
+        self.history_load_snapshot_btn.setToolTip(
+            "Load a previously saved snapshot as the current HEAD state."
+        )
+        self.history_open_snapshot_dir_btn.setToolTip(
+            "Show where per-snapshot history files are stored."
+        )
+        self.custom_programs_spin.setToolTip("Number of programs to synthesize.")
+        self.custom_groups_per_program_spin.setToolTip(
+            "Default groups per program; can be overridden per-row below."
+        )
+        self.custom_courses_per_program_spin.setToolTip(
+            "Default courses per program; per-program/course-pattern overrides apply."
+        )
+        self.custom_course_names_edit.setToolTip(
+            "Optional CSV. Example: Algorithms,Databases,Networks.\n"
+            "If fewer names than required, generator auto-fills remaining courses."
+        )
+        self.custom_program_table.setToolTip(
+            "Per-program overrides. Courses/Group accepts CSV of course IDs (e.g., 1,2,5)."
+        )
+        self.custom_course_pattern_table.setToolTip(
+            "Per-course pattern: LEC/TUT/LAB counts by week. Zero counts are allowed."
+        )
+        self.custom_staff_table.setToolTip(
+            "Staff mapping. Course IDs and day/week lists are CSV; week supports ALL."
+        )
+        self.custom_room_table.setToolTip(
+            "Room mapping. In categorical mode, capacity follows SMALL/MEDIUM/BIG. "
+            "In numeric mode, Capacity is authoritative."
+        )
 
     def _build_schedule_actions_panel(self) -> QWidget:
         box = QGroupBox("Quick Admin Actions")
         layout = QVBoxLayout(box)
 
-        self.quick_help_label = QLabel(
-            "Click a timetable cell, choose an activity, then use actions below."
-            " Hold mode supports hover diagnostics for target-slot conflicts."
-        )
+        self.quick_help_label = QLabel("Hover controls for usage tips.")
         self.quick_help_label.setWordWrap(True)
         layout.addWidget(self.quick_help_label)
         self.quick_legend_label = QLabel(
@@ -913,6 +1046,12 @@ class MainWindow(QMainWindow):
         self.quick_targets_btn.clicked.connect(self.on_quick_show_held_targets)
         self.quick_release_btn.clicked.connect(self.on_quick_release_held)
         self.show_score_deltas_cb.toggled.connect(lambda _v: self.update_table())
+        self.history_undo5_btn.clicked.connect(lambda: self._undo_many(5))
+        self.history_redo5_btn.clicked.connect(lambda: self._redo_many(5))
+        self.history_save_snapshot_btn.clicked.connect(self.on_save_history_snapshot)
+        self.history_load_snapshot_btn.clicked.connect(self.on_load_history_snapshot)
+        self.history_open_snapshot_dir_btn.clicked.connect(self.on_show_snapshot_dir)
+        self.history_list.itemDoubleClicked.connect(self.on_history_item_activated)
         self.table.cellClicked.connect(self.on_table_cell_clicked)
         self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
         self.table.customContextMenuRequested.connect(self.on_table_context_menu)
@@ -1454,6 +1593,9 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(tab)
         self.fairness_summary_label = QLabel("Generate/solve to view fairness dashboard.")
         self.fairness_summary_label.setWordWrap(True)
+        self.fairness_summary_label.setToolTip(
+            "Lower fairness score is better. Scores aggregate total load, active days, gaps, and late events."
+        )
         layout.addWidget(self.fairness_summary_label)
 
         self.fairness_group_table = QTableWidget(0, 8)
@@ -1496,6 +1638,67 @@ class MainWindow(QMainWindow):
         self.fairness_staff_table.setSortingEnabled(True)
         layout.addWidget(QLabel("Staff Fairness"))
         layout.addWidget(self.fairness_staff_table)
+        group_tips = [
+            "Group identifier.",
+            "Total scheduled slots across all weeks for this group.",
+            "Number of group-days with at least one event.",
+            "Days with exactly one scheduled slot (usually undesirable).",
+            "Idle slots between teaching blocks (intra-day gaps).",
+            "Events starting in later slots.",
+            "Mean slots per active week.",
+            "Aggregated fairness metric (lower is better).",
+        ]
+        staff_tips = [
+            "Staff member name.",
+            "Staff role (Professor or TA).",
+            "Total assigned slots across all weeks.",
+            "Number of staff-days with at least one event.",
+            "Days with exactly one assigned slot.",
+            "Idle slots between teaching blocks.",
+            "Late-slot teaching assignments.",
+            "Mean weekly load.",
+            "Aggregated fairness metric (lower is better).",
+        ]
+        for idx, text in enumerate(group_tips):
+            item = self.fairness_group_table.horizontalHeaderItem(idx)
+            if item is not None:
+                item.setToolTip(str(text))
+        for idx, text in enumerate(staff_tips):
+            item = self.fairness_staff_table.horizontalHeaderItem(idx)
+            if item is not None:
+                item.setToolTip(str(text))
+        return tab
+
+    def _build_history_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        self.history_help_label = QLabel(
+            "Git-like timeline: older checkpoints on top, current HEAD in the middle, redo states below.\n"
+            "Double-click an entry to jump directly (multi-step undo/redo)."
+        )
+        self.history_help_label.setWordWrap(True)
+        layout.addWidget(self.history_help_label)
+
+        self.history_list = QListWidget()
+        self.history_list.setAlternatingRowColors(True)
+        self.history_list.setToolTip(
+            "Timeline entries; each can include a saved snapshot path for external backups."
+        )
+        layout.addWidget(self.history_list, 1)
+
+        row = QHBoxLayout()
+        self.history_undo5_btn = QPushButton("Undo 5")
+        self.history_redo5_btn = QPushButton("Redo 5")
+        self.history_save_snapshot_btn = QPushButton("Save Snapshot...")
+        self.history_load_snapshot_btn = QPushButton("Load Snapshot...")
+        self.history_open_snapshot_dir_btn = QPushButton("Show Snapshot Folder")
+        row.addWidget(self.history_undo5_btn)
+        row.addWidget(self.history_redo5_btn)
+        row.addWidget(self.history_save_snapshot_btn)
+        row.addWidget(self.history_load_snapshot_btn)
+        row.addWidget(self.history_open_snapshot_dir_btn)
+        row.addStretch(1)
+        layout.addLayout(row)
         return tab
 
     @staticmethod
@@ -2571,6 +2774,7 @@ class MainWindow(QMainWindow):
             }
             held = state.get("held_activity_id")
             self.held_activity_id = int(held) if held is not None else None
+            self._bump_schedule_revision()
             self._undo_stack = [
                 self._state_from_json_ready(s)
                 for s in (payload.get("undo") or [])
@@ -2595,6 +2799,231 @@ class MainWindow(QMainWindow):
             # Corrupted history should never break app startup.
             pass
 
+    def _history_state_brief(self, state: Dict[str, Any]) -> str:
+        cur = state.get("current_schedule") or {}
+        locks = state.get("locked_activities") or {}
+        held = state.get("held_activity_id")
+        held_txt = f"A{int(held)}" if held is not None else "none"
+        return (
+            f"activities={len(cur) if isinstance(cur, dict) else 0}, "
+            f"locks={len(locks) if isinstance(locks, dict) else 0}, held={held_txt}"
+        )
+
+    def _ensure_snapshot_store_dir(self) -> str:
+        path = str(self._snapshot_store_dir)
+        try:
+            os.makedirs(path, exist_ok=True)
+            return path
+        except Exception:
+            fallback = os.path.join(
+                tempfile.gettempdir(), "scheduler_history_snapshots"
+            )
+            os.makedirs(fallback, exist_ok=True)
+            self._snapshot_store_dir = str(fallback)
+            return str(fallback)
+
+    def _refresh_history_view(self) -> None:
+        if not hasattr(self, "history_list"):
+            return
+        self.history_list.clear()
+        if self.inst is None:
+            self.history_list.addItem("No active instance.")
+            return
+
+        undo_count = len(self._undo_stack)
+        for idx, state in enumerate(self._undo_stack):
+            steps = max(1, int(undo_count - idx))
+            line = f"o  undo {steps:02d}  {self._history_state_brief(state)}"
+            item = QListWidgetItem(line)
+            item.setData(Qt.ItemDataRole.UserRole, ("undo", int(steps)))
+            self.history_list.addItem(item)
+
+        head_item = QListWidgetItem(f"*  HEAD      {self._history_state_brief(self._snapshot_state())}")
+        head_item.setData(Qt.ItemDataRole.UserRole, ("head", 0))
+        self.history_list.addItem(head_item)
+
+        for idx, state in enumerate(reversed(self._redo_stack), start=1):
+            line = f"o  redo {idx:02d}  {self._history_state_brief(state)}"
+            item = QListWidgetItem(line)
+            item.setData(Qt.ItemDataRole.UserRole, ("redo", int(idx)))
+            self.history_list.addItem(item)
+
+        if os.path.isdir(self._snapshot_store_dir):
+            try:
+                files = [
+                    os.path.join(self._snapshot_store_dir, f)
+                    for f in os.listdir(self._snapshot_store_dir)
+                    if str(f).lower().endswith(".json")
+                ]
+                files.sort(key=lambda p: os.path.getmtime(p))
+            except Exception:
+                files = []
+            if files:
+                self.history_list.addItem(QListWidgetItem("---- saved snapshot paths ----"))
+                for snap_path in reversed(files[-8:]):
+                    item = QListWidgetItem(f"  {snap_path}")
+                    item.setData(Qt.ItemDataRole.UserRole, ("snapshot_path", str(snap_path)))
+                    self.history_list.addItem(item)
+
+        self.history_undo5_btn.setEnabled(bool(self._undo_stack))
+        self.history_redo5_btn.setEnabled(bool(self._redo_stack))
+        self.history_save_snapshot_btn.setEnabled(bool(self.current_schedule))
+        self.history_load_snapshot_btn.setEnabled(self.inst is not None)
+
+    def _undo_many(self, steps: int) -> None:
+        count = max(0, min(int(steps), len(self._undo_stack)))
+        for _ in range(count):
+            self.on_undo()
+        if count > 1:
+            self.set_status(f"Undo applied x{count}")
+
+    def _redo_many(self, steps: int) -> None:
+        count = max(0, min(int(steps), len(self._redo_stack)))
+        for _ in range(count):
+            self.on_redo()
+        if count > 1:
+            self.set_status(f"Redo applied x{count}")
+
+    def on_history_item_activated(self, item: QListWidgetItem) -> None:
+        payload = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(payload, tuple) or len(payload) != 2:
+            return
+        kind, steps = payload
+        if str(kind) == "snapshot_path":
+            self._load_history_snapshot_path(str(steps))
+            return
+        try:
+            steps_i = int(steps)
+        except Exception:
+            steps_i = 0
+        if str(kind) == "undo" and steps_i > 0:
+            self._undo_many(steps_i)
+            return
+        if str(kind) == "redo" and steps_i > 0:
+            self._redo_many(steps_i)
+            return
+
+    def on_save_history_snapshot(self) -> None:
+        if self.inst is None or not self.current_schedule:
+            return
+        snapshot_dir = self._ensure_snapshot_store_dir()
+        default_name = (
+            datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            + "_snapshot.json"
+        )
+        default_path = os.path.join(snapshot_dir, default_name)
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save history snapshot",
+            default_path,
+            "JSON files (*.json)",
+        )
+        if not path:
+            return
+        payload = {
+            "saved_at_utc": datetime.now(timezone.utc).isoformat(),
+            "instance": instance_to_json(self.inst),
+            "base_schedule": {
+                str(int(a_id)): dict(info)
+                for a_id, info in self.base_schedule.items()
+                if isinstance(info, dict)
+            },
+            "state": self._state_to_json_ready(self._snapshot_state()),
+            "undo": [
+                self._state_to_json_ready(s)
+                for s in self._undo_stack[-60:]
+                if isinstance(s, dict)
+            ],
+            "redo": [
+                self._state_to_json_ready(s)
+                for s in self._redo_stack[-60:]
+                if isinstance(s, dict)
+            ],
+        }
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, sort_keys=True)
+            self.set_status(f"History snapshot saved: {path}")
+            self._append_audit_log("history_snapshot_saved", {"path": str(path)})
+            self._refresh_history_view()
+        except Exception as exc:
+            QMessageBox.critical(self, "Snapshot error", str(exc))
+
+    def on_load_history_snapshot(self) -> None:
+        snapshot_dir = self._ensure_snapshot_store_dir()
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load history snapshot",
+            snapshot_dir,
+            "JSON files (*.json)",
+        )
+        if not path:
+            return
+        self._load_history_snapshot_path(str(path))
+
+    def _load_history_snapshot_path(self, path: str) -> None:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if not isinstance(payload, dict):
+                raise ValueError("Snapshot must be a JSON object.")
+            inst_raw = payload.get("instance")
+            if not isinstance(inst_raw, dict):
+                raise ValueError("Snapshot is missing instance data.")
+            self.inst = instance_from_json(inst_raw)
+            base_raw = payload.get("base_schedule", {})
+            self.base_schedule = {
+                int(a_id): dict(info)
+                for a_id, info in (base_raw.items() if isinstance(base_raw, dict) else [])
+                if isinstance(info, dict)
+            }
+            state_raw = payload.get("state", {})
+            state = self._state_from_json_ready(
+                state_raw if isinstance(state_raw, dict) else {}
+            )
+            self.current_schedule = {
+                int(a_id): dict(info)
+                for a_id, info in (state.get("current_schedule") or {}).items()
+            }
+            self.locked_activities = {
+                int(a_id): dict(lock)
+                for a_id, lock in (state.get("locked_activities") or {}).items()
+            }
+            held = state.get("held_activity_id")
+            self.held_activity_id = int(held) if held is not None else None
+            self._undo_stack = [
+                self._state_from_json_ready(s)
+                for s in (payload.get("undo") or [])
+                if isinstance(s, dict)
+            ]
+            self._redo_stack = [
+                self._state_from_json_ready(s)
+                for s in (payload.get("redo") or [])
+                if isinstance(s, dict)
+            ]
+            self._bump_schedule_revision()
+            self._sync_instance_activity_weeks_from_schedule(self.current_schedule)
+            self._sync_instance_staff_from_schedule(self.current_schedule)
+            self._sync_locks_to_instance()
+            self._load_constraint_controls_from_instance(self.inst)
+            self.populate_weeks()
+            self.update_entities()
+            self.update_table()
+            self.update_quality_summary()
+            self._refresh_history_buttons()
+            self.set_status(f"History snapshot loaded: {path}")
+            self._append_audit_log("history_snapshot_loaded", {"path": str(path)})
+        except Exception as exc:
+            QMessageBox.critical(self, "Snapshot error", str(exc))
+
+    def on_show_snapshot_dir(self) -> None:
+        path = self._ensure_snapshot_store_dir()
+        QMessageBox.information(
+            self,
+            "Snapshot folder",
+            f"History snapshot folder:\n{path}",
+        )
+
     def _load_templates(self) -> None:
         self.constraint_templates = load_templates(self._template_store_path)
         if not self.constraint_templates:
@@ -2609,11 +3038,22 @@ class MainWindow(QMainWindow):
         name = self.constraint_template_combo.currentData()
         if not name:
             return
+        self._invalidate_held_analysis_cache()
         template = self.constraint_templates.get(str(name))
         if not isinstance(template, dict):
             return
         hard = template.get("hard", {})
         soft = template.get("soft", {})
+        controls: List[Any] = [
+            self.hard_week1_cb,
+            self.hard_block_prof_cb,
+            self.hard_staff_daily_cb,
+            self.hard_staff_weekly_cb,
+            self.hard_room_availability_cb,
+            *self.soft_weight_spins.values(),
+        ]
+        for control in controls:
+            control.blockSignals(True)
         if isinstance(hard, dict):
             self.hard_week1_cb.setChecked(bool(hard.get("week1_lectures_only", True)))
             self.hard_block_prof_cb.setChecked(
@@ -2635,8 +3075,13 @@ class MainWindow(QMainWindow):
                         spin.setValue(int(soft[key]))
                     except Exception:
                         pass
+        for control in controls:
+            control.blockSignals(False)
         if self.inst is not None:
             apply_template_to_instance(self.inst, template)
+            if self.current_schedule:
+                self.update_quality_summary()
+                self.update_table()
         self._append_audit_log("constraint_template_applied", {"name": str(name)})
         self.set_status(f"Applied constraint template: {name}")
 
@@ -2751,6 +3196,7 @@ class MainWindow(QMainWindow):
         if self.inst is None:
             return
         try:
+            self._invalidate_held_analysis_cache()
             self._apply_constraint_settings(self.inst)
             if self.current_schedule:
                 self.update_quality_summary()
@@ -2902,6 +3348,13 @@ class MainWindow(QMainWindow):
         return max(1, min(64, int(DEFAULT_CP_WORKERS)))
 
     def on_solver_output_ready(self) -> None:
+        sender_proc = self.sender()
+        if (
+            sender_proc is not None
+            and self.proc is not None
+            and sender_proc is not self.proc
+        ):
+            return
         if self.proc is None:
             return
         try:
@@ -3078,6 +3531,7 @@ class MainWindow(QMainWindow):
         self._render_empty_calendar(None, None)
         self._cell_activity_map = {}
         self._held_move_analysis_map = {}
+        self._invalidate_held_analysis_cache()
         self.selected_cell_row = None
         self.selected_cell_col = None
         self.selected_activity_id = None
@@ -3130,7 +3584,9 @@ class MainWindow(QMainWindow):
         if week is None:
             self.set_status("Select a week first")
             return
-        analysis_map = self._build_held_move_analysis(week)
+        analysis_map = self._build_held_move_analysis(
+            week, compute_scores=True, include_conflicts=False
+        )
         valid_targets: List[str] = []
         for d in self.inst.days:
             for s in range(self.inst.slots_per_day):
@@ -3363,6 +3819,7 @@ class MainWindow(QMainWindow):
         }
         held = state.get("held_activity_id")
         self.held_activity_id = int(held) if held is not None else None
+        self._bump_schedule_revision()
         self._sync_instance_activity_weeks_from_schedule(self.current_schedule)
         self._sync_instance_staff_from_schedule(self.current_schedule)
         self._sync_locks_to_instance()
@@ -3392,6 +3849,7 @@ class MainWindow(QMainWindow):
         self.redo_button.setEnabled(bool(self._redo_stack))
         self.revert_button.setEnabled(bool(self.base_schedule))
         self.conflicts_button.setEnabled(bool(self.current_schedule))
+        self._refresh_history_view()
 
     def _sync_locks_to_instance(self) -> None:
         if self.inst is None:
@@ -3431,6 +3889,214 @@ class MainWindow(QMainWindow):
         return self._validate_schedule_hard_errors(
             self.current_schedule, require_all=True
         )
+
+    def _activity_conflict_context(self, a_id: int) -> str:
+        inst = self.inst
+        info = self.current_schedule.get(int(a_id))
+        if inst is None or info is None:
+            return f"A{int(a_id)}"
+
+        room_id = info.get("room_id")
+        room_name = "Unassigned"
+        if room_id is not None:
+            room = inst.rooms.get(int(room_id))
+            if room is not None:
+                room_name = f"{room.name} [id {int(room_id)}]"
+            else:
+                room_name = f"R{int(room_id)}"
+
+        staff_id = info.get("staff_id")
+        staff_name = "Unknown"
+        if staff_id is not None:
+            staff = inst.staff.get(int(staff_id))
+            if staff is not None:
+                staff_name = f"{staff.name} [id {int(staff_id)}]"
+            else:
+                staff_name = f"S{int(staff_id)}"
+
+        group_parts: List[str] = []
+        for g_id in info.get("group_ids", []) or []:
+            try:
+                gid = int(g_id)
+            except Exception:
+                continue
+            grp = inst.groups.get(gid)
+            if grp is not None:
+                group_parts.append(f"{grp.name} [id {gid}]")
+            else:
+                group_parts.append(f"G{gid}")
+        group_text = ", ".join(group_parts) if group_parts else "-"
+
+        day = str(info.get("day", "?"))
+        slot = int(info.get("slot", 0)) + 1
+        week = int(info.get("week", 0))
+        return (
+            f"A{int(a_id)} @ W{week} {day} S{slot} | "
+            f"room={room_name} | staff={staff_name} | groups={group_text}"
+        )
+
+    def _humanize_conflict_error(self, message: str) -> str:
+        msg = str(message or "")
+
+        def _slot_repl(match: re.Match[str]) -> str:
+            try:
+                raw_slot = int(match.group(1))
+            except Exception:
+                return match.group(0)
+            return f"slot S{raw_slot + 1}"
+
+        text = re.sub(r"\bslot\s+(-?\d+)\b", _slot_repl, msg)
+        activity_ids: List[int] = []
+        for token in re.findall(r"\bA(\d+)\b", text):
+            try:
+                a_id = int(token)
+            except Exception:
+                continue
+            if a_id not in activity_ids:
+                activity_ids.append(a_id)
+
+        if not activity_ids:
+            return text
+
+        details: List[str] = []
+        for a_id in activity_ids[:2]:
+            details.append(self._activity_conflict_context(a_id))
+
+        if len(activity_ids) >= 2:
+            a0 = self.current_schedule.get(int(activity_ids[0]), {})
+            a1 = self.current_schedule.get(int(activity_ids[1]), {})
+            lower = text.lower()
+            if "group overlap" in lower:
+                shared = sorted(
+                    set(int(g) for g in (a0.get("group_ids") or []))
+                    & set(int(g) for g in (a1.get("group_ids") or []))
+                )
+                if shared:
+                    grp_labels: List[str] = []
+                    if self.inst is not None:
+                        for gid in shared:
+                            grp = self.inst.groups.get(int(gid))
+                            grp_labels.append(
+                                f"{grp.name} [id {int(gid)}]"
+                                if grp is not None
+                                else f"G{int(gid)}"
+                            )
+                    else:
+                        grp_labels = [f"G{int(gid)}" for gid in shared]
+                    details.append("shared groups=" + ", ".join(grp_labels))
+            if "room overlap" in lower:
+                rid0 = a0.get("room_id")
+                rid1 = a1.get("room_id")
+                if rid0 is not None and rid1 is not None and int(rid0) == int(rid1):
+                    room_desc = f"R{int(rid0)}"
+                    if self.inst is not None:
+                        room = self.inst.rooms.get(int(rid0))
+                        if room is not None:
+                            room_desc = f"{room.name} [id {int(rid0)}]"
+                    details.append(f"same room={room_desc}")
+            if "staff overlap" in lower:
+                sid0 = a0.get("staff_id")
+                sid1 = a1.get("staff_id")
+                if sid0 is not None and sid1 is not None and int(sid0) == int(sid1):
+                    staff_desc = f"S{int(sid0)}"
+                    if self.inst is not None:
+                        staff = self.inst.staff.get(int(sid0))
+                        if staff is not None:
+                            staff_desc = f"{staff.name} [id {int(sid0)}]"
+                    details.append(f"same staff={staff_desc}")
+
+        return f"{text} | " + " | ".join(details)
+
+    def _jump_to_activity(self, a_id: int) -> bool:
+        if self.inst is None:
+            return False
+        info = self.current_schedule.get(int(a_id))
+        if info is None:
+            return False
+
+        week = int(info.get("week", 0))
+        day = str(info.get("day", ""))
+        slot = int(info.get("slot", 0))
+
+        week_idx = self.week_combo.findData(int(week))
+        if week_idx >= 0 and week_idx != self.week_combo.currentIndex():
+            self.week_combo.setCurrentIndex(week_idx)
+
+        all_idx = self.view_type_combo.findText("All")
+        if all_idx >= 0 and all_idx != self.view_type_combo.currentIndex():
+            self.view_type_combo.setCurrentIndex(all_idx)
+        else:
+            self.update_table()
+
+        if day not in self.inst.days:
+            return False
+        row = int(self.inst.days.index(day))
+        col = int(max(0, min(slot, int(self.inst.slots_per_day) - 1)))
+        self.selected_cell_row = row
+        self.selected_cell_col = col
+        self.selected_activity_id = int(a_id)
+        self._refresh_quick_actions()
+
+        try:
+            self.table.setCurrentCell(row, col)
+            item = self.table.item(row, col)
+            if item is not None:
+                self.table.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
+        except Exception:
+            pass
+        return True
+
+    def _solve_current_conflicts(self, errors: List[str] | None = None) -> None:
+        if self.inst is None or not self.current_schedule:
+            self.set_status("No schedule to repair")
+            return
+        if self.proc is not None:
+            QMessageBox.warning(self, "Busy", "Solver already running.")
+            return
+
+        raw_errors = list(errors or self._collect_conflict_errors())
+        if not raw_errors:
+            self.set_status("No hard conflicts to solve")
+            return
+
+        conflict_ids: Set[int] = set()
+        for err in raw_errors:
+            for token in re.findall(r"\bA(\d+)\b", str(err)):
+                try:
+                    conflict_ids.add(int(token))
+                except Exception:
+                    continue
+
+        if not conflict_ids:
+            self.set_status("Could not map conflicts to activities; running full solve")
+            self.on_solve()
+            return
+
+        prior_locks = {
+            int(a_id): dict(lock)
+            for a_id, lock in self.locked_activities.items()
+            if isinstance(lock, dict)
+        }
+        freeze_locks = build_freeze_locks(
+            self.current_schedule,
+            unlocked_activity_ids=set(int(a_id) for a_id in conflict_ids),
+        )
+        self.locked_activities = freeze_locks
+        self._sync_locks_to_instance()
+        self._restore_locks_after_solve = prior_locks
+        self._append_audit_log(
+            "conflict_repair_started",
+            {
+                "conflicts": int(len(raw_errors)),
+                "conflict_activities": int(len(conflict_ids)),
+                "frozen_activities": int(len(freeze_locks)),
+            },
+        )
+        self.set_status(
+            f"Repairing conflicts: {len(raw_errors)} issue(s), "
+            f"{len(conflict_ids)} conflicting activity(ies)"
+        )
+        self._start_solver_process(keep_locks=True)
 
     def _toggle_activity_lock(self, a_id: int, *, time_lock: bool) -> None:
         if a_id not in self.current_schedule:
@@ -3491,6 +4157,23 @@ class MainWindow(QMainWindow):
         source = self.current_schedule if schedule is None else schedule
         return {a_id: info.copy() for a_id, info in source.items()}
 
+    def _invalidate_held_analysis_cache(self) -> None:
+        self._held_analysis_cache_key = None
+        self._held_analysis_cache_value = {}
+
+    def _bump_schedule_revision(self) -> None:
+        self._schedule_revision = int(self._schedule_revision) + 1
+        self._invalidate_held_analysis_cache()
+        self._conflict_ids_cache_revision = -1
+        self._conflict_ids_cache = set()
+
+    def _schedule_cache_token(
+        self, schedule: Dict[int, Dict[str, Any]]
+    ) -> Tuple[str, Any]:
+        if schedule is self.current_schedule:
+            return ("current", int(self._schedule_revision))
+        return ("override", id(schedule))
+
     def _set_manual_highlight_base(
         self, schedule: Dict[int, Dict[str, Any]] | None = None
     ) -> None:
@@ -3507,7 +4190,13 @@ class MainWindow(QMainWindow):
         if self.inst is None:
             return None
         try:
-            return int(LocalSearchImprover(self.inst).compute_soft_penalty(schedule))
+            if (
+                self._soft_penalty_improver is None
+                or self._soft_penalty_improver_inst_ref is not self.inst
+            ):
+                self._soft_penalty_improver = LocalSearchImprover(self.inst)
+                self._soft_penalty_improver_inst_ref = self.inst
+            return int(self._soft_penalty_improver.compute_soft_penalty(schedule))
         except Exception:
             return None
 
@@ -3660,6 +4349,7 @@ class MainWindow(QMainWindow):
         if a_id not in self.current_schedule:
             return
         self.held_activity_id = int(a_id)
+        self._invalidate_held_analysis_cache()
         held_week = int(self.current_schedule[a_id]["week"])
         idx = self.week_combo.findData(held_week)
         if idx >= 0:
@@ -3680,6 +4370,7 @@ class MainWindow(QMainWindow):
             return
         held = self.held_activity_id
         self.held_activity_id = None
+        self._invalidate_held_analysis_cache()
         self.update_table()
         self._refresh_quick_actions()
         self.set_status(f"Released held activity A{held}")
@@ -3690,7 +4381,10 @@ class MainWindow(QMainWindow):
         schedule_override: Dict[int, Dict[str, Any]] | None = None,
     ) -> Dict[Tuple[str, int], bool]:
         analysis_map = self._build_held_move_analysis(
-            week, schedule_override=schedule_override
+            week,
+            schedule_override=schedule_override,
+            compute_scores=False,
+            include_conflicts=False,
         )
         return {
             key: bool(info.get("ok", False)) for key, info in analysis_map.items()
@@ -3700,6 +4394,9 @@ class MainWindow(QMainWindow):
         self,
         week: int,
         schedule_override: Dict[int, Dict[str, Any]] | None = None,
+        *,
+        compute_scores: bool = True,
+        include_conflicts: bool = True,
     ) -> Dict[Tuple[str, int], Dict[str, Any]]:
         inst = self.inst
         if inst is None or self.held_activity_id is None:
@@ -3714,7 +4411,22 @@ class MainWindow(QMainWindow):
         current_slot = int(info["slot"])
         room_id = int(info["room_id"])
         staff_id = int(info["staff_id"])
-        base_penalty = self._compute_soft_penalty(schedule)
+        cache_key = (
+            self._schedule_cache_token(schedule),
+            int(a_id),
+            int(week),
+            int(origin_week),
+            str(current_day),
+            int(current_slot),
+            int(room_id),
+            int(staff_id),
+            int(bool(compute_scores)),
+            int(bool(include_conflicts)),
+        )
+        if self._held_analysis_cache_key == cache_key:
+            return self._held_analysis_cache_value
+
+        base_penalty = self._compute_soft_penalty(schedule) if compute_scores else None
         analysis: Dict[Tuple[str, int], Dict[str, Any]] = {}
         for day in inst.days:
             for slot in range(inst.slots_per_day):
@@ -3731,13 +4443,13 @@ class MainWindow(QMainWindow):
                 details: Dict[str, Any] = {
                     "ok": bool(ok),
                     "reason": "",
-                    "conflicts": [],
+                    "conflicts": [] if include_conflicts else None,
                     "score_current": base_penalty,
                     "score_after": None,
                     "score_delta": None,
                 }
                 if ok:
-                    if base_penalty is not None:
+                    if compute_scores and base_penalty is not None:
                         if (
                             int(week) == int(origin_week)
                             and str(day) == current_day
@@ -3756,17 +4468,52 @@ class MainWindow(QMainWindow):
                     analysis[day_slot] = details
                     continue
                 details["reason"] = str(reason or "")
-                details["conflicts"] = self._find_move_conflicts(
-                    a_id,
-                    str(day),
-                    int(slot),
-                    room_id,
-                    staff_id,
-                    int(week),
-                    schedule_override=schedule,
-                )
+                if include_conflicts:
+                    details["conflicts"] = self._find_move_conflicts(
+                        a_id,
+                        str(day),
+                        int(slot),
+                        room_id,
+                        staff_id,
+                        int(week),
+                        schedule_override=schedule,
+                    )
                 analysis[day_slot] = details
+        self._held_analysis_cache_key = cache_key
+        self._held_analysis_cache_value = analysis
         return analysis
+
+    def _ensure_held_analysis_conflicts(
+        self,
+        *,
+        day: str,
+        slot: int,
+        week: int,
+        schedule_override: Dict[int, Dict[str, Any]] | None = None,
+    ) -> List[Dict[str, Any]]:
+        analysis = self._held_move_analysis_map.get((str(day), int(slot)))
+        if analysis is None or bool(analysis.get("ok", False)):
+            return []
+        existing = analysis.get("conflicts")
+        if isinstance(existing, list):
+            return existing
+        if self.held_activity_id is None:
+            return []
+        schedule = self.current_schedule if schedule_override is None else schedule_override
+        info = schedule.get(int(self.held_activity_id))
+        if info is None:
+            return []
+        conflicts = self._find_move_conflicts(
+            int(self.held_activity_id),
+            str(day),
+            int(slot),
+            int(info["room_id"]),
+            int(info["staff_id"]),
+            int(week),
+            schedule_override=schedule,
+        )
+        analysis["conflicts"] = list(conflicts)
+        return conflicts
 
     def _build_cell_tooltip(
         self,
@@ -3817,7 +4564,13 @@ class MainWindow(QMainWindow):
                         current_score = analysis.get("score_current")
                         if isinstance(current_score, int):
                             lines.append(f"Current soft penalty: {int(current_score)}")
-                        conflicts = analysis.get("conflicts") or []
+                        conflicts = analysis.get("conflicts")
+                        if not isinstance(conflicts, list):
+                            conflicts = self._ensure_held_analysis_conflicts(
+                                day=str(day),
+                                slot=int(col),
+                                week=int(week),
+                            )
                         if conflicts:
                             lines.append("Conflicts if moved here:")
                             for conflict in conflicts[:8]:
@@ -3921,6 +4674,7 @@ class MainWindow(QMainWindow):
         before_penalty = self._compute_soft_penalty(self.current_schedule)
         after_penalty = self._compute_soft_penalty(schedule)
         self.current_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
+        self._bump_schedule_revision()
         self._sync_instance_activity_weeks_from_schedule(self.current_schedule)
         self._sync_instance_staff_from_schedule(self.current_schedule)
         self._sync_locks_to_instance()
@@ -4243,14 +4997,24 @@ class MainWindow(QMainWindow):
         move_week = int(info["week"]) if target_week is None else int(target_week)
         room_id = int(info["room_id"])
         staff_id = int(info["staff_id"])
-        ok, reason = self.check_move(
-            held_id,
-            str(target_day),
-            int(target_slot),
-            room_id,
-            staff_id,
-            move_week,
-        )
+        cached_analysis = None
+        current_week = self._current_week()
+        if current_week is not None and int(current_week) == int(move_week):
+            cached_analysis = self._held_move_analysis_map.get(
+                (str(target_day), int(target_slot))
+            )
+        if isinstance(cached_analysis, dict):
+            ok = bool(cached_analysis.get("ok", False))
+            reason = str(cached_analysis.get("reason") or "")
+        else:
+            ok, reason = self.check_move(
+                held_id,
+                str(target_day),
+                int(target_slot),
+                room_id,
+                staff_id,
+                move_week,
+            )
         if ok:
             schedule = self._clone_schedule()
             schedule[held_id]["week"] = int(move_week)
@@ -4264,14 +5028,24 @@ class MainWindow(QMainWindow):
             )
             return
 
-        conflicts = self._find_move_conflicts(
-            held_id,
-            str(target_day),
-            int(target_slot),
-            room_id,
-            staff_id,
-            int(move_week),
-        )
+        conflicts = []
+        if isinstance(cached_analysis, dict):
+            conflicts = cached_analysis.get("conflicts")
+            if not isinstance(conflicts, list):
+                conflicts = self._ensure_held_analysis_conflicts(
+                    day=str(target_day),
+                    slot=int(target_slot),
+                    week=int(move_week),
+                )
+        else:
+            conflicts = self._find_move_conflicts(
+                held_id,
+                str(target_day),
+                int(target_slot),
+                room_id,
+                staff_id,
+                int(move_week),
+            )
         if not conflicts:
             explanation = build_move_explanation_text(
                 activity_id=int(held_id),
@@ -4489,6 +5263,7 @@ class MainWindow(QMainWindow):
         self.current_schedule = {}
         self.locked_activities = {}
         self.held_activity_id = None
+        self._bump_schedule_revision()
         self._reset_history()
         self.set_status(f"Instance generated ({mode})")
         self.populate_weeks()
@@ -4502,13 +5277,59 @@ class MainWindow(QMainWindow):
         )
         self._save_persistent_history()
 
-    def _start_solver_process(self, *, keep_locks: bool) -> None:
+    def _cleanup_solver_temp_files(self) -> None:
+        for path in (self.tmp_inst_path, self.tmp_res_path):
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+        self.tmp_inst_path = None
+        self.tmp_res_path = None
+
+    @staticmethod
+    def _is_access_violation_exit_code(exit_code: int) -> bool:
+        return int(exit_code) in {-1073741819, 3221225477}
+
+    @staticmethod
+    def _is_solver_process_crash_error(error: Any) -> bool:
+        try:
+            if int(error) == int(QProcess.ProcessError.Crashed):
+                return True
+        except Exception:
+            pass
+        name = str(getattr(error, "name", "") or "").lower()
+        return "crash" in name
+
+    def _retry_solver_once_in_safe_mode(self, *, reason: str, detail: Dict[str, Any]) -> bool:
+        if not getattr(sys, "frozen", False):
+            return False
+        if self._solver_safe_retry_used:
+            return False
+        self._solver_safe_retry_used = True
+        payload: Dict[str, Any] = {"reason": str(reason)}
+        payload.update({str(k): v for k, v in detail.items()})
+        self._append_audit_log("solve_crash_safe_retry", payload)
+        self._cleanup_solver_temp_files()
+        self.set_status(
+            "Solver worker crashed (native dependency). Retrying once in safe mode..."
+        )
+        self._start_solver_process(
+            keep_locks=bool(self._last_solver_keep_locks),
+            retry_safe=True,
+        )
+        return True
+
+    def _start_solver_process(self, *, keep_locks: bool, retry_safe: bool = False) -> None:
         if self.inst is None:
             self.set_status("Generate instance first")
             return
         if self.proc is not None:
             QMessageBox.warning(self, "Busy", "Solver already running.")
             return
+        if not retry_safe:
+            self._solver_safe_retry_used = False
+        self._last_solver_keep_locks = bool(keep_locks)
 
         if not keep_locks:
             self.locked_activities = {}
@@ -4535,11 +5356,22 @@ class MainWindow(QMainWindow):
 
         self.proc = QProcess(self)
         if getattr(sys, "frozen", False):
-            # In packaged mode, reuse the same executable in CLI-worker mode.
-            self.proc.setProgram(sys.executable)
-            self.proc.setArguments(
-                ["--engine-cli", self.tmp_inst_path, self.tmp_res_path]
-            )
+            # In packaged mode, prefer a dedicated worker executable to avoid
+            # self-spawn edge-cases with native solver dependencies.
+            exe_dir = os.path.dirname(sys.executable)
+            worker_exe = os.path.join(exe_dir, "SchedulerEngine.exe")
+            if os.path.exists(worker_exe):
+                self.proc.setProgram(worker_exe)
+                self.proc.setArguments([self.tmp_inst_path, self.tmp_res_path])
+            else:
+                self.proc.setProgram(sys.executable)
+                self.proc.setArguments(
+                    ["--engine-cli", self.tmp_inst_path, self.tmp_res_path]
+                )
+            try:
+                self.proc.setWorkingDirectory(exe_dir)
+            except Exception:
+                pass
         else:
             python_exe = sys.executable
             base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -4554,9 +5386,14 @@ class MainWindow(QMainWindow):
         time_limit_seconds = float(self.time_limit_spin.value())
         objective_on = self.objective_cb.isChecked()
         room_mode = "cp_rooms" if self.room_mode_combo.currentIndex() == 0 else "greedy"
+        worker_count = int(self._selected_worker_count())
+        if retry_safe:
+            objective_on = False
+            room_mode = "greedy"
+            worker_count = 1
         env_map["TT_ROOM_MODE"] = room_mode
         env_map["TT_TIME_LIMIT"] = str(self.time_limit_spin.value())
-        env_map["TT_CP_WORKERS"] = str(self._selected_worker_count())
+        env_map["TT_CP_WORKERS"] = str(int(worker_count))
         env_map["TT_USE_OBJECTIVE"] = "1" if objective_on else "0"
         phased_enabled = bool(objective_on)
         feasibility_seconds = float(time_limit_seconds)
@@ -4578,6 +5415,11 @@ class MainWindow(QMainWindow):
             phased_enabled = False
         # ensure the worker can import core/utils modules
         env_map["PYTHONPATH"] = os.pathsep.join([os.path.dirname(os.path.dirname(os.path.abspath(__file__))), env_map.get("PYTHONPATH", "")])
+        if getattr(sys, "frozen", False):
+            bundle_dir = str(getattr(sys, "_MEIPASS", "") or "")
+            exe_dir = os.path.dirname(sys.executable)
+            path_parts = [p for p in [bundle_dir, exe_dir, env_map.get("PATH", "")] if p]
+            env_map["PATH"] = os.pathsep.join(path_parts)
         try:
             from PyQt6.QtCore import QProcessEnvironment
 
@@ -4616,8 +5458,10 @@ class MainWindow(QMainWindow):
 
         self.set_busy(True)
         lock_count = len(self.locked_activities)
+        mode_hint = " [safe retry]" if retry_safe else ""
         self.set_status(
             "Solving in external process..."
+            + mode_hint
             + (f" (locks={lock_count})" if lock_count else "")
         )
         self._start_solve_progress()
@@ -4719,6 +5563,7 @@ class MainWindow(QMainWindow):
         self.current_schedule = {a_id: info.copy() for a_id, info in filtered.items()}
         self._set_manual_highlight_base(self.current_schedule)
         self.held_activity_id = None
+        self._bump_schedule_revision()
         self._reset_history()
         errors = validate_schedule_against_instance(
             self.inst,
@@ -4735,6 +5580,7 @@ class MainWindow(QMainWindow):
             self._set_manual_highlight_base({})
             self.current_schedule = {}
             self.held_activity_id = None
+            self._bump_schedule_revision()
             self.clear_table()
             self.set_status("Load error")
             return
@@ -4827,6 +5673,21 @@ class MainWindow(QMainWindow):
     def on_sandbox_apply(self) -> None:
         if self._sandbox_base_schedule is None:
             self.set_status("No sandbox branch active")
+            return
+        sandbox_errors = self._validate_schedule_hard_errors(
+            self.current_schedule, require_all=True
+        )
+        if sandbox_errors:
+            sample = "\n".join(f"- {line}" for line in sandbox_errors[:10])
+            QMessageBox.warning(
+                self,
+                "Sandbox apply blocked",
+                "Current sandbox state has hard conflicts and cannot become base.\n\n"
+                f"Conflicts: {len(sandbox_errors)}\n{sample}",
+            )
+            self.set_status(
+                f"Sandbox apply blocked: {len(sandbox_errors)} hard conflicts"
+            )
             return
         self.base_schedule = self._clone_schedule()
         self._set_manual_highlight_base(self.current_schedule)
@@ -4999,11 +5860,27 @@ class MainWindow(QMainWindow):
         if not self.base_schedule:
             self.set_status("No base solution to revert to")
             return
+        base_errors = self._validate_schedule_hard_errors(
+            self.base_schedule, require_all=False
+        )
+        if base_errors:
+            sample = "\n".join(f"- {line}" for line in base_errors[:10])
+            QMessageBox.warning(
+                self,
+                "Revert blocked",
+                "Base schedule currently has hard conflicts and was not applied.\n\n"
+                f"Conflicts: {len(base_errors)}\n{sample}",
+            )
+            self.set_status(
+                f"Revert blocked: base has {len(base_errors)} hard conflicts"
+            )
+            return
         self._push_undo_state()
         self.current_schedule = {a_id: info.copy() for a_id, info in self.base_schedule.items()}
         self._set_manual_highlight_base(self.current_schedule)
         self.locked_activities = {}
         self.held_activity_id = None
+        self._bump_schedule_revision()
         self._sync_instance_activity_weeks_from_schedule(self.current_schedule)
         self._sync_instance_staff_from_schedule(self.current_schedule)
         self._sync_locks_to_instance()
@@ -5022,11 +5899,20 @@ class MainWindow(QMainWindow):
             )
             self.set_status("No hard conflicts")
             return
-        dlg = ConflictInspectorDialog(self, errors)
+        friendly_errors = [self._humanize_conflict_error(err) for err in errors]
+        dlg = ConflictInspectorDialog(self, friendly_errors)
         if dlg.exec() == QDialog.DialogCode.Accepted:
+            if dlg.solve_conflicts_requested():
+                self._solve_current_conflicts(errors)
+                return
             activity_id = dlg.selected_activity_id()
             if activity_id is not None:
-                self.set_status(f"Conflict selected: A{int(activity_id)}")
+                if self._jump_to_activity(int(activity_id)):
+                    self.set_status(f"Jumped to conflict activity A{int(activity_id)}")
+                else:
+                    self.set_status(
+                        f"Conflict selected: A{int(activity_id)} (unable to jump)"
+                    )
                 return
         self.set_status(f"Conflicts found: {len(errors)}")
 
@@ -5053,25 +5939,68 @@ class MainWindow(QMainWindow):
         self._refresh_history_buttons()
 
     def on_solver_error(self, error):
+        sender_proc = self.sender()
+        if (
+            sender_proc is not None
+            and self.proc is not None
+            and sender_proc is not self.proc
+        ):
+            return
+        proc = self.proc
         self.set_busy(False)
         self._stop_solve_progress()
         output = str(self._solver_output_log or "")
-        if self.proc is not None:
+        if proc is not None:
             try:
-                output += self.proc.readAll().data().decode("utf-8", errors="ignore")
+                output += proc.readAll().data().decode("utf-8", errors="ignore")
             except Exception:
                 pass
-        QMessageBox.critical(
-            self, "Solver error", output or f"QProcess error: {error}"
-        )
-        self._append_audit_log("solve_error", {"error": str(error)})
-        self._restore_locks_if_needed()
         self.proc = None
         self._solver_output_log = ""
+        if (
+            self._is_solver_process_crash_error(error)
+            and self._retry_solver_once_in_safe_mode(
+                reason="qprocess_error",
+                detail={
+                    "error": str(error),
+                    "keep_locks": bool(self._last_solver_keep_locks),
+                },
+            )
+        ):
+            if proc is not None:
+                try:
+                    proc.deleteLater()
+                except Exception:
+                    pass
+            return
+
+        msg = output or f"QProcess error: {error}"
+        if self._is_solver_process_crash_error(error):
+            msg += (
+                "\n\nNative worker crash detected.\n"
+                "Try: workers=Min, objective off, or reinstall the packaged app."
+            )
+        QMessageBox.critical(self, "Solver error", msg)
+        self._append_audit_log("solve_error", {"error": str(error)})
+        self._restore_locks_if_needed()
+        if proc is not None:
+            try:
+                proc.deleteLater()
+            except Exception:
+                pass
+        self._cleanup_solver_temp_files()
         self.set_status("Solve error")
 
     def on_solver_finished(self, exit_code: int, exit_status):
-        if self.proc is not None:
+        sender_proc = self.sender()
+        if (
+            sender_proc is not None
+            and self.proc is not None
+            and sender_proc is not self.proc
+        ):
+            return
+        proc = self.proc
+        if proc is not None:
             try:
                 self.on_solver_output_ready()
             except Exception:
@@ -5081,22 +6010,46 @@ class MainWindow(QMainWindow):
         self._stop_solve_progress()
 
         output = str(self._solver_output_log or "")
-        if self.proc is not None:
+        if proc is not None:
             try:
-                output += self.proc.readAll().data().decode("utf-8", errors="ignore")
+                output += proc.readAll().data().decode("utf-8", errors="ignore")
             except Exception:
                 pass
         self.proc = None
         self._solver_output_log = ""
+        if proc is not None:
+            try:
+                proc.deleteLater()
+            except Exception:
+                pass
 
         if exit_code != 0:
+            if (
+                self._is_access_violation_exit_code(int(exit_code))
+                and self._retry_solver_once_in_safe_mode(
+                    reason="exit_code",
+                    detail={
+                        "exit_code": int(exit_code),
+                        "keep_locks": bool(self._last_solver_keep_locks),
+                    },
+                )
+            ):
+                return
+            msg = output or f"Solver exited with code {exit_code}"
+            if self._is_access_violation_exit_code(int(exit_code)):
+                msg += (
+                    "\n\nWindows code 0xC0000005 (access violation): "
+                    "a native dependency crashed.\n"
+                    "Try: workers=Min, objective off, or reinstall the packaged app."
+                )
             QMessageBox.critical(
                 self,
                 "Solver crashed",
-                output or f"Solver exited with code {exit_code}",
+                msg,
             )
             self._append_audit_log("solve_crash", {"exit_code": int(exit_code)})
             self._restore_locks_if_needed()
+            self._cleanup_solver_temp_files()
             self.set_status(f"Solver failed (code {exit_code})")
             return
 
@@ -5104,6 +6057,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Result error", "Result file not found.")
             self._append_audit_log("solve_result_missing", {})
             self._restore_locks_if_needed()
+            self._cleanup_solver_temp_files()
             self.set_status("Solve error")
             return
 
@@ -5115,21 +6069,11 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Result error", f"Cannot read result: {e}")
             self._append_audit_log("solve_result_read_error", {"error": str(e)})
             self._restore_locks_if_needed()
+            self._cleanup_solver_temp_files()
             self.set_status("Solve error")
             return
         finally:
-            if self.tmp_inst_path and os.path.exists(self.tmp_inst_path):
-                try:
-                    os.remove(self.tmp_inst_path)
-                except OSError:
-                    pass
-            if self.tmp_res_path and os.path.exists(self.tmp_res_path):
-                try:
-                    os.remove(self.tmp_res_path)
-                except OSError:
-                    pass
-            self.tmp_inst_path = None
-            self.tmp_res_path = None
+            self._cleanup_solver_temp_files()
 
         status = res.get("status", -1)
         if status not in (0, 4):  # 0=FEASIBLE, 4=OPTIMAL
@@ -5137,6 +6081,7 @@ class MainWindow(QMainWindow):
             self._set_manual_highlight_base({})
             self.current_schedule = {}
             self.held_activity_id = None
+            self._bump_schedule_revision()
             self._reset_history()
             self.clear_table()
             self.set_status(f"No feasible schedule (status {status})")
@@ -5165,6 +6110,7 @@ class MainWindow(QMainWindow):
             self._set_manual_highlight_base({})
             self.current_schedule = {}
             self.held_activity_id = None
+            self._bump_schedule_revision()
             self._reset_history()
             self.clear_table()
             self.set_status(
@@ -5189,6 +6135,7 @@ class MainWindow(QMainWindow):
         }
         self._set_manual_highlight_base(self.current_schedule)
         self.held_activity_id = None
+        self._bump_schedule_revision()
         self._reset_history()
         attempts = self._format_solver_attempts(res)
         final_attempt = attempts[-1] if attempts else ""
@@ -5217,6 +6164,7 @@ class MainWindow(QMainWindow):
                         a_id: info.copy() for a_id, info in improved.items()
                     }
                     self._set_manual_highlight_base(self.current_schedule)
+                    self._bump_schedule_revision()
                     status_msg = (
                         f"Solved (status {status}), soft penalty {before} -> {after}"
                     )
@@ -5246,6 +6194,21 @@ class MainWindow(QMainWindow):
             self.set_status("No schedule to improve")
             return
 
+        start_hard_errors = self._collect_conflict_errors()
+        if start_hard_errors:
+            sample = "\n".join(f"- {line}" for line in start_hard_errors[:8])
+            QMessageBox.warning(
+                self,
+                "Improve blocked",
+                "Cannot run improvement while hard constraints are violated.\n\n"
+                f"Conflicts: {len(start_hard_errors)}\n{sample}\n\n"
+                "Use Conflicts -> Solve Conflicts first.",
+            )
+            self.set_status(
+                f"Improve blocked: {len(start_hard_errors)} hard conflicts present"
+            )
+            return
+
         total_iters = int(self.improve_runs_spin.value())
         original_schedule = {
             a_id: info.copy() for a_id, info in self.current_schedule.items()
@@ -5263,6 +6226,9 @@ class MainWindow(QMainWindow):
             }
             base_pen = ls.compute_soft_penalty(best_schedule)
             best_pen = int(base_pen)
+            session_original_pen = int(base_pen)
+            live_current_pen = int(base_pen)
+            live_best_pen = int(base_pen)
 
             # Dynamic best-as-base: each round starts from the latest accepted best schedule.
             round_iters = max(25, min(250, max(1, total_iters // 10)))
@@ -5271,7 +6237,11 @@ class MainWindow(QMainWindow):
             if max_seconds:
                 round_seconds = min(2.0, max(0.25, float(max_seconds) / 8.0))
 
-            self.set_status(f"Improving... 0% (target {total_iters} iters)")
+            self.set_status(
+                "Improving... 0% "
+                f"(iter 0/{total_iters}, original={session_original_pen}, "
+                f"current={live_current_pen}, best={live_best_pen})"
+            )
 
             progress_every = 1
             render_interval_s = 0.45
@@ -5307,10 +6277,17 @@ class MainWindow(QMainWindow):
                     **kwargs: Any,
                 ) -> None:
                     nonlocal last_render_ts, last_quality_ts, round_progress_done
+                    nonlocal live_current_pen, live_best_pen
                     if self._improve_stop_requested:
                         return
                     round_progress_done = max(round_progress_done, int(it_done))
                     global_iter = min(total_iters, round_offset + int(it_done))
+                    live_current_pen = int(cur_pen)
+                    live_best_pen = min(
+                        int(live_best_pen),
+                        int(round_best_pen),
+                        int(best_pen),
+                    )
                     pct_iter = float(global_iter) / max(1.0, float(total_iters))
                     pct_time = 0.0
                     if max_seconds:
@@ -5319,7 +6296,9 @@ class MainWindow(QMainWindow):
                     pct = int(min(99.0, max(float(pct_iter), float(pct_time)) * 100.0))
                     msg = (
                         f"Improving... {pct}% "
-                        f"(iter {global_iter}/{total_iters}, best={round_best_pen}, current={cur_pen})"
+                        f"(iter {global_iter}/{total_iters}, "
+                        f"original={session_original_pen}, "
+                        f"current={live_current_pen}, best={live_best_pen})"
                     )
                     self._status_full_text = msg
                     self._refresh_status_label()
@@ -5380,6 +6359,7 @@ class MainWindow(QMainWindow):
                         a_id: info.copy() for a_id, info in candidate.items()
                     }
                     best_pen = int(candidate_pen)
+                    live_best_pen = min(int(live_best_pen), int(best_pen))
 
                 # Keep live view synced with the best accepted state between rounds.
                 self.current_schedule = {
@@ -5626,6 +6606,7 @@ class MainWindow(QMainWindow):
         self.current_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
         self._set_manual_highlight_base(self.current_schedule)
         self.held_activity_id = None
+        self._bump_schedule_revision()
         self._reset_history()
         self._load_constraint_controls_from_instance(self.inst)
 
@@ -5739,6 +6720,7 @@ class MainWindow(QMainWindow):
         self._set_manual_highlight_base({})
         self.current_schedule = {}
         self.held_activity_id = None
+        self._bump_schedule_revision()
         self._reset_history()
         self._load_constraint_controls_from_instance(self.inst)
         self.populate_weeks()
@@ -5905,7 +6887,12 @@ class MainWindow(QMainWindow):
                     if 0 <= s < S:
                         cell_entries[(day, s)].append((int(a_id), label, detail))
 
-            conflict_ids = self._compute_conflicting_activity_ids(self.current_schedule)
+            if self._conflict_ids_cache_revision != int(self._schedule_revision):
+                self._conflict_ids_cache = self._compute_conflicting_activity_ids(
+                    self.current_schedule
+                )
+                self._conflict_ids_cache_revision = int(self._schedule_revision)
+            conflict_ids = set(self._conflict_ids_cache)
             changed_ids = {
                 int(a_id)
                 for a_id in self.current_schedule.keys()
@@ -5925,7 +6912,11 @@ class MainWindow(QMainWindow):
                 hasattr(self, "show_score_deltas_cb") and self.show_score_deltas_cb.isChecked()
             )
             if held_week_ok:
-                self._held_move_analysis_map = self._build_held_move_analysis(week)
+                self._held_move_analysis_map = self._build_held_move_analysis(
+                    week,
+                    compute_scores=bool(show_score_deltas),
+                    include_conflicts=False,
+                )
                 held_target_map = {
                     key: bool(v.get("ok", False))
                     for key, v in self._held_move_analysis_map.items()
@@ -6005,7 +6996,7 @@ class MainWindow(QMainWindow):
                                 item.setBackground(QBrush(color_valid_target_worse))
                             else:
                                 item.setBackground(QBrush(color_valid_target))
-                        elif analysis is not None and (analysis.get("conflicts") or []):
+                        elif analysis is not None and not bool(analysis.get("ok", False)):
                             item.setBackground(QBrush(color_conflict_target))
                     elif ids and any(int(a_id) in changed_ids for a_id in ids):
                         item.setBackground(QBrush(color_changed))
@@ -6438,10 +7429,12 @@ class MainWindow(QMainWindow):
             w = int(info["week"]) if new_week is None else int(new_week)
         except Exception:
             return False, "Invalid week."
-        if int(w) not in set(int(x) for x in inst.weeks):
+        week_set = {int(x) for x in inst.weeks}
+        if int(w) not in week_set:
             return False, "Unknown week."
-        dur = info["duration"]
+        dur = int(info["duration"])
         groups = info["group_ids"]
+        group_set = {int(g) for g in groups}
         hard_flags = getattr(inst, "hard_constraints", {}) or {}
 
         def _flag(name: str, default: bool = True) -> bool:
@@ -6554,7 +7547,7 @@ class MainWindow(QMainWindow):
                             return False, "Block-only professor lecture slots must be contiguous."
 
         room = inst.rooms[new_room_id]
-        total_students = sum(inst.groups[g].size for g in groups)
+        total_students = sum(inst.groups[int(g)].size for g in groups)
         if room.capacity < total_students:
             return False, "Room capacity too small."
         if _flag("enforce_room_availability", True) and room.availability is not None:
@@ -6574,7 +7567,7 @@ class MainWindow(QMainWindow):
             if room.room_type not in ("LECTURE", "TUTORIAL"):
                 return False, "Tutorial must use a lecture/tutorial room."
 
-        new_slots = set(range(new_slot, new_slot + dur))
+        new_slots = set(range(int(new_slot), int(new_slot) + int(dur)))
         for b_id, b in schedule.items():
             if b_id == a_id:
                 continue
@@ -6587,7 +7580,7 @@ class MainWindow(QMainWindow):
                 return False, f"Staff conflict with A{b_id}."
             if b["room_id"] == new_room_id:
                 return False, f"Room conflict with A{b_id}."
-            if set(groups) & set(b["group_ids"]):
+            if any(int(g) in group_set for g in b["group_ids"]):
                 return False, f"Group conflict with A{b_id}."
 
         return True, ""

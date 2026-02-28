@@ -155,3 +155,64 @@ def test_quick_explain_move_shows_message(monkeypatch, qt_app):
     finally:
         win.close()
         win.deleteLater()
+
+
+def test_held_analysis_uses_cache_for_repeated_requests(monkeypatch, qt_app):
+    win = ui_window.MainWindow()
+    try:
+        inst = generate_instance("small_demo")
+        win.inst = inst
+        win.current_schedule = _build_single_activity_schedule(inst)
+        held_id = next(iter(win.current_schedule.keys()))
+        win.held_activity_id = int(held_id)
+        week = int(win.current_schedule[held_id]["week"])
+
+        calls = {"count": 0}
+
+        def fake_check_move(*args, **kwargs):
+            calls["count"] += 1
+            return True, ""
+
+        monkeypatch.setattr(win, "check_move", fake_check_move)
+        first = win._build_held_move_analysis(
+            week, compute_scores=False, include_conflicts=False
+        )
+        after_first = int(calls["count"])
+        second = win._build_held_move_analysis(
+            week, compute_scores=False, include_conflicts=False
+        )
+        assert first is second
+        assert int(calls["count"]) == after_first
+    finally:
+        win.close()
+        win.deleteLater()
+
+
+def test_held_conflicts_are_lazily_computed(monkeypatch, qt_app):
+    win = ui_window.MainWindow()
+    try:
+        inst = generate_instance("small_demo")
+        win.inst = inst
+        win.current_schedule = _build_single_activity_schedule(inst)
+        held_id = next(iter(win.current_schedule.keys()))
+        week = int(win.current_schedule[held_id]["week"])
+        win.held_activity_id = int(held_id)
+
+        monkeypatch.setattr(win, "check_move", lambda *args, **kwargs: (False, "blocked"))
+        conflict_calls = {"count": 0}
+
+        def fake_find_conflicts(*args, **kwargs):
+            conflict_calls["count"] += 1
+            return [{"activity_id": 999, "reasons": ["room"]}]
+
+        monkeypatch.setattr(win, "_find_move_conflicts", fake_find_conflicts)
+        win._held_move_analysis_map = win._build_held_move_analysis(
+            week, compute_scores=False, include_conflicts=False
+        )
+        assert int(conflict_calls["count"]) == 0
+        conflicts = win._ensure_held_analysis_conflicts(day="MON", slot=0, week=week)
+        assert conflicts
+        assert int(conflict_calls["count"]) == 1
+    finally:
+        win.close()
+        win.deleteLater()

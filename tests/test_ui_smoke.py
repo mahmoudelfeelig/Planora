@@ -8,6 +8,7 @@ import pytest
 PyQt6 = pytest.importorskip("PyQt6.QtWidgets")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication  # noqa: E402
+from PyQt6.QtCore import Qt  # noqa: E402
 
 from ui.app import MainWindow  # noqa: E402
 
@@ -56,6 +57,15 @@ def test_generate_shows_empty_calendar_before_solve(qt_app):
         assert win.current_schedule == {}
         assert win.table.rowCount() == len(win.inst.days)
         assert win.table.columnCount() == int(win.inst.slots_per_day)
+        assert (
+            win.table.horizontalScrollBarPolicy()
+            == win.table.verticalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        assert (
+            win.schedule_view_scroll.verticalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
     finally:
         win.close()
         win.deleteLater()

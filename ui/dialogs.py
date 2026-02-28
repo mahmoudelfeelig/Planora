@@ -492,6 +492,7 @@ class ConflictInspectorDialog(QDialog):
         super().__init__(parent)
         self.errors = list(errors)
         self._selected_activity_id: int | None = None
+        self._solve_conflicts_requested: bool = False
         self.setWindowTitle("Conflict Inspector")
 
         layout = QVBoxLayout(self)
@@ -517,15 +518,20 @@ class ConflictInspectorDialog(QDialog):
 
         actions = QHBoxLayout()
         self.jump_btn = QPushButton("Jump To Activity")
+        self.solve_btn = QPushButton("Solve Conflicts")
         self.close_btn = QPushButton("Close")
         actions.addWidget(self.jump_btn)
+        actions.addWidget(self.solve_btn)
         actions.addWidget(self.close_btn)
         actions.addStretch(1)
         layout.addLayout(actions)
 
         self.jump_btn.clicked.connect(self._on_jump)
+        self.solve_btn.clicked.connect(self._on_solve)
         self.close_btn.clicked.connect(self.reject)
         self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
+        if self.table.rowCount() > 0:
+            self.table.selectRow(0)
 
     @staticmethod
     def _extract_activity_id(message: str) -> int | None:
@@ -548,6 +554,8 @@ class ConflictInspectorDialog(QDialog):
 
     def _resolve_selected_activity(self) -> int | None:
         row = self.table.currentRow()
+        if row < 0 and self.table.rowCount() > 0:
+            row = 0
         if row < 0:
             return None
         for col in (0, 1):
@@ -568,10 +576,18 @@ class ConflictInspectorDialog(QDialog):
         if activity_id is None:
             return
         self._selected_activity_id = int(activity_id)
+        self._solve_conflicts_requested = False
         self.accept()
 
     def _on_cell_double_clicked(self, _row: int, _col: int) -> None:
         self._on_jump()
 
+    def _on_solve(self) -> None:
+        self._solve_conflicts_requested = True
+        self.accept()
+
     def selected_activity_id(self) -> int | None:
         return self._selected_activity_id
+
+    def solve_conflicts_requested(self) -> bool:
+        return bool(self._solve_conflicts_requested)

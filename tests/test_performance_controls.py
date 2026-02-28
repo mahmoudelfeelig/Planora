@@ -61,3 +61,35 @@ def test_local_search_does_not_move_locked_activity():
     assert out[first_id]["day"] == before["day"]
     assert out[first_id]["slot"] == before["slot"]
     assert out[first_id]["room_id"] == before["room_id"]
+
+
+def test_time_move_respects_room_availability():
+    inst, schedule = _solve_small_instance()
+    a_id = next(iter(schedule.keys()))
+    info = schedule[a_id]
+    room_id = info["room_id"]
+    assert room_id is not None
+
+    # Restrict the assigned room to the activity's current occupied slots only.
+    allowed_pairs = {
+        (str(info["day"]), int(info["slot"]) + int(off))
+        for off in range(int(info["duration"]))
+    }
+    inst.rooms[int(room_id)].availability = set(allowed_pairs)
+
+    # Pick a different candidate slot/day.
+    new_day = next((d for d in inst.days if str(d) != str(info["day"])), str(info["day"]))
+    if str(new_day) == str(info["day"]):
+        max_start = int(inst.slots_per_day) - int(info["duration"])
+        new_slot = 0 if int(info["slot"]) != 0 else max(0, max_start)
+    else:
+        new_slot = int(info["slot"])
+    if str(new_day) == str(info["day"]) and int(new_slot) == int(info["slot"]):
+        new_slot = max(0, min(int(inst.slots_per_day) - int(info["duration"]), int(info["slot"]) + 1))
+
+    improver = LocalSearchImprover(inst)
+    improver._build_state(schedule)
+    assert (
+        improver._can_place_time(schedule, int(a_id), str(new_day), int(new_slot))
+        is False
+    )
