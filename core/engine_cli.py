@@ -10,6 +10,7 @@ from typing import Dict, Any
 
 from core.solver_cp_sat import TimetableSolver, GreedyRoomingError
 from core.metaheuristics import LocalSearchImprover
+from services.quality_service import compute_penalty_breakdown, evaluate_schedule_sla
 from utils.specs import validate_schedule_against_instance
 
 
@@ -74,6 +75,18 @@ def _hard_conflict_errors(inst, schedule: Dict[int, Dict[str, Any]]) -> list[str
     )
 
 
+def _normalize_objective_profile(raw: str | None) -> str:
+    text = str(raw or "balanced").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "fast": "fast_feasible",
+        "fast_feasible": "fast_feasible",
+        "balanced": "balanced",
+        "quality": "quality_first",
+        "quality_first": "quality_first",
+    }
+    return aliases.get(text, "balanced")
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print(
@@ -102,6 +115,9 @@ def main() -> int:
             print(f"[progress] {json.dumps(msg, separators=(',', ':'))}", flush=True)
 
         room_mode = os.getenv("TT_ROOM_MODE", "cp_rooms")
+        objective_profile = _normalize_objective_profile(
+            os.getenv("TT_OBJECTIVE_PROFILE", "balanced")
+        )
         use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
         use_objective = use_objective_env not in ("0", "false", "False", "no")
         retry_without_objective = _read_bool_env("TT_RETRY_NO_OBJECTIVE", True)
@@ -114,6 +130,7 @@ def main() -> int:
         meta: dict[str, object] = {
             "attempts": attempts,
             "enforce_hard_conflict_free": bool(enforce_hard_conflict_free),
+            "objective_profile": str(objective_profile),
         }
 
         from ortools.sat.python import cp_model
@@ -174,11 +191,34 @@ def main() -> int:
         improve_max_rounds = _read_int_env("TT_IMPROVE_MAX_ROUNDS")
         if improve_max_rounds is None:
             improve_max_rounds = 12
+        if objective_profile == "fast_feasible":
+            use_objective = False
+            retry_without_objective = False
+            phased_solve = False
+            improve_total_seconds = 0.0
+        elif objective_profile == "quality_first":
+            use_objective = True
+            retry_without_objective = True
+            phased_solve = True
+            if time_limit is not None and time_limit > 0:
+                feasibility_seconds = (
+                    feasibility_seconds
+                    if feasibility_seconds is not None
+                    else max(30.0, float(time_limit) * 0.65)
+                )
+                if improve_total_seconds <= 0:
+                    improve_total_seconds = max(
+                        30.0, float(time_limit) - float(feasibility_seconds)
+                    )
+            improve_slice_seconds = max(float(improve_slice_seconds), 6.0)
+            improve_iters_per_slice = max(int(improve_iters_per_slice), 1500)
+            improve_max_rounds = max(int(improve_max_rounds), 16)
         _emit_progress(
             "run_start",
             phased=bool(phased_solve),
             room_mode=str(room_mode),
             use_objective=bool(use_objective),
+            objective_profile=str(objective_profile),
             retry_without_objective=bool(retry_without_objective),
             strict_limit_seconds=(float(strict_limit) if strict_limit is not None else None),
             time_limit_seconds=(float(time_limit) if time_limit is not None else None),
@@ -385,6 +425,16 @@ def main() -> int:
                 return 5
             print(f"[warn] strict hard-conflict gate rejected final schedule ({len(final_hard_errors)} errors)")
             return 0
+
+    try:
+        breakdown = compute_penalty_breakdown(inst, schedule)
+        meta["quality"] = {
+            "soft_penalty": int(breakdown.get("total", 0)),
+            "breakdown": dict(breakdown),
+            "sla": evaluate_schedule_sla(inst, schedule, hard_conflicts=0),
+        }
+    except Exception as e:
+        meta["quality"] = {"error": str(e)}
 
     # Persist exactly what the UI expects
     try:

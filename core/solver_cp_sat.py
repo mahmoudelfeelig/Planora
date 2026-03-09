@@ -4,6 +4,12 @@ from collections import defaultdict
 
 from ortools.sat.python import cp_model
 from utils.domain import Instance
+from utils.schedule_rules import (
+    calendar_slot_blocked,
+    generic_resources_available,
+    room_is_available,
+    room_transition_buffer,
+)
 
 
 class GreedyRoomingError(ValueError):
@@ -318,6 +324,9 @@ class TimetableSolver:
         # staff per activity: professors teach LEC, TAs teach TUT/LAB by convention
         for a_id, act in inst.activities.items():
             self.activity_staff[a_id] = act.prof_id if act.kind == "LEC" else act.ta_id
+            for resource_id in getattr(act, "resource_ids", []) or []:
+                if int(resource_id) not in getattr(inst, "generic_resources", {}) and getattr(inst, "generic_resources", {}):
+                    raise ValueError(f"Activity {a_id} references unknown generic resource {int(resource_id)}")
 
         # room pools
         for r_id, r in inst.rooms.items():
@@ -366,7 +375,17 @@ class TimetableSolver:
             for d_idx in range(self.D):
                 if d_idx not in allowed_day_idx:
                     continue
+                if calendar_slot_blocked(inst, week=int(act.week), day=str(self.days[d_idx])):
+                    continue
                 for s in range(max_start_slot + 1):
+                    if not generic_resources_available(
+                        inst,
+                        getattr(act, "resource_ids", []) or [],
+                        day=str(self.days[d_idx]),
+                        start_slot=int(s),
+                        dur=int(act.duration),
+                    ):
+                        continue
                     t = d_idx * self.S + s
                     if sunday_range and sunday_range[0] <= t <= sunday_range[1]:
                         continue
@@ -531,6 +550,23 @@ class TimetableSolver:
         for (s_id, w), ivs in self.staff_intervals_by_week.items():
             if len(ivs) > 1:
                 m.AddNoOverlap(ivs)
+        if getattr(inst, "generic_resources", None):
+            for res_id, resource in inst.generic_resources.items():
+                cap = max(1, int(getattr(resource, "capacity", 1) or 1))
+                for w in self.weeks:
+                    for tau in range(self.T_week):
+                        terms: List[cp_model.BoolVar] = []
+                        for a_id, act in inst.activities.items():
+                            if int(act.week) != int(w):
+                                continue
+                            if int(res_id) not in set(int(r) for r in (getattr(act, "resource_ids", []) or [])):
+                                continue
+                            dur = int(act.duration)
+                            for t in self.allowed_starts[a_id]:
+                                if int(t) <= int(tau) < int(t) + int(dur):
+                                    terms.append(self.x[(a_id, t)])
+                        if terms:
+                            m.Add(sum(terms) <= int(cap))
 
         if self._hard_flag("enforce_block_professor_rules", True):
             # Block staff: at most two distinct days per week
@@ -657,6 +693,31 @@ class TimetableSolver:
                         if terms:
                             m.Add(sum(terms) <= int(cap))
 
+        # Precedence rules across activities.
+        if self._hard_flag("enforce_precedence_rules", True):
+            for raw_rule in getattr(inst, "precedence_rules", []) or []:
+                if not isinstance(raw_rule, dict):
+                    continue
+                try:
+                    before_id = int(raw_rule.get("before_activity_id"))
+                    after_id = int(raw_rule.get("after_activity_id"))
+                except Exception:
+                    continue
+                if before_id not in self.start or after_id not in self.start:
+                    continue
+                before_act = inst.activities[before_id]
+                after_act = inst.activities[after_id]
+                min_gap = int(raw_rule.get("min_gap_slots", 0) or 0)
+                if int(before_act.week) > int(after_act.week):
+                    raise ValueError(
+                        f"Precedence impossible: A{before_id} is in a later week than A{after_id}"
+                    )
+                if int(before_act.week) == int(after_act.week):
+                    m.Add(
+                        self.start[after_id]
+                        >= self.start[before_id] + int(before_act.duration) + int(min_gap)
+                    )
+
         # Cluster equal-start constraints
         for w in self.weeks:
             for kind in ("LEC", "TUT", "LAB"):
@@ -749,16 +810,15 @@ class TimetableSolver:
             # use any unavailable (day, slot) pair.
             full_pairs = {(d, s) for d in self.days for s in range(self.S)}
 
-            def _room_allows(room_id: int, day: str, start_slot: int, dur: int) -> bool:
-                avail = getattr(inst.rooms[room_id], "availability", None)
-                if avail is None:
-                    return True
-                if isinstance(avail, set) and avail.issuperset(full_pairs):
-                    return True
-                for off in range(dur):
-                    if (day, start_slot + off) not in avail:
-                        return False
-                return True
+            def _room_allows(room_id: int, week: int, day: str, start_slot: int, dur: int) -> bool:
+                return room_is_available(
+                    inst,
+                    int(room_id),
+                    week=int(week),
+                    day=str(day),
+                    start_slot=int(start_slot),
+                    dur=int(dur),
+                )
 
             for w in self.weeks:
                 clustered: Set[int] = set()
@@ -824,8 +884,61 @@ class TimetableSolver:
                         for t in allowed_starts:
                             d_idx = t // self.S
                             s0 = t % self.S
-                            if not _room_allows(r, self.days[d_idx], s0, dur):
+                            if not _room_allows(r, int(w), self.days[d_idx], s0, dur):
                                 self.m.Add(self.room_sel[(a_id, r)] + self.x[(a_id, t)] <= 1)
+                # Travel buffers between rooms for shared group/staff resources.
+                if self._hard_flag("enforce_travel_time_buffers", True) and any(
+                    int(v) > 0 for v in (getattr(inst, "travel_time_rules", {}) or {}).values()
+                ):
+                    shared_pairs: Set[Tuple[int, int]] = set()
+                    week_activity_ids = [
+                        int(a_id)
+                        for a_id, act in self.inst.activities.items()
+                        if int(act.week) == int(w)
+                    ]
+                    for idx, a_id in enumerate(week_activity_ids):
+                        act_a = self.inst.activities[a_id]
+                        staff_a = int(self.activity_staff[a_id])
+                        groups_a = set(int(g) for g in act_a.group_ids)
+                        for b_id in week_activity_ids[idx + 1 :]:
+                            act_b = self.inst.activities[b_id]
+                            if staff_a == int(self.activity_staff[b_id]) or groups_a & set(
+                                int(g) for g in act_b.group_ids
+                            ):
+                                shared_pairs.add((int(a_id), int(b_id)))
+
+                    for a_id, b_id in sorted(shared_pairs):
+                        act_a = self.inst.activities[a_id]
+                        act_b = self.inst.activities[b_id]
+                        for ra in self.allowed_rooms.get(a_id, []):
+                            for rb in self.allowed_rooms.get(b_id, []):
+                                buffer_slots = room_transition_buffer(
+                                    inst,
+                                    inst.rooms.get(int(ra)),
+                                    inst.rooms.get(int(rb)),
+                                )
+                                if int(buffer_slots) <= 0:
+                                    continue
+                                for ta in self.allowed_starts[a_id]:
+                                    day_a = int(ta // self.S)
+                                    end_a = int(ta) + int(act_a.duration)
+                                    for tb in self.allowed_starts[b_id]:
+                                        if int(tb // self.S) != int(day_a):
+                                            continue
+                                        end_b = int(tb) + int(act_b.duration)
+                                        violated = False
+                                        if int(ta) <= int(tb):
+                                            violated = int(end_a) + int(buffer_slots) > int(tb)
+                                        else:
+                                            violated = int(end_b) + int(buffer_slots) > int(ta)
+                                        if violated:
+                                            self.m.Add(
+                                                self.x[(a_id, ta)]
+                                                + self.x[(b_id, tb)]
+                                                + self.room_sel[(a_id, ra)]
+                                                + self.room_sel[(b_id, rb)]
+                                                <= 3
+                                            )
 
             for (r, w), ivs in room_intervals_by_week.items():
                 if len(ivs) > 1:
@@ -1175,6 +1288,9 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
     S = inst.slots_per_day
     hard_flags = getattr(inst, "hard_constraints", {}) or {}
     enforce_room_availability = bool(hard_flags.get("enforce_room_availability", True))
+    enforce_travel_time_buffers = bool(
+        hard_flags.get("enforce_travel_time_buffers", True)
+    )
 
     lecture_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE"]
     tutorial_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "TUTORIAL"]
@@ -1187,17 +1303,17 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
             for tag in getattr(room, "specialization_tags", []) or []:
                 spec_rooms_by_tag.setdefault(tag, []).append(r_id)
 
-    def _room_available(room_id: int, day: str, start_slot: int, dur: int) -> bool:
-        if not enforce_room_availability:
+    def _room_available(room_id: int, week: int, day: str, start_slot: int, dur: int) -> bool:
+        if not enforce_room_availability and not getattr(inst, "room_closures", None):
             return True
-        avail = getattr(inst.rooms[room_id], "availability", None)
-        if avail is None:
-            return True
-        if isinstance(avail, set):
-            for off in range(dur):
-                if (day, start_slot + off) not in avail:
-                    return False
-        return True
+        return room_is_available(
+            inst,
+            int(room_id),
+            week=int(week),
+            day=str(day),
+            start_slot=int(start_slot),
+            dur=int(dur),
+        )
 
     # time occupancy
     slot_acts: Dict[Tuple[int, str, int], List[int]] = {}
@@ -1217,7 +1333,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
         info = schedule[a_id]
         if info.get("room_id") not in (None, room_id):
             raise ValueError(f"Locked room for activity {a_id} conflicts with pre-assigned room")
-        if not _room_available(room_id, info["day"], info["slot"], info["duration"]):
+        if not _room_available(room_id, int(info["week"]), info["day"], info["slot"], info["duration"]):
             raise ValueError(f"Locked room for activity {a_id} is unavailable at the scheduled time")
         schedule[a_id]["room_id"] = room_id
 
@@ -1235,28 +1351,94 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                 gids.add(int(g))
         return sum(inst.groups[g].size for g in gids if g in inst.groups)
 
-    def _pick_room(room_ids: List[int], occupied: set[int], required_capacity: int, day: str, slot: int, dur: int) -> int | None:
+    def _travel_buffer_ok(member_ids: List[int], candidate_room_id: int) -> bool:
+        if (not enforce_travel_time_buffers) or not getattr(inst, "travel_time_rules", None):
+            return True
+        member_set = {int(a_id) for a_id in member_ids}
+        for a_id in member_set:
+            info = schedule[int(a_id)]
+            week = int(info["week"])
+            day = str(info["day"])
+            slot = int(info["slot"])
+            dur = int(info["duration"])
+            staff_id = int(info["staff_id"])
+            groups = {int(g) for g in (info.get("group_ids", []) or [])}
+            for other_id, other_info in schedule.items():
+                if int(other_id) in member_set:
+                    continue
+                if other_info.get("room_id") is None:
+                    continue
+                if int(other_info.get("week", -1)) != int(week):
+                    continue
+                if str(other_info.get("day", "")) != str(day):
+                    continue
+                other_staff = int(other_info.get("staff_id", -1))
+                other_groups = {int(g) for g in (other_info.get("group_ids", []) or [])}
+                if other_staff != int(staff_id) and not (groups & other_groups):
+                    continue
+                buffer_slots = room_transition_buffer(
+                    inst,
+                    inst.rooms.get(int(candidate_room_id)),
+                    inst.rooms.get(int(other_info["room_id"])),
+                )
+                if int(buffer_slots) <= 0:
+                    continue
+                other_slot = int(other_info["slot"])
+                other_dur = int(other_info["duration"])
+                if int(slot) <= int(other_slot):
+                    gap = int(other_slot) - (int(slot) + int(dur))
+                else:
+                    gap = int(slot) - (int(other_slot) + int(other_dur))
+                if int(gap) < int(buffer_slots):
+                    return False
+        return True
+
+    def _pick_room(
+        room_ids: List[int],
+        occupied: set[int],
+        required_capacity: int,
+        week: int,
+        day: str,
+        slot: int,
+        dur: int,
+        *,
+        member_ids: List[int] | None = None,
+    ) -> int | None:
         candidates = [
             r_id for r_id in room_ids
             if r_id not in occupied
             and inst.rooms[r_id].capacity >= required_capacity
-            and _room_available(r_id, day, slot, dur)
+            and _room_available(r_id, week, day, slot, dur)
+            and _travel_buffer_ok(member_ids or [], int(r_id))
         ]
         candidates.sort(key=lambda r_id: inst.rooms[r_id].capacity)
         return candidates[0] if candidates else None
 
-    def _diagnose_room_failure(room_ids: List[int], occupied: set[int], required_capacity: int, day: str, slot: int, dur: int) -> str:
+    def _diagnose_room_failure(
+        room_ids: List[int],
+        occupied: set[int],
+        required_capacity: int,
+        week: int,
+        day: str,
+        slot: int,
+        dur: int,
+        *,
+        member_ids: List[int] | None = None,
+    ) -> str:
         if not room_ids:
             return "room_type_missing"
         cap_ok = [r_id for r_id in room_ids if inst.rooms[r_id].capacity >= required_capacity]
         if not cap_ok:
             return "capacity"
-        avail_ok = [r_id for r_id in cap_ok if _room_available(r_id, day, slot, dur)]
+        avail_ok = [r_id for r_id in cap_ok if _room_available(r_id, week, day, slot, dur)]
         if not avail_ok:
             return "availability"
         free_ok = [r_id for r_id in avail_ok if r_id not in occupied]
         if not free_ok:
             return "occupied"
+        travel_ok = [r_id for r_id in free_ok if _travel_buffer_ok(member_ids or [], int(r_id))]
+        if not travel_ok:
+            return "travel_buffer"
         return "unknown"
 
     def _reserved_specialized_rooms(
@@ -1289,17 +1471,45 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
         dur: int,
         occupied: set[int],
         required_capacity: int,
+        member_ids: List[int] | None = None,
     ) -> int | None:
         # Prefer computer labs, then specialized labs not needed by overlapping tagged labs.
-        room_id = _pick_room(computer_lab_rooms, occupied, required_capacity, day, start_slot, dur)
+        room_id = _pick_room(
+            computer_lab_rooms,
+            occupied,
+            required_capacity,
+            week,
+            day,
+            start_slot,
+            dur,
+            member_ids=member_ids,
+        )
         if room_id is not None:
             return room_id
         reserved = _reserved_specialized_rooms(week=week, day=day, start_slot=start_slot, dur=dur)
         non_reserved_spec = [r for r in specialized_lab_rooms if r not in reserved]
-        room_id = _pick_room(non_reserved_spec, occupied, required_capacity, day, start_slot, dur)
+        room_id = _pick_room(
+            non_reserved_spec,
+            occupied,
+            required_capacity,
+            week,
+            day,
+            start_slot,
+            dur,
+            member_ids=member_ids,
+        )
         if room_id is not None:
             return room_id
-        return _pick_room(specialized_lab_rooms, occupied, required_capacity, day, start_slot, dur)
+        return _pick_room(
+            specialized_lab_rooms,
+            occupied,
+            required_capacity,
+            week,
+            day,
+            start_slot,
+            dur,
+            member_ids=member_ids,
+        )
 
     for w in weeks:
         for d in days:
@@ -1329,9 +1539,27 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         clusters_here_lec.append(members)
                 for members in clusters_here_lec:
                     req = _required_capacity_for_members(members)
-                    room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                    room_id = _pick_room(
+                        lecture_rooms,
+                        occupied,
+                        req,
+                        w,
+                        d,
+                        s,
+                        schedule[members[0]]["duration"],
+                        member_ids=members,
+                    )
                     if room_id is None:
-                        reason = _diagnose_room_failure(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                        reason = _diagnose_room_failure(
+                            lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[members[0]]["duration"],
+                            member_ids=members,
+                        )
                         raise GreedyRoomingError(
                             f"No lecture room fits LEC cluster at {w}-{d}-{s} (need cap {req}, reason={reason})",
                             reason=reason,
@@ -1350,11 +1578,38 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         clusters_here_tut.append(members)
                 for members in clusters_here_tut:
                     req = _required_capacity_for_members(members)
-                    room_id = _pick_room(tutorial_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                    room_id = _pick_room(
+                        tutorial_rooms,
+                        occupied,
+                        req,
+                        w,
+                        d,
+                        s,
+                        schedule[members[0]]["duration"],
+                        member_ids=members,
+                    )
                     if room_id is None:
-                        room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                        room_id = _pick_room(
+                            lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[members[0]]["duration"],
+                            member_ids=members,
+                        )
                     if room_id is None:
-                        reason = _diagnose_room_failure(tutorial_rooms + lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                        reason = _diagnose_room_failure(
+                            tutorial_rooms + lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[members[0]]["duration"],
+                            member_ids=members,
+                        )
                         raise GreedyRoomingError(
                             f"No room fits TUT cluster at {w}-{d}-{s} (need cap {req}, reason={reason})",
                             reason=reason,
@@ -1388,7 +1643,16 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     if req_tags:
                         tag = next(iter(req_tags))
                         candidates = spec_rooms_by_tag.get(str(tag), [])
-                        room_id = _pick_room(candidates, occupied, req, d, s, dur)
+                        room_id = _pick_room(
+                            candidates,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            dur,
+                            member_ids=members,
+                        )
                     else:
                         room_id = _pick_generic_lab_room(
                             week=w,
@@ -1397,14 +1661,37 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                             dur=dur,
                             occupied=occupied,
                             required_capacity=req,
+                            member_ids=members,
                         )
                     if room_id is None:
                         if req_tags:
                             tag = next(iter(req_tags))
                             candidates = spec_rooms_by_tag.get(str(tag), [])
-                            reason = "tag_mismatch" if not candidates else _diagnose_room_failure(candidates, occupied, req, d, s, dur)
+                            reason = (
+                                "tag_mismatch"
+                                if not candidates
+                                else _diagnose_room_failure(
+                                    candidates,
+                                    occupied,
+                                    req,
+                                    w,
+                                    d,
+                                    s,
+                                    dur,
+                                    member_ids=members,
+                                )
+                            )
                         else:
-                            reason = _diagnose_room_failure(lab_rooms, occupied, req, d, s, dur)
+                            reason = _diagnose_room_failure(
+                                lab_rooms,
+                                occupied,
+                                req,
+                                w,
+                                d,
+                                s,
+                                dur,
+                                member_ids=members,
+                            )
                         raise GreedyRoomingError(
                             f"No lab room fits LAB cluster at {w}-{d}-{s} (need cap {req}, reason={reason})",
                             reason=reason,
@@ -1438,12 +1725,30 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     for a_id in acts_tag:
                         req = _required_capacity_for_activity(a_id)
                         tag_rooms = spec_rooms_by_tag.get(tag, [])
-                        room_id = _pick_room(tag_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        room_id = _pick_room(
+                            tag_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[a_id]["duration"],
+                            member_ids=[a_id],
+                        )
                         if room_id is None:
                             if not tag_rooms:
                                 reason = "tag_mismatch"
                             else:
-                                reason = _diagnose_room_failure(tag_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                                reason = _diagnose_room_failure(
+                                    tag_rooms,
+                                    occupied,
+                                    req,
+                                    w,
+                                    d,
+                                    s,
+                                    schedule[a_id]["duration"],
+                                    member_ids=[a_id],
+                                )
                             raise GreedyRoomingError(
                                 f"No lab room fits specialised lab a{a_id} (need cap {req}, tag={tag}, reason={reason})",
                                 reason=reason,
@@ -1461,9 +1766,19 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         dur=schedule[a_id]["duration"],
                         occupied=occupied,
                         required_capacity=req,
+                        member_ids=[a_id],
                     )
                     if room_id is None:
-                        reason = _diagnose_room_failure(lab_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        reason = _diagnose_room_failure(
+                            lab_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[a_id]["duration"],
+                            member_ids=[a_id],
+                        )
                         raise GreedyRoomingError(
                             f"No lab room fits lab a{a_id} (need cap {req}, reason={reason})",
                             reason=reason,
@@ -1475,9 +1790,27 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                 # lectures
                 for a_id in lecs:
                     req = _required_capacity_for_activity(a_id)
-                    room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                    room_id = _pick_room(
+                        lecture_rooms,
+                        occupied,
+                        req,
+                        w,
+                        d,
+                        s,
+                        schedule[a_id]["duration"],
+                        member_ids=[a_id],
+                    )
                     if room_id is None:
-                        reason = _diagnose_room_failure(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        reason = _diagnose_room_failure(
+                            lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[a_id]["duration"],
+                            member_ids=[a_id],
+                        )
                         raise GreedyRoomingError(
                             f"No lecture room fits a{a_id} (need cap {req}, reason={reason})",
                             reason=reason,
@@ -1489,11 +1822,38 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                 # tutorials (prefer TUTORIAL then LECTURE)
                 for a_id in tuts:
                     req = _required_capacity_for_activity(a_id)
-                    room_id = _pick_room(tutorial_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                    room_id = _pick_room(
+                        tutorial_rooms,
+                        occupied,
+                        req,
+                        w,
+                        d,
+                        s,
+                        schedule[a_id]["duration"],
+                        member_ids=[a_id],
+                    )
                     if room_id is None:
-                        room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        room_id = _pick_room(
+                            lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[a_id]["duration"],
+                            member_ids=[a_id],
+                        )
                     if room_id is None:
-                        reason = _diagnose_room_failure(tutorial_rooms + lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        reason = _diagnose_room_failure(
+                            tutorial_rooms + lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[a_id]["duration"],
+                            member_ids=[a_id],
+                        )
                         raise GreedyRoomingError(
                             f"No tutorial/lecture room fits a{a_id} (need cap {req}, reason={reason})",
                             reason=reason,

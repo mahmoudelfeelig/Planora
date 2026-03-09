@@ -1,0 +1,695 @@
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import time
+from dataclasses import replace
+from typing import Any, Callable, Dict, Iterable, List, Tuple
+
+from ortools.sat.python import cp_model
+
+from core.metaheuristics import LocalSearchImprover
+from core.solver_cp_sat import GreedyRoomingError, TimetableSolver
+from services.contracts import (
+    ImproveOptions,
+    PortfolioCandidate,
+    PortfolioResult,
+    SolveAttempt,
+    SolveOptions,
+    SolveResult,
+)
+from services.quality_service import (
+    compute_penalty_breakdown,
+    evaluate_schedule_sla,
+    explain_solution_ranking,
+)
+from utils.disruption import build_freeze_locks
+from utils.generator import instance_to_json
+from utils.specs import validate_schedule_against_instance
+
+_SOLVE_RESULT_CACHE: Dict[str, SolveResult] = {}
+
+OBJECTIVE_PROFILE_PRESETS: Dict[str, Dict[str, Any]] = {
+    "fast_feasible": {
+        "label": "Fast feasible",
+        "use_objective": False,
+        "retry_without_objective": False,
+        "phased_solve": False,
+        "improve_total_seconds": 0.0,
+    },
+    "balanced": {
+        "label": "Balanced",
+        "use_objective": True,
+        "retry_without_objective": True,
+        "phased_solve": True,
+    },
+    "quality_first": {
+        "label": "Quality-first",
+        "use_objective": True,
+        "retry_without_objective": True,
+        "phased_solve": True,
+        "improve_slice_seconds": 6.0,
+        "improve_iters_per_slice": 1500,
+        "improve_max_rounds": 16,
+    },
+}
+
+
+def _map_status_to_ui(status: int) -> int:
+    if status == cp_model.UNKNOWN:
+        return -1
+    if status == cp_model.OPTIMAL:
+        return 4
+    if status == cp_model.FEASIBLE:
+        return 0
+    if status == 0:
+        return -1
+    return int(status)
+
+
+def _is_feasible(raw_status: int) -> bool:
+    return int(raw_status) in (int(cp_model.OPTIMAL), int(cp_model.FEASIBLE))
+
+
+def _hard_conflict_errors(inst, schedule: Dict[int, Dict[str, Any]]) -> List[str]:
+    return validate_schedule_against_instance(
+        inst,
+        schedule,
+        strict_rooms=True,
+        require_all_activities=False,
+    )
+
+
+def _canonical_profile_name(profile: str | None) -> str:
+    raw = str(profile or "balanced").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "fast": "fast_feasible",
+        "fast_feasible": "fast_feasible",
+        "balanced": "balanced",
+        "quality": "quality_first",
+        "quality_first": "quality_first",
+    }
+    return aliases.get(raw, "balanced")
+
+
+def available_objective_profiles() -> List[Tuple[str, str]]:
+    return [
+        (profile_id, str(meta.get("label", profile_id)))
+        for profile_id, meta in OBJECTIVE_PROFILE_PRESETS.items()
+    ]
+
+
+def _expanded_incremental_scope(
+    inst,
+    base_schedule: Dict[int, Dict[str, Any]],
+    affected_activity_ids: Iterable[int],
+) -> List[int]:
+    affected = {int(a_id) for a_id in affected_activity_ids if int(a_id) in base_schedule}
+    if not affected:
+        return []
+    impacted_weeks: set[int] = set()
+    impacted_staff: set[int] = set()
+    impacted_groups: set[int] = set()
+    impacted_rooms: set[int] = set()
+    for a_id in sorted(affected):
+        info = base_schedule[int(a_id)]
+        impacted_weeks.add(int(info.get("week", -1)))
+        impacted_staff.add(int(info.get("staff_id", -1)))
+        impacted_groups.update(int(g) for g in (info.get("group_ids", []) or []))
+        room_id = info.get("room_id")
+        if room_id is not None:
+            impacted_rooms.add(int(room_id))
+
+    expanded = set(affected)
+    changed = True
+    while changed:
+        changed = False
+        for a_id, info in base_schedule.items():
+            a_int = int(a_id)
+            if a_int in expanded:
+                continue
+            if int(info.get("week", -1)) not in impacted_weeks:
+                continue
+            shares_staff = int(info.get("staff_id", -1)) in impacted_staff
+            shares_group = bool(
+                {int(g) for g in (info.get("group_ids", []) or [])} & impacted_groups
+            )
+            room_id = info.get("room_id")
+            shares_room = room_id is not None and int(room_id) in impacted_rooms
+            if shares_staff or shares_group or shares_room:
+                expanded.add(a_int)
+                impacted_staff.add(int(info.get("staff_id", -1)))
+                impacted_groups.update(int(g) for g in (info.get("group_ids", []) or []))
+                if room_id is not None:
+                    impacted_rooms.add(int(room_id))
+                changed = True
+    return sorted(expanded)
+
+
+def _apply_incremental_scope(inst, options: SolveOptions) -> tuple[Any, SolveOptions, Dict[str, Any]]:
+    inst_work = copy.deepcopy(inst)
+    meta: Dict[str, Any] = {"enabled": False}
+    if not (
+        options.freeze_unaffected
+        and isinstance(options.base_schedule, dict)
+        and options.affected_activity_ids
+    ):
+        return inst_work, options, meta
+
+    expanded_scope = _expanded_incremental_scope(
+        inst_work,
+        options.base_schedule,
+        options.affected_activity_ids,
+    )
+    if not expanded_scope:
+        return inst_work, options, meta
+
+    freeze_locks = build_freeze_locks(
+        options.base_schedule,
+        unlocked_activity_ids=expanded_scope,
+    )
+    explicit_locks = getattr(inst_work, "locked_activities", {}) or {}
+    merged_locks = {
+        int(a_id): dict(lock)
+        for a_id, lock in freeze_locks.items()
+        if isinstance(lock, dict)
+    }
+    for a_id, lock in explicit_locks.items():
+        if not isinstance(lock, dict):
+            continue
+        merged = dict(merged_locks.get(int(a_id), {}))
+        merged.update({str(k): v for k, v in lock.items()})
+        merged_locks[int(a_id)] = merged
+    inst_work.locked_activities = merged_locks
+    meta = {
+        "enabled": True,
+        "requested_activities": sorted(int(a) for a in (options.affected_activity_ids or [])),
+        "expanded_activities": list(expanded_scope),
+        "frozen_activities": int(len(merged_locks)),
+    }
+    return inst_work, options, meta
+
+
+def _apply_objective_profile(inst, options: SolveOptions) -> tuple[Any, SolveOptions, Dict[str, Any]]:
+    inst_work = copy.deepcopy(inst)
+    profile = _canonical_profile_name(
+        options.objective_profile or getattr(inst_work, "objective_profile", "balanced")
+    )
+    inst_work.objective_profile = str(profile)
+    preset = dict(OBJECTIVE_PROFILE_PRESETS.get(profile, OBJECTIVE_PROFILE_PRESETS["balanced"]))
+
+    resolved = options
+    if profile == "fast_feasible":
+        resolved = replace(
+            resolved,
+            use_objective=False,
+            retry_without_objective=False,
+            phased_solve=False,
+            improve_total_seconds=0.0,
+        )
+    elif profile == "balanced":
+        if resolved.time_limit_seconds is not None:
+            feasibility_seconds = (
+                resolved.feasibility_seconds
+                if resolved.feasibility_seconds is not None
+                else max(15.0, min(float(resolved.time_limit_seconds) * 0.75, float(resolved.time_limit_seconds)))
+            )
+            improve_total_seconds = (
+                float(resolved.improve_total_seconds)
+                if float(resolved.improve_total_seconds) > 0
+                else max(0.0, float(resolved.time_limit_seconds) - float(feasibility_seconds))
+            )
+        else:
+            feasibility_seconds = resolved.feasibility_seconds
+            improve_total_seconds = resolved.improve_total_seconds
+        resolved = replace(
+            resolved,
+            use_objective=bool(resolved.use_objective),
+            retry_without_objective=bool(resolved.retry_without_objective),
+            phased_solve=bool(resolved.phased_solve),
+            feasibility_seconds=feasibility_seconds,
+            improve_total_seconds=float(improve_total_seconds),
+        )
+    elif profile == "quality_first":
+        total_limit = float(resolved.time_limit_seconds or 180.0)
+        feasibility_seconds = (
+            resolved.feasibility_seconds
+            if resolved.feasibility_seconds is not None
+            else max(30.0, total_limit * 0.65)
+        )
+        improve_total_seconds = (
+            float(resolved.improve_total_seconds)
+            if float(resolved.improve_total_seconds) > 0
+            else max(30.0, total_limit - float(feasibility_seconds))
+        )
+        resolved = replace(
+            resolved,
+            use_objective=True,
+            retry_without_objective=True,
+            phased_solve=True,
+            feasibility_seconds=float(feasibility_seconds),
+            improve_total_seconds=float(improve_total_seconds),
+            improve_slice_seconds=max(float(resolved.improve_slice_seconds), 6.0),
+            improve_iters_per_slice=max(int(resolved.improve_iters_per_slice), 1500),
+            improve_max_rounds=max(int(resolved.improve_max_rounds), 16),
+        )
+
+    return inst_work, resolved, {
+        "id": str(profile),
+        "label": str(preset.get("label", profile)),
+    }
+
+
+def _solve_cache_key(inst, options: SolveOptions) -> str:
+    payload = {
+        "instance": instance_to_json(inst),
+        "hard_constraints": dict(getattr(inst, "hard_constraints", {}) or {}),
+        "soft_weights": dict(getattr(inst, "soft_weights", {}) or {}),
+        "objective_profile": str(getattr(inst, "objective_profile", "balanced") or "balanced"),
+        "options": dict(options.__dict__),
+    }
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _run_solve_attempt(
+    inst,
+    *,
+    room_mode: str,
+    use_objective: bool,
+    options: SolveOptions,
+) -> tuple[TimetableSolver, Any, int, SolveAttempt]:
+    model = TimetableSolver(inst, room_mode=str(room_mode), use_objective=bool(use_objective))
+    solver, raw_status = model.solve(
+        time_limit_seconds=options.time_limit_seconds,
+        workers=options.workers,
+        random_seed=options.random_seed,
+        log_progress=options.log_progress,
+    )
+    attempt = SolveAttempt(
+        room_mode=str(room_mode),
+        use_objective=bool(use_objective),
+        time_limit_seconds=options.time_limit_seconds,
+        raw_status=int(raw_status),
+    )
+    return model, solver, int(raw_status), attempt
+
+
+def _build_quality_meta(
+    inst,
+    schedule: Dict[int, Dict[str, Any]],
+    *,
+    hard_conflicts: int = 0,
+    base_schedule: Dict[int, Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    breakdown = compute_penalty_breakdown(inst, schedule)
+    sla = evaluate_schedule_sla(inst, schedule, hard_conflicts=int(hard_conflicts))
+    quality: Dict[str, Any] = {
+        "soft_penalty": int(breakdown.get("total", 0)),
+        "breakdown": dict(breakdown),
+        "sla": dict(sla),
+    }
+    if isinstance(base_schedule, dict) and base_schedule:
+        quality["comparison_to_base"] = explain_solution_ranking(
+            inst,
+            base_schedule,
+            schedule,
+            base_label="base",
+            candidate_label="current",
+        )
+    return quality
+
+
+def solve_instance(
+    inst,
+    options: SolveOptions,
+    *,
+    progress_hook: Callable[[str, Dict[str, Any]], None] | None = None,
+) -> SolveResult:
+    inst_profiled, resolved_options, profile_meta = _apply_objective_profile(inst, options)
+    inst_work, resolved_options, incremental_meta = _apply_incremental_scope(
+        inst_profiled,
+        resolved_options,
+    )
+
+    cache_key = None
+    if progress_hook is None:
+        try:
+            cache_key = _solve_cache_key(inst_work, resolved_options)
+        except Exception:
+            cache_key = None
+        if cache_key and cache_key in _SOLVE_RESULT_CACHE:
+            cached = copy.deepcopy(_SOLVE_RESULT_CACHE[cache_key])
+            cached.meta = dict(cached.meta or {})
+            cached.meta["cached"] = True
+            return cached
+
+    attempts: List[SolveAttempt] = []
+
+    def emit(event: str, **payload: Any) -> None:
+        if progress_hook is not None:
+            progress_hook(str(event), dict(payload))
+
+    room_mode = str(resolved_options.room_mode)
+    use_objective = bool(resolved_options.use_objective)
+    strict_limit = resolved_options.strict_limit_seconds
+    if strict_limit is None and resolved_options.time_limit_seconds is not None:
+        strict_limit = min(float(resolved_options.time_limit_seconds), 300.0)
+
+    strict_options = replace(resolved_options, time_limit_seconds=strict_limit)
+    full_options = replace(resolved_options)
+
+    emit(
+        "run_start",
+        room_mode=room_mode,
+        use_objective=use_objective,
+        phased=bool(resolved_options.phased_solve),
+        objective_profile=dict(profile_meta),
+        incremental=dict(incremental_meta),
+    )
+
+    def solve_attempt(mode: str, objective: bool, run_options: SolveOptions):
+        emit(
+            "solve_attempt_start",
+            attempt=len(attempts) + 1,
+            mode=str(mode),
+            objective=bool(objective),
+            limit_seconds=(
+                float(run_options.time_limit_seconds)
+                if run_options.time_limit_seconds is not None
+                else None
+            ),
+        )
+        started = time.perf_counter()
+        model, solver, raw_status, attempt = _run_solve_attempt(
+            inst_work,
+            room_mode=mode,
+            use_objective=objective,
+            options=run_options,
+        )
+        attempts.append(attempt)
+        emit(
+            "solve_attempt_done",
+            attempt=len(attempts),
+            mode=str(mode),
+            objective=bool(objective),
+            status=int(raw_status),
+            elapsed_seconds=float(time.perf_counter() - started),
+        )
+        return model, solver, raw_status, attempt
+
+    if resolved_options.phased_solve:
+        feasibility_limit = (
+            resolved_options.feasibility_seconds
+            if resolved_options.feasibility_seconds is not None
+            else strict_limit
+        )
+        phased_options = replace(resolved_options, time_limit_seconds=feasibility_limit)
+        model, solver, raw_status, attempt = solve_attempt(room_mode, False, phased_options)
+        if room_mode == "cp_rooms" and not _is_feasible(raw_status):
+            emit("solve_fallback", from_mode="cp_rooms", to_mode="greedy")
+            model, solver, raw_status, attempt = solve_attempt("greedy", False, phased_options)
+    else:
+        model, solver, raw_status, attempt = solve_attempt(
+            room_mode,
+            use_objective,
+            strict_options if use_objective else full_options,
+        )
+        if resolved_options.retry_without_objective and use_objective and not _is_feasible(raw_status):
+            model, solver, raw_status, attempt = solve_attempt(room_mode, False, full_options)
+        if room_mode == "cp_rooms" and not _is_feasible(raw_status):
+            emit("solve_fallback", from_mode="cp_rooms", to_mode="greedy")
+            model, solver, raw_status, attempt = solve_attempt("greedy", False, full_options)
+
+    ui_status = _map_status_to_ui(raw_status)
+    if ui_status not in (0, 4):
+        result = SolveResult(
+            status=int(ui_status),
+            raw_status=int(raw_status),
+            schedule={},
+            attempts=attempts,
+            meta={
+                "phased": bool(resolved_options.phased_solve),
+                "objective_profile": dict(profile_meta),
+                "incremental": dict(incremental_meta),
+            },
+        )
+        if cache_key:
+            _SOLVE_RESULT_CACHE[cache_key] = copy.deepcopy(result)
+        return result
+
+    try:
+        schedule = model.extract_solution(solver)
+    except GreedyRoomingError as exc:
+        result = SolveResult(
+            status=-2,
+            raw_status=int(raw_status),
+            schedule={},
+            attempts=attempts,
+            meta={
+                "error": str(exc),
+                "reason": getattr(exc, "reason", ""),
+                "objective_profile": dict(profile_meta),
+                "incremental": dict(incremental_meta),
+            },
+        )
+        if cache_key:
+            _SOLVE_RESULT_CACHE[cache_key] = copy.deepcopy(result)
+        return result
+
+    hard_conflicts: List[str] = []
+    if resolved_options.enforce_hard_conflict_free:
+        hard_conflicts = _hard_conflict_errors(inst_work, schedule)
+        if hard_conflicts:
+            result = SolveResult(
+                status=-3,
+                raw_status=int(raw_status),
+                schedule={},
+                attempts=attempts,
+                hard_conflicts=hard_conflicts,
+                meta={
+                    "stage": "post_extract",
+                    "objective_profile": dict(profile_meta),
+                    "incremental": dict(incremental_meta),
+                },
+            )
+            if cache_key:
+                _SOLVE_RESULT_CACHE[cache_key] = copy.deepcopy(result)
+            return result
+
+    improvement_meta: Dict[str, Any] | None = None
+    if resolved_options.phased_solve and float(resolved_options.improve_total_seconds) > 0:
+        emit(
+            "improve_start",
+            total_seconds=float(resolved_options.improve_total_seconds),
+            max_rounds=int(resolved_options.improve_max_rounds),
+            iters_per_slice=int(resolved_options.improve_iters_per_slice),
+        )
+        improver = LocalSearchImprover(inst_work)
+        best_schedule = {int(a_id): dict(info) for a_id, info in schedule.items()}
+        start_penalty = int(improver.compute_soft_penalty(best_schedule))
+        best_penalty = int(start_penalty)
+        start_ts = time.perf_counter()
+        deadline = start_ts + float(resolved_options.improve_total_seconds)
+        rounds: List[Dict[str, Any]] = []
+
+        for round_idx in range(1, int(resolved_options.improve_max_rounds) + 1):
+            remaining = deadline - time.perf_counter()
+            if remaining <= 0:
+                break
+            slice_budget = min(float(resolved_options.improve_slice_seconds), float(remaining))
+            candidate = improver.improve(
+                best_schedule,
+                iterations=int(resolved_options.improve_iters_per_slice),
+                max_seconds=float(slice_budget),
+            )
+            candidate_penalty = int(improver.compute_soft_penalty(candidate))
+            candidate_hard_errors: List[str] = []
+            if resolved_options.enforce_hard_conflict_free:
+                candidate_hard_errors = _hard_conflict_errors(inst_work, candidate)
+            accepted = (not candidate_hard_errors) and int(candidate_penalty) <= int(best_penalty)
+            if accepted:
+                best_schedule = {int(a_id): dict(info) for a_id, info in candidate.items()}
+                best_penalty = int(candidate_penalty)
+            rounds.append(
+                {
+                    "round": int(round_idx),
+                    "slice_seconds": float(slice_budget),
+                    "candidate_penalty": int(candidate_penalty),
+                    "hard_conflicts": int(len(candidate_hard_errors)),
+                    "accepted": bool(accepted),
+                    "best_penalty": int(best_penalty),
+                }
+            )
+            emit(
+                "improve_round",
+                round=int(round_idx),
+                max_rounds=int(resolved_options.improve_max_rounds),
+                candidate_penalty=int(candidate_penalty),
+                best_penalty=int(best_penalty),
+                accepted=bool(accepted),
+                elapsed_seconds=float(time.perf_counter() - start_ts),
+                total_seconds=float(resolved_options.improve_total_seconds),
+            )
+
+        schedule = best_schedule
+        improvement_meta = {
+            "enabled": True,
+            "start_penalty": int(start_penalty),
+            "final_penalty": int(best_penalty),
+            "rounds": rounds,
+            "elapsed_seconds": float(time.perf_counter() - start_ts),
+        }
+        emit(
+            "improve_done",
+            rounds_completed=int(len(rounds)),
+            final_penalty=int(best_penalty),
+            elapsed_seconds=float(time.perf_counter() - start_ts),
+        )
+
+    quality_meta = _build_quality_meta(
+        inst_work,
+        schedule,
+        hard_conflicts=len(hard_conflicts),
+        base_schedule=resolved_options.base_schedule,
+    )
+    meta: Dict[str, Any] = {
+        "phased": bool(resolved_options.phased_solve),
+        "objective_profile": dict(profile_meta),
+        "incremental": dict(incremental_meta),
+        "quality": quality_meta,
+    }
+    if improvement_meta is not None:
+        meta["improvement"] = dict(improvement_meta)
+
+    result = SolveResult(
+        status=int(ui_status),
+        raw_status=int(raw_status),
+        schedule=schedule,
+        attempts=attempts,
+        hard_conflicts=hard_conflicts,
+        meta=meta,
+    )
+    if cache_key:
+        _SOLVE_RESULT_CACHE[cache_key] = copy.deepcopy(result)
+    return result
+
+
+def build_portfolio_solve_options(base_options: SolveOptions) -> List[Tuple[str, SolveOptions]]:
+    profiles = ["fast_feasible", "balanced", "quality_first"]
+    out: List[Tuple[str, SolveOptions]] = []
+    for profile in profiles:
+        out.append(
+            (
+                profile,
+                replace(
+                    base_options,
+                    objective_profile=str(profile),
+                ),
+            )
+        )
+    return out
+
+
+def solve_portfolio(
+    inst,
+    options: SolveOptions,
+    *,
+    progress_hook: Callable[[str, Dict[str, Any]], None] | None = None,
+) -> PortfolioResult:
+    candidates: List[PortfolioCandidate] = []
+    base_options = replace(options)
+
+    for idx, (profile_id, candidate_options) in enumerate(
+        build_portfolio_solve_options(base_options),
+        start=1,
+    ):
+        if progress_hook is not None:
+            progress_hook(
+                "portfolio_candidate_start",
+                {
+                    "index": int(idx),
+                    "total": 3,
+                    "profile": str(profile_id),
+                },
+            )
+        result = solve_instance(inst, candidate_options, progress_hook=progress_hook)
+        soft_penalty = None
+        if result.is_feasible and result.schedule:
+            quality = dict((result.meta or {}).get("quality") or {})
+            soft_penalty = int(
+                quality.get("soft_penalty", compute_penalty_breakdown(inst, result.schedule).get("total", 0))
+            )
+        candidates.append(
+            PortfolioCandidate(
+                name=str(profile_id),
+                options=candidate_options,
+                result=result,
+                soft_penalty=soft_penalty,
+            )
+        )
+
+    feasible = [
+        (idx, candidate)
+        for idx, candidate in enumerate(candidates)
+        if candidate.result.is_feasible and candidate.result.schedule
+    ]
+    if feasible:
+        feasible.sort(
+            key=lambda pair: (
+                int(pair[1].soft_penalty if pair[1].soft_penalty is not None else 10**9),
+                len(pair[1].result.hard_conflicts or []),
+                len(pair[1].result.attempts or []),
+            )
+        )
+        best_index = int(feasible[0][0])
+        best_candidate = candidates[best_index]
+        for idx, candidate in enumerate(candidates):
+            if idx == best_index or not candidate.result.is_feasible or not candidate.result.schedule:
+                continue
+            candidate.rank_explanation = explain_solution_ranking(
+                inst,
+                best_candidate.result.schedule,
+                candidate.result.schedule,
+                base_label=str(best_candidate.name),
+                candidate_label=str(candidate.name),
+            )
+        if best_candidate.result.schedule:
+            best_candidate.rank_explanation = (
+                f"{best_candidate.name} ranked first with soft penalty "
+                f"{int(best_candidate.soft_penalty or 0)}."
+            )
+    else:
+        best_index = -1
+
+    return PortfolioResult(candidates=candidates, best_index=int(best_index))
+
+
+def improve_schedule(
+    inst,
+    schedule: Dict[int, Dict[str, Any]],
+    options: ImproveOptions,
+    *,
+    progress_hook: Callable[[int, int, int], None] | None = None,
+    stop_hook: Callable[[], bool] | None = None,
+) -> Dict[int, Dict[str, Any]]:
+    improver = LocalSearchImprover(inst)
+    improved = improver.improve(
+        schedule,
+        iterations=int(options.iterations),
+        start_temp=float(options.start_temp),
+        end_temp=float(options.end_temp),
+        max_seconds=options.max_seconds,
+        progress_every=int(options.progress_every),
+        progress_hook=progress_hook,
+        stop_hook=stop_hook,
+        restart_after=options.restart_after,
+        max_restarts=options.max_restarts,
+        kick_steps=options.kick_steps,
+        probe_activities=options.probe_activities,
+    )
+    conflicts = _hard_conflict_errors(inst, improved)
+    if conflicts:
+        return {int(a_id): dict(info) for a_id, info in schedule.items()}
+    return improved

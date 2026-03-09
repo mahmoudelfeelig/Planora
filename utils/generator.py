@@ -104,27 +104,77 @@ def generate_instance(mode: str = "small_demo") -> Instance:
     raise ValueError(f"Unknown generation mode: {mode}")
 
 
-def _normalize_days(raw_days: List[str] | Set[str] | None) -> Set[str]:
+def _normalize_days(
+    raw_days: List[str] | Set[str] | None,
+    *,
+    valid_days: List[str] | Set[str] | None = None,
+) -> Set[str]:
+    valid_set = set(str(d).strip().upper() for d in (valid_days or DAYS))
     if not raw_days:
-        return set(DAYS)
+        return set(valid_set)
     out = {str(d).strip().upper() for d in raw_days}
-    valid = {d for d in out if d in set(DAYS)}
-    return valid or set(DAYS)
+    valid = {d for d in out if d in valid_set}
+    return valid or set(valid_set)
 
 
-def _normalize_weeks(raw_weeks: List[int] | Set[int] | None) -> Set[int]:
-    valid_weeks = set(int(w) for w in WEEKS)
+def _normalize_weeks(
+    raw_weeks: List[int] | Set[int] | None,
+    *,
+    valid_weeks: List[int] | Set[int] | None = None,
+) -> Set[int]:
+    if valid_weeks is None:
+        if not raw_weeks:
+            return set(int(w) for w in WEEKS)
+        out: Set[int] = set()
+        for raw in raw_weeks:
+            try:
+                out.add(int(raw))
+            except Exception:
+                continue
+        return out or set(int(w) for w in WEEKS)
+    valid_weeks_set = set(int(w) for w in valid_weeks)
     if not raw_weeks:
-        return set(valid_weeks)
+        return set(valid_weeks_set)
     out: Set[int] = set()
     for raw in raw_weeks:
         try:
             w = int(raw)
         except Exception:
             continue
-        if w in valid_weeks:
+        if w in valid_weeks_set:
             out.add(int(w))
-    return out or set(valid_weeks)
+    return out or set(valid_weeks_set)
+
+
+def _expand_term_blocks(
+    raw_blocks: List[Dict[str, Any]] | None,
+) -> tuple[List[int], List[Dict[str, Any]]]:
+    if not raw_blocks:
+        return [], []
+    weeks: List[int] = []
+    blocks: List[Dict[str, Any]] = []
+    next_week = 1
+    for idx, raw in enumerate(raw_blocks, start=1):
+        if not isinstance(raw, dict):
+            continue
+        try:
+            length = max(1, int(raw.get("length_weeks", 0)))
+        except Exception:
+            continue
+        label = str(raw.get("label", f"Term {idx}") or f"Term {idx}").strip()
+        teaching = bool(raw.get("teaching", True))
+        block_weeks = list(range(int(next_week), int(next_week + length)))
+        blocks.append(
+            {
+                "label": label,
+                "length_weeks": int(length),
+                "weeks": list(block_weeks),
+                "teaching": bool(teaching),
+            }
+        )
+        weeks.extend(block_weeks)
+        next_week += length
+    return weeks, blocks
 
 
 def _build_course_owner_map(
@@ -178,11 +228,16 @@ def _normalize_session_count(value: Any, *, default: int, allow_zero: bool) -> i
     return int(parsed) if parsed in allowed else int(default)
 
 
-def _build_custom_rooms(room_specs: List[Dict[str, Any]]) -> Dict[int, Room]:
+def _build_custom_rooms(
+    room_specs: List[Dict[str, Any]],
+    *,
+    days_list: List[str],
+    slots_per_day: int,
+) -> Dict[int, Room]:
     if not room_specs:
         raise ValueError("room_specs must contain at least one room")
     rooms: Dict[int, Room] = {}
-    full_availability = {(d, s) for d in DAYS for s in range(SLOTS_PER_DAY)}
+    full_availability = {(d, s) for d in days_list for s in range(int(slots_per_day))}
     valid_types = {"LECTURE", "TUTORIAL", "COMPUTER_LAB", "SPECIALIZED_LAB"}
     for idx, raw in enumerate(room_specs, start=1):
         room_type = str(raw.get("room_type", "LECTURE")).strip().upper()
@@ -190,12 +245,18 @@ def _build_custom_rooms(room_specs: List[Dict[str, Any]]) -> Dict[int, Room]:
             raise ValueError(f"Unsupported room type '{room_type}' in room_specs row {idx}")
         tags_raw = raw.get("tags", []) or []
         tags = {str(t).strip().upper() for t in tags_raw if str(t).strip()}
+        features_raw = raw.get("features", []) or []
+        features = {str(t).strip().upper() for t in features_raw if str(t).strip()}
         name = str(raw.get("name") or f"Room-{idx}")
         rooms[idx] = Room(
             id=idx,
             name=name,
             capacity=_room_capacity_from_spec(raw),
             room_type=room_type,
+            campus=str(raw.get("campus", "MAIN") or "MAIN").strip().upper(),
+            building=str(raw.get("building", "") or "").strip(),
+            floor=str(raw.get("floor", "") or "").strip(),
+            features=features,
             specialization_tags=tags,
             availability=set(full_availability),
         )
@@ -314,6 +375,10 @@ def generate_custom_instance(
     ta_weeks: Dict[int, List[int]] | None = None,
     room_specs: List[Dict[str, Any]] | None = None,
     room_capacity_mode: str | None = None,
+    calendar_days: List[str] | None = None,
+    calendar_weeks: List[int] | None = None,
+    term_blocks: List[Dict[str, Any]] | None = None,
+    slots_per_day: int | None = None,
     seed: int = 42,
 ) -> Instance:
     """
@@ -335,6 +400,15 @@ def generate_custom_instance(
         raise ValueError("num_professors must be >= 1")
     if num_tas < 1:
         raise ValueError("num_tas must be >= 1")
+
+    days_list = sorted(
+        _normalize_days(calendar_days, valid_days=DAYS),
+        key=lambda d: DAYS.index(d),
+    )
+    expanded_weeks, normalized_term_blocks = _expand_term_blocks(term_blocks)
+    week_source = list(calendar_weeks or expanded_weeks)
+    weeks_list = sorted(_normalize_weeks(week_source, valid_weeks=None))
+    slots_per_day_value = max(3, int(slots_per_day if slots_per_day is not None else SLOTS_PER_DAY))
 
     default_groups = int(groups_per_program) if groups_per_program is not None else 2
     default_courses = int(courses_per_program) if courses_per_program is not None else 6
@@ -434,12 +508,16 @@ def generate_custom_instance(
         num_programs=int(num_programs),
         groups_per_program=(min(program_group_counts), max(program_group_counts)),
         courses_per_program=(min(program_course_counts), max(program_course_counts)),
+        calendar_days=days_list,
+        calendar_weeks=weeks_list,
+        slots_per_day=slots_per_day_value,
         program_group_counts=program_group_counts,
         program_course_counts=program_course_counts,
         program_courses_per_group=program_courses_per_group,
         program_names=program_names,
         course_pattern_overrides=course_pattern_overrides,
     )
+    inst.term_blocks = list(normalized_term_blocks)
 
     # Optional custom room set.
     if room_specs is not None:
@@ -448,7 +526,11 @@ def generate_custom_instance(
             for spec in room_specs:
                 if isinstance(spec, dict):
                     spec.setdefault("capacity_mode", mode_norm)
-        inst.rooms = _build_custom_rooms(room_specs)
+        inst.rooms = _build_custom_rooms(
+            room_specs,
+            days_list=list(inst.days),
+            slots_per_day=int(inst.slots_per_day),
+        )
 
     # Optional course naming override (cycled if fewer names than courses).
     if course_names:
@@ -473,10 +555,16 @@ def generate_custom_instance(
             id=sid,
             name=f"Prof-{idx}",
             is_prof=True,
-            available_days=_normalize_days((professor_days or {}).get(idx)),
+            available_days=_normalize_days(
+                (professor_days or {}).get(idx),
+                valid_days=days_list,
+            ),
             max_slots_per_day=None,
             max_slots_per_week=None,
-            available_weeks=_normalize_weeks((professor_weeks or {}).get(idx)),
+            available_weeks=_normalize_weeks(
+                (professor_weeks or {}).get(idx),
+                valid_weeks=weeks_list,
+            ),
             can_teach_courses=set(),
             prefers_block=False,
             blocks_only=False,
@@ -489,10 +577,16 @@ def generate_custom_instance(
             id=sid,
             name=f"TA-{idx}",
             is_prof=False,
-            available_days=_normalize_days((ta_days or {}).get(idx)),
+            available_days=_normalize_days(
+                (ta_days or {}).get(idx),
+                valid_days=days_list,
+            ),
             max_slots_per_day=None,
             max_slots_per_week=None,
-            available_weeks=_normalize_weeks((ta_weeks or {}).get(idx)),
+            available_weeks=_normalize_weeks(
+                (ta_weeks or {}).get(idx),
+                valid_weeks=weeks_list,
+            ),
             can_teach_courses=set(),
             prefers_block=False,
             blocks_only=False,
@@ -544,6 +638,9 @@ def _generate_university(
     target_profile: bool = False,
     max_group_load_slots: int | None = None,
     block_prof_extra_days: tuple[str, ...] = (),
+    calendar_days: List[str] | None = None,
+    calendar_weeks: List[int] | None = None,
+    slots_per_day: int = SLOTS_PER_DAY,
     program_group_counts: List[int] | None = None,
     program_course_counts: List[int] | None = None,
     program_courses_per_group: List[int] | None = None,
@@ -564,6 +661,13 @@ def _generate_university(
     """
 
     rng = random.Random(seed)
+    days_list = list(calendar_days or DAYS)
+    weeks_list = sorted(int(w) for w in (calendar_weeks or WEEKS))
+    if not days_list:
+        raise ValueError("calendar_days must contain at least one day")
+    if not weeks_list:
+        raise ValueError("calendar_weeks must contain at least one week")
+    slots_per_day = max(3, int(slots_per_day))
 
     if program_group_counts is not None and len(program_group_counts) != int(num_programs):
         raise ValueError("program_group_counts must match num_programs")
@@ -685,7 +789,15 @@ def _generate_university(
 
     labs_only_for_program: Dict[int, int] = {}
     block_courses: set[int] = set()
-    BLOCK_WEEKS = [1, 4, 7, 10]  # includes week 1, which is allowed for LEC
+    BLOCK_WEEKS = [w for w in [1, 4, 7, 10] if w in weeks_list]
+    if not BLOCK_WEEKS:
+        step = max(1, len(weeks_list) // max(1, min(4, len(weeks_list))))
+        BLOCK_WEEKS = []
+        for idx in range(0, len(weeks_list), step):
+            BLOCK_WEEKS.append(int(weeks_list[idx]))
+            if len(BLOCK_WEEKS) >= min(4, len(weeks_list)):
+                break
+        BLOCK_WEEKS = list(dict.fromkeys(BLOCK_WEEKS))
 
     for p in range(1, num_programs + 1):
         c_ids = program_to_course_ids[p]
@@ -732,6 +844,8 @@ def _generate_university(
         target_profile=target_profile,
         programs=num_programs,
         block_prof_extra_days=block_prof_extra_days,
+        days_list=days_list,
+        weeks_list=weeks_list,
     )
 
     prof_load = {sid: 0 for sid in prof_ids}
@@ -744,12 +858,19 @@ def _generate_university(
 
     # ----- rooms -----
 
-    rooms.update(_build_target_case_rooms(rng, target_profile=target_profile))  # includes LECTURE + TUTORIAL + LAB rooms
+    rooms.update(
+        _build_target_case_rooms(
+            rng,
+            target_profile=target_profile,
+            days_list=days_list,
+            slots_per_day=slots_per_day,
+        )
+    )  # includes LECTURE + TUTORIAL + LAB rooms
 
     # Default: all rooms available for all (day,slot) pairs (used by the solver if provided)
     for r in rooms.values():
         if getattr(r, "availability", None) is None:
-            r.availability = {(d, s) for d in DAYS for s in range(SLOTS_PER_DAY)}
+            r.availability = {(d, s) for d in days_list for s in range(int(slots_per_day))}
 
     # ----- assign courses to staff and finalise course metadata -----
 
@@ -947,7 +1068,7 @@ def _generate_university(
     activities = {}
     next_act_id = 1
 
-    tut_weeks = list(range(2, 13))  # week-1 rule: tutorials/labs start week 2
+    tut_weeks = [int(w) for w in weeks_list if int(w) != int(min(weeks_list))]
 
     for p in range(1, num_programs + 1):
         c_ids = program_to_course_ids[p]
@@ -973,8 +1094,8 @@ def _generate_university(
                             prof_id=prof_id, ta_id=ta_id, requires_specialization=None,
                         )
                 else:
-                    lec_counts = _distribute_sessions(int(c.lecture_count), WEEKS, rng=rng)
-                    for week in WEEKS:
+                    lec_counts = _distribute_sessions(int(c.lecture_count), weeks_list, rng=rng)
+                    for week in weeks_list:
                         for _ in range(lec_counts.get(week, 0)):
                             act_id = next_act_id; next_act_id += 1
                             activities[act_id] = Activity(
@@ -1022,9 +1143,9 @@ def _generate_university(
     _inject_cross_major_clusters(activities, groups, courses, rng, target_profile=target_profile)
 
     inst = Instance(
-        days=list(DAYS),
-        slots_per_day=SLOTS_PER_DAY,
-        weeks=list(WEEKS),
+        days=list(days_list),
+        slots_per_day=int(slots_per_day),
+        weeks=list(weeks_list),
         programs=programs,
         groups=groups,
         courses=courses,
@@ -1049,6 +1170,8 @@ def _build_staff_pool(
     target_profile: bool = False,
     programs: int = 0,
     block_prof_extra_days: tuple[str, ...] = (),
+    days_list: List[str] | None = None,
+    weeks_list: List[int] | None = None,
 ) -> tuple[List[int], List[int], List[int]]:
     """
     Professors and TAs. No daily caps; optional weekly cap for block professors.
@@ -1057,6 +1180,8 @@ def _build_staff_pool(
     prof_ids: List[int] = []
     ta_ids: List[int] = []
     block_prof_ids: List[int] = []
+    days_list = list(days_list or DAYS)
+    weeks_list = list(weeks_list or WEEKS)
 
     if target_profile:
         num_profs = max(30, total_courses // 4)
@@ -1078,11 +1203,14 @@ def _build_staff_pool(
             days = {"FRI", "SAT"} | set(block_prof_extra_days)
         else:
             days = {"SAT"} if rng.random() < 0.5 else {"FRI", "SAT"}
+        days &= set(days_list)
+        if not days:
+            days = {days_list[-1]}
         staff[s_id] = StaffMember(
             id=s_id, name=f"Prof-{s_id}", is_prof=True,
             available_days=days,
             max_slots_per_day=None, max_slots_per_week=8,
-            available_weeks=set(WEEKS),
+            available_weeks=set(weeks_list),
             can_teach_courses=set(),
             prefers_block=True, blocks_only=True,
         )
@@ -1093,9 +1221,9 @@ def _build_staff_pool(
         s_id = next_staff_id; next_staff_id += 1
         staff[s_id] = StaffMember(
             id=s_id, name=f"Prof-{s_id}", is_prof=True,
-            available_days=set(DAYS),
+            available_days=set(days_list),
             max_slots_per_day=None, max_slots_per_week=None,
-            available_weeks=set(WEEKS),
+            available_weeks=set(weeks_list),
             can_teach_courses=set(),
             prefers_block=False, blocks_only=False,
         )
@@ -1105,11 +1233,11 @@ def _build_staff_pool(
     if target_profile:
         # Enough TAs to keep ~3–4 courses per TA; each TA has one fixed off-day
         num_tas = max(10, (total_courses + 3) // 4)
-        days_list = list(DAYS)
+        ta_days_list = list(days_list)
         for _ in range(num_tas):
             s_id = next_staff_id; next_staff_id += 1
-            off_day = rng.choice(days_list)
-            avail = set(DAYS) - {off_day}
+            off_day = rng.choice(ta_days_list)
+            avail = set(days_list) - {off_day}
             staff[s_id] = StaffMember(
                 id=s_id,
                 name=f"TA-{s_id}",
@@ -1117,7 +1245,7 @@ def _build_staff_pool(
                 available_days=avail,
                 max_slots_per_day=None,
                 max_slots_per_week=None,
-                available_weeks=set(WEEKS),
+                available_weeks=set(weeks_list),
                 can_teach_courses=set(),
                 prefers_block=False,
                 blocks_only=False,
@@ -1129,9 +1257,9 @@ def _build_staff_pool(
             s_id = next_staff_id; next_staff_id += 1
             staff[s_id] = StaffMember(
                 id=s_id, name=f"TA-{s_id}", is_prof=False,
-                available_days=set(DAYS),
+                available_days=set(days_list),
                 max_slots_per_day=None, max_slots_per_week=None,
-                available_weeks=set(WEEKS),
+                available_weeks=set(weeks_list),
                 can_teach_courses=set(),
                 prefers_block=False, blocks_only=False,
             )
@@ -1140,7 +1268,13 @@ def _build_staff_pool(
     return prof_ids, ta_ids, block_prof_ids
 
 
-def _build_target_case_rooms(rng: random.Random, target_profile: bool = False) -> Dict[int, Room]:
+def _build_target_case_rooms(
+    rng: random.Random,
+    target_profile: bool = False,
+    *,
+    days_list: List[str] | None = None,
+    slots_per_day: int = SLOTS_PER_DAY,
+) -> Dict[int, Room]:
     """
     Target profile: mixed big/small rooms and dedicated/specific labs.
 
@@ -1152,6 +1286,8 @@ def _build_target_case_rooms(rng: random.Random, target_profile: bool = False) -
 
     rooms: Dict[int, Room] = {}
     next_room_id = 1
+    days_list = list(days_list or DAYS)
+    full_availability = {(d, s) for d in days_list for s in range(int(slots_per_day))}
 
     if target_profile:
         # Big lecture rooms
@@ -1159,28 +1295,32 @@ def _build_target_case_rooms(rng: random.Random, target_profile: bool = False) -
             r_id = next_room_id; next_room_id += 1
             rooms[r_id] = Room(
                 id=r_id, name=f"BigLec-{i+1}",
-                capacity=500, room_type="LECTURE", specialization_tags=set(),
+                capacity=500, room_type="LECTURE", campus="MAIN", building="LECTURE-HALL",
+                specialization_tags=set(), availability=set(full_availability),
             )
         # Small lecture rooms (can host tutorials as overflow)
         for i in range(5):
             r_id = next_room_id; next_room_id += 1
             rooms[r_id] = Room(
                 id=r_id, name=f"SmallLec-{i+1}",
-                capacity=150, room_type="LECTURE", specialization_tags=set(),
+                capacity=150, room_type="LECTURE", campus="MAIN", building="LECTURE-HALL",
+                specialization_tags=set(), availability=set(full_availability),
             )
         # Tutorial rooms
         for i in range(10):
             r_id = next_room_id; next_room_id += 1
             rooms[r_id] = Room(
                 id=r_id, name=f"Tut-{i+1}",
-                capacity=100, room_type="TUTORIAL", specialization_tags=set(),
+                capacity=100, room_type="TUTORIAL", campus="MAIN", building="TUTORIAL-BLOCK",
+                specialization_tags=set(), availability=set(full_availability),
             )
         # Specialized labs for specific courses
         for tag in ["LABA", "LABB", "LABC", "LABD"]:
             r_id = next_room_id; next_room_id += 1
             rooms[r_id] = Room(
                 id=r_id, name=f"Spec-{tag}",
-                capacity=60, room_type="SPECIALIZED_LAB", specialization_tags={tag},
+                capacity=60, room_type="SPECIALIZED_LAB", campus="MAIN", building="SPECIAL-LABS",
+                specialization_tags={tag}, availability=set(full_availability),
             )
         # General computer labs
         num_pc = rng.randint(5, 7)
@@ -1188,7 +1328,8 @@ def _build_target_case_rooms(rng: random.Random, target_profile: bool = False) -
             r_id = next_room_id; next_room_id += 1
             rooms[r_id] = Room(
                 id=r_id, name=f"PC-Lab-{i+1}",
-                capacity=120, room_type="COMPUTER_LAB", specialization_tags=set(),
+                capacity=120, room_type="COMPUTER_LAB", campus="MAIN", building="COMPUTER-LABS",
+                specialization_tags=set(), availability=set(full_availability),
             )
     else:
         # legacy/default setup
@@ -1197,25 +1338,29 @@ def _build_target_case_rooms(rng: random.Random, target_profile: bool = False) -
             r_id = next_room_id; next_room_id += 1
             rooms[r_id] = Room(
                 id=r_id, name=f"Lec-{i+1}",
-                capacity=CAP, room_type="LECTURE", specialization_tags=set(),
+                capacity=CAP, room_type="LECTURE", campus="MAIN", building="LECTURE-HALL",
+                specialization_tags=set(), availability=set(full_availability),
             )
         for i in range(5):
             r_id = next_room_id; next_room_id += 1
             rooms[r_id] = Room(
                 id=r_id, name=f"Tut-{i+1}",
-                capacity=CAP, room_type="TUTORIAL", specialization_tags=set(),
+                capacity=CAP, room_type="TUTORIAL", campus="MAIN", building="TUTORIAL-BLOCK",
+                specialization_tags=set(), availability=set(full_availability),
             )
         for tag in ["LAB1", "LAB2", "LAB3"]:
             r_id = next_room_id; next_room_id += 1
             rooms[r_id] = Room(
                 id=r_id, name=f"SpecLab-{tag[-1]}",
-                capacity=CAP, room_type="SPECIALIZED_LAB", specialization_tags={tag},
+                capacity=CAP, room_type="SPECIALIZED_LAB", campus="MAIN", building="SPECIAL-LABS",
+                specialization_tags={tag}, availability=set(full_availability),
             )
         for i in range(2):
             r_id = next_room_id; next_room_id += 1
             rooms[r_id] = Room(
                 id=r_id, name=f"CompLab-{i+1}",
-                capacity=CAP, room_type="COMPUTER_LAB", specialization_tags=set(),
+                capacity=CAP, room_type="COMPUTER_LAB", campus="MAIN", building="COMPUTER-LABS",
+                specialization_tags=set(), availability=set(full_availability),
             )
 
     return rooms
@@ -1338,10 +1483,18 @@ def instance_to_json(inst: Instance) -> Dict[str, Any]:
         "courses": _conv(inst.courses),
         "staff": _conv(inst.staff),
         "rooms": _conv(inst.rooms),
+        "generic_resources": _conv(getattr(inst, "generic_resources", {}) or {}),
         "activities": _conv(inst.activities),
         "locked_activities": _conv(getattr(inst, "locked_activities", {}) or {}),
         "soft_weights": _conv(getattr(inst, "soft_weights", {}) or {}),
+        "objective_profile": str(getattr(inst, "objective_profile", "balanced") or "balanced"),
         "hard_constraints": _conv(getattr(inst, "hard_constraints", {}) or {}),
+        "travel_time_rules": _conv(getattr(inst, "travel_time_rules", {}) or {}),
+        "room_closures": _conv(getattr(inst, "room_closures", []) or []),
+        "calendar_rules": _conv(getattr(inst, "calendar_rules", {}) or {}),
+        "precedence_rules": _conv(getattr(inst, "precedence_rules", []) or []),
+        "sla_targets": _conv(getattr(inst, "sla_targets", {}) or {}),
+        "term_blocks": _conv(getattr(inst, "term_blocks", []) or []),
     }
 
 def write_instance(inst: Instance, out_path: str | Path) -> None:

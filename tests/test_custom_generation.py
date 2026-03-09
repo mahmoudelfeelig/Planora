@@ -231,3 +231,49 @@ def test_generate_custom_instance_infers_structure_from_counts():
     assert len(c4_tuts) == 0
     assert len(c4_labs) == 12
     assert all(a.requires_specialization is None for a in c4_labs)
+
+
+def test_generate_custom_instance_supports_calendar_and_room_metadata():
+    inst = generate_custom_instance(
+        num_programs=1,
+        groups_per_program=1,
+        courses_per_program=3,
+        num_professors=2,
+        num_tas=2,
+        calendar_days=["MON", "TUE", "WED", "THU", "FRI"],
+        calendar_weeks=[1, 2, 3, 4, 5, 6, 7, 8],
+        slots_per_day=6,
+        room_specs=[
+            {
+                "name": "North Hall A",
+                "room_type": "LECTURE",
+                "category": "MEDIUM",
+                "campus": "NORTH",
+                "building": "HALL-A",
+                "features": ["PROJECTOR", "ACCESSIBLE"],
+            },
+            {
+                "name": "North Lab",
+                "room_type": "SPECIALIZED_LAB",
+                "category": "SMALL",
+                "campus": "NORTH",
+                "building": "LAB-1",
+                "features": ["WET_LAB"],
+                "tags": ["LAB1"],
+            },
+        ],
+        seed=19,
+    )
+
+    assert inst.days == ["MON", "TUE", "WED", "THU", "FRI"]
+    assert inst.weeks == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert int(inst.slots_per_day) == 6
+    assert inst.rooms[1].campus == "NORTH"
+    assert inst.rooms[1].building == "HALL-A"
+    assert inst.rooms[1].features == {"PROJECTOR", "ACCESSIBLE"}
+    assert inst.rooms[2].campus == "NORTH"
+    assert inst.rooms[2].building == "LAB-1"
+    assert inst.rooms[2].features == {"WET_LAB"}
+    for room in inst.rooms.values():
+        assert room.availability is not None
+        assert all(day in {"MON", "TUE", "WED", "THU", "FRI"} for day, _slot in room.availability)

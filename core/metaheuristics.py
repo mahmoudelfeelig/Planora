@@ -5,6 +5,14 @@ import math
 import time
 
 from utils.domain import Instance
+from utils.schedule_rules import (
+    calendar_slot_blocked,
+    generic_resource_violations,
+    generic_resources_available,
+    precedence_violations,
+    room_is_available,
+    travel_buffer_violations,
+)
 
 
 class LocalSearchImprover:
@@ -195,17 +203,15 @@ class LocalSearchImprover:
     def _is_block_staff(self, staff) -> bool:
         return bool(getattr(staff, "blocks_only", False) or getattr(staff, "prefers_block", False) or getattr(staff, "is_block_prof", False))
 
-    def _room_available(self, room_id: int, day: str, start_slot: int, dur: int) -> bool:
-        room = self.inst.rooms[room_id]
-        avail = getattr(room, "availability", None)
-        if avail is None:
-            return True
-        pairs = getattr(room, "availability", None)
-        if isinstance(pairs, set):
-            for off in range(dur):
-                if (day, start_slot + off) not in pairs:
-                    return False
-        return True
+    def _room_available(self, room_id: int, week: int, day: str, start_slot: int, dur: int) -> bool:
+        return room_is_available(
+            self.inst,
+            int(room_id),
+            week=int(week),
+            day=str(day),
+            start_slot=int(start_slot),
+            dur=int(dur),
+        )
 
     def _can_place_time(self, schedule, a_id, new_day, new_slot) -> bool:
         inst = self.inst
@@ -217,6 +223,8 @@ class LocalSearchImprover:
         st_id = info["staff_id"]
 
         if new_slot < 0 or new_slot + dur > inst.slots_per_day:
+            return False
+        if calendar_slot_blocked(inst, week=int(w), day=str(new_day)):
             return False
 
         locked = self._locked.get(a_id, {})
@@ -237,7 +245,15 @@ class LocalSearchImprover:
                 return False
 
         # Time moves keep room fixed, so enforce room availability at target slot.
-        if r is not None and not self._room_available(int(r), str(new_day), int(new_slot), int(dur)):
+        if r is not None and not self._room_available(int(r), int(w), str(new_day), int(new_slot), int(dur)):
+            return False
+        if not generic_resources_available(
+            inst,
+            getattr(act, "resource_ids", []) or [],
+            day=str(new_day),
+            start_slot=int(new_slot),
+            dur=int(dur),
+        ):
             return False
 
         # soft block staff: cap distinct teaching days to 2
@@ -274,6 +290,19 @@ class LocalSearchImprover:
             load_week = self.staff_week_load[st_id][w]
             if load_week > int(max_per_week):
                 return False
+
+        trial = {
+            int(other_id): dict(other_info)
+            for other_id, other_info in schedule.items()
+        }
+        trial[int(a_id)]["day"] = str(new_day)
+        trial[int(a_id)]["slot"] = int(new_slot)
+        if precedence_violations(inst, trial):
+            return False
+        if travel_buffer_violations(inst, trial):
+            return False
+        if generic_resource_violations(inst, trial):
+            return False
 
         return True
 
@@ -340,7 +369,7 @@ class LocalSearchImprover:
             if room.room_type not in ("TUTORIAL", "LECTURE"):
                 return False
 
-        if not self._room_available(new_room_id, d, s0, dur):
+        if not self._room_available(new_room_id, int(w), d, s0, dur):
             return False
 
         for ds in range(dur):
@@ -348,6 +377,14 @@ class LocalSearchImprover:
             key = (w, d, s)
             if new_room_id in self.room_use[key] and self.room_use[key][new_room_id] != a_id:
                 return False
+
+        trial = {
+            int(other_id): dict(other_info)
+            for other_id, other_info in schedule.items()
+        }
+        trial[int(a_id)]["room_id"] = int(new_room_id)
+        if travel_buffer_violations(inst, trial):
+            return False
 
         return True
 
