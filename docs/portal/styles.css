@@ -1,0 +1,8 @@
+body { margin: 0; font-family: "Segoe UI", sans-serif; background: #10131A; color: #F2F4F8; }
+.hero { display: grid; grid-template-columns: minmax(240px, 420px) 1fr; gap: 2rem; padding: 3rem; align-items: center; }
+.hero-shot { width: 100%; border-radius: 20px; background: #181F2A; }
+.eyebrow { text-transform: uppercase; letter-spacing: 0.18em; color: #6F8F6A; }
+.lead { color: #A7B0BE; max-width: 44rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; padding: 0 3rem 3rem; }
+section { background: #181F2A; border: 1px solid #2B3647; border-radius: 18px; padding: 1.25rem; }
+a { color: #7D63D9; }

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#10131A"/>
+  <rect x="40" y="40" width="1120" height="620" rx="24" fill="#181F2A" stroke="#2B3647"/>
+  <rect x="80" y="100" width="1040" height="80" rx="18" fill="#21301F"/>
+  <rect x="80" y="220" width="680" height="380" rx="18" fill="#141A24" stroke="#6F8F6A"/>
+  <rect x="800" y="220" width="320" height="180" rx="18" fill="#141A24" stroke="#7D63D9"/>
+  <rect x="800" y="420" width="320" height="180" rx="18" fill="#141A24" stroke="#D7A632"/>
+  <text x="100" y="150" fill="#F2F4F8" font-size="34" font-family="Segoe UI">Planora Dashboard</text>
+</svg>

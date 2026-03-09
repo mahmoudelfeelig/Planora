@@ -1,6 +1,6 @@
-# University Timetabling Scheduler (Python)
+# Planora Academic Scheduler
 
-Generates and edits 12-week university timetables (lectures, tutorials, and labs) on a fixed weekly grid, using an OR-Tools CP-SAT feasibility model plus an optional local-search improver. Includes a PyQt6 desktop UI and exporters for DOCX/CSV/ICS/PDF plus CSV summary reports.
+Planora generates and edits 12-week academic timetables (lectures, tutorials, and labs) on a fixed weekly grid, using an OR-Tools CP-SAT feasibility model plus an optional local-search improver. It includes a PyQt6 desktop UI and exporters for DOCX/CSV/ICS/PDF plus CSV summary reports.
 
 ## What’s in this repo
 
