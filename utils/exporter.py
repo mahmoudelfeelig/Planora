@@ -15,6 +15,7 @@ except Exception:  # pragma: no cover
     Document = None  # type: ignore
 
 from utils.domain import Instance
+from product.branding import branding_header_lines
 
 # -------- time labels --------
 
@@ -95,6 +96,14 @@ def _ensure_docx():
     if Document is None:
         raise RuntimeError("python-docx is not installed. Install 'python-docx' to enable DOCX exports.")
 
+def _add_branding_banner(doc, branding: Dict[str, Any] | None = None) -> None:
+    for line in branding_header_lines(branding):
+        p = doc.add_paragraph()
+        r = p.add_run(str(line))
+        r.font.size = Pt(10)
+        r.bold = False
+
+
 def _add_title(doc, text: str):
     h = doc.add_paragraph()
     r = h.add_run(text)
@@ -108,9 +117,16 @@ def _add_subtitle(doc, text: str):
 
 # -------- DOCX exports (unchanged behavior) --------
 
-def export_group_schedules_to_docx(inst: Instance, schedule: Dict[int, Dict[str, Any]], filename: str) -> None:
+def export_group_schedules_to_docx(
+    inst: Instance,
+    schedule: Dict[int, Dict[str, Any]],
+    filename: str,
+    *,
+    branding: Dict[str, Any] | None = None,
+) -> None:
     _ensure_docx()
     doc = Document()
+    _add_branding_banner(doc, branding)
     slot_labels = _slot_labels(inst)
     days = inst.days
     slots = inst.slots_per_day
@@ -137,9 +153,16 @@ def export_group_schedules_to_docx(inst: Instance, schedule: Dict[int, Dict[str,
 
     doc.save(filename)
 
-def export_staff_schedules_to_docx(inst: Instance, schedule: Dict[int, Dict[str, Any]], filename: str) -> None:
+def export_staff_schedules_to_docx(
+    inst: Instance,
+    schedule: Dict[int, Dict[str, Any]],
+    filename: str,
+    *,
+    branding: Dict[str, Any] | None = None,
+) -> None:
     _ensure_docx()
     doc = Document()
+    _add_branding_banner(doc, branding)
     slot_labels = _slot_labels(inst)
     days = inst.days
     slots = inst.slots_per_day
@@ -166,9 +189,16 @@ def export_staff_schedules_to_docx(inst: Instance, schedule: Dict[int, Dict[str,
 
     doc.save(filename)
 
-def export_room_schedules_to_docx(inst: Instance, schedule: Dict[int, Dict[str, Any]], filename: str) -> None:
+def export_room_schedules_to_docx(
+    inst: Instance,
+    schedule: Dict[int, Dict[str, Any]],
+    filename: str,
+    *,
+    branding: Dict[str, Any] | None = None,
+) -> None:
     _ensure_docx()
     doc = Document()
+    _add_branding_banner(doc, branding)
     slot_labels = _slot_labels(inst)
     days = inst.days
     slots = inst.slots_per_day
@@ -291,7 +321,13 @@ def _write_simple_pdf(pages: List[List[str]], out_path: str | Path) -> None:
     path.write_bytes(header + body + xref_bytes + trailer)
 
 
-def export_groups_pdf(inst: Instance, schedule: Dict[int, Dict[str, Any]], out_path: str | Path) -> None:
+def export_groups_pdf(
+    inst: Instance,
+    schedule: Dict[int, Dict[str, Any]],
+    out_path: str | Path,
+    *,
+    branding: Dict[str, Any] | None = None,
+) -> None:
     """
     Text-only PDF export: one page per group with a sorted activity list.
     """
@@ -299,7 +335,10 @@ def export_groups_pdf(inst: Instance, schedule: Dict[int, Dict[str, Any]], out_p
     day_order = {d: i for i, d in enumerate(inst.days)}
 
     for g_id, g in sorted(inst.groups.items()):
-        lines: List[str] = [f"Group: {g.name} (id {g_id})"]
+        lines: List[str] = []
+        lines.extend(branding_header_lines(branding))
+        lines.append("")
+        lines.append(f"Group: {g.name} (id {g_id})")
         items = []
         for a_id, info in schedule.items():
             if g_id not in info.get("group_ids", []):
@@ -332,7 +371,13 @@ def export_groups_pdf(inst: Instance, schedule: Dict[int, Dict[str, Any]], out_p
 
 # -------- richer reporting --------
 
-def export_summary_reports(inst: Instance, schedule: Dict[int, Dict[str, Any]], out_dir: str | Path) -> None:
+def export_summary_reports(
+    inst: Instance,
+    schedule: Dict[int, Dict[str, Any]],
+    out_dir: str | Path,
+    *,
+    branding: Dict[str, Any] | None = None,
+) -> None:
     """
     Write small CSV reports that are easy to inspect:
       - staff_load.csv: per staff/week total slots
@@ -367,6 +412,10 @@ def export_summary_reports(inst: Instance, schedule: Dict[int, Dict[str, Any]], 
     def _write(path: Path, header: List[str], rows: List[List[object]]) -> None:
         with path.open("w", newline="", encoding="utf-8") as f:
             cw = csv.writer(f)
+            if branding:
+                for line in branding_header_lines(branding):
+                    cw.writerow([line])
+                cw.writerow([])
             cw.writerow(header)
             cw.writerows(rows)
 
@@ -620,3 +669,35 @@ def export_calendar_feeds(
         json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
     )
     return manifest
+
+
+def write_heatmap_reports(out_dir: str | Path, heatmaps: Dict[str, Any]) -> Dict[str, str]:
+    target = Path(out_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    group_path = target / "group_heatmaps.csv"
+    staff_path = target / "staff_heatmaps.csv"
+
+    def _write(path: Path, entity_rows: Dict[int, Dict[str, Any]]) -> None:
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["entity_id", "entity_label", "metric", "day", "slot", "value"])
+            for entity_id, payload in sorted(entity_rows.items()):
+                label = str(payload.get("entity_label", entity_id))
+                for metric in ("load", "gaps", "instability"):
+                    matrix = payload.get(metric, []) or []
+                    for day_idx, row in enumerate(matrix):
+                        for slot_idx, value in enumerate(row):
+                            writer.writerow(
+                                [
+                                    int(entity_id),
+                                    label,
+                                    metric,
+                                    int(day_idx),
+                                    int(slot_idx),
+                                    int(value),
+                                ]
+                            )
+
+    _write(group_path, dict(heatmaps.get("groups", {}) or {}))
+    _write(staff_path, dict(heatmaps.get("staff", {}) or {}))
+    return {"groups": str(group_path), "staff": str(staff_path)}
