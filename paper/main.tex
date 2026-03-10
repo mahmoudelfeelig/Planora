@@ -28,12 +28,12 @@
 \maketitle
 
 \begin{abstract}
-University course timetabling must satisfy strict feasibility requirements while still producing practical weekly schedules for students and staff.
-This paper presents a complete scheduling approach for lectures, tutorials, and labs under realistic university constraints, including room compatibility, staff availability, and program/group structure.
-Our method first constructs a conflict-free timetable, then improves quality through a post-optimization stage that targets soft preferences such as free-day patterns and compactness.
-Across benchmark-style generated scenarios (\texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, \texttt{target\_case}), reliability experiments obtain feasible schedules in all 24/24 runs with retry/fallback enabled.
-For larger instances, fast greedy room assignment is consistently faster than strict integrated room assignment (approximately \(1.59\times\) to \(1.98\times\) in our batch), while local improvement yields additional quality gains after feasibility (up to \(1.13\%\) median penalty reduction on \texttt{block\_profs}).
-The paper focuses on the mathematical model, algorithmic decisions, and reproducible evaluation protocol needed to deploy the system in practice.
+University course timetabling is the task of deciding when and where classes should take place while respecting the needs of students, instructors, and rooms.
+It is difficult because many requirements must be satisfied at the same time, and even small conflicts can make a timetable unusable in practice.
+This paper presents a scheduling framework for lectures, tutorials, and laboratories in realistic academic settings.
+The approach separates the problem into two stages: it first builds a timetable that satisfies the core operational constraints, then it improves the result according to softer quality goals such as more balanced and more practical weekly schedules.
+We describe the problem formulation, the main optimization strategy, and a reproducible evaluation process.
+The results show that the framework can reliably generate valid timetables and then refine them further without sacrificing feasibility, making it suitable as a practical foundation for academic scheduling tools.
 \end{abstract}
 
 \section{Introduction}
