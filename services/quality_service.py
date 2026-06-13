@@ -194,6 +194,29 @@ def explain_solution_ranking(
     return " ".join(parts)
 
 
+def rank_penalty_drivers(
+    inst,
+    schedule: Dict[int, Dict[str, Any]],
+    *,
+    limit: int = 6,
+) -> list[Dict[str, Any]]:
+    breakdown = compute_penalty_breakdown(inst, schedule)
+    total = max(1, int(breakdown.get("total", 0)))
+    rows: list[Dict[str, Any]] = []
+    for key, value in breakdown.items():
+        if key == "total" or int(value) <= 0:
+            continue
+        rows.append(
+            {
+                "term": str(key),
+                "penalty": int(value),
+                "share": float(int(value) / total),
+            }
+        )
+    rows.sort(key=lambda row: (-int(row["penalty"]), str(row["term"])))
+    return rows[: max(1, int(limit))]
+
+
 def evaluate_schedule_sla(inst, schedule: Dict[int, Dict[str, Any]], *, hard_conflicts: int = 0) -> Dict[str, Any]:
     breakdown = compute_penalty_breakdown(inst, schedule)
     return evaluate_sla_targets(

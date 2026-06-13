@@ -9,6 +9,7 @@ import traceback
 import time
 import re
 import json
+import copy
 from datetime import datetime, timezone
 from typing import Dict, Any, Tuple, List, Set
 
@@ -24,6 +25,14 @@ def _resource_path(*parts: str) -> str:
     else:
         base = ROOT_DIR
     return os.path.normpath(os.path.join(base, *parts))
+
+
+def _app_icon_path() -> str:
+    for filename in ("Logo.ico", "app_icon.png"):
+        path = _resource_path(filename)
+        if os.path.exists(path):
+            return path
+    return ""
 
 from PyQt6.QtCore import Qt, QProcess, QTimer, QEvent, QThread, QThreadPool
 from PyQt6.QtGui import QBrush, QColor, QIcon, QAction, QGuiApplication
@@ -94,6 +103,7 @@ from services.institution_template_service import (
     load_institution_template,
     save_institution_template,
 )
+from services.performance_service import build_feasibility_certificate
 from services.release_service import (
     create_release_candidate,
     protect_baseline_state,
@@ -104,6 +114,7 @@ from services.template_profile_service import (
     load_import_export_template_profile,
     save_import_export_template_profile,
 )
+from services.timetable_import_service import import_timetable_csv
 from ui.constants import (
     APP_COPYRIGHT_LINE,
     APP_DISPLAY_NAME,
@@ -128,9 +139,11 @@ from services.export_service import (
 )
 from services.project_service import load_legacy_project, save_legacy_project
 from services.quality_service import (
+    SOFT_WEIGHT_DEFAULTS,
     compute_penalty_breakdown,
     evaluate_schedule_sla,
     explain_solution_ranking,
+    rank_penalty_drivers,
 )
 from services.runtime_ops_service import (
     append_runtime_log,
@@ -341,8 +354,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_DISPLAY_NAME)
-        icon_path = _resource_path("app_icon.png")
-        if os.path.exists(icon_path):
+        icon_path = _app_icon_path()
+        if icon_path:
             self.setWindowIcon(QIcon(icon_path))
 
         self.inst: Instance | None = None
@@ -391,6 +404,8 @@ class MainWindow(QMainWindow):
         self._solve_attempt_started_at: float | None = None
         self._solver_output_log: str = ""
         self._solver_output_partial: str = ""
+        self._last_solver_output_log: str = ""
+        self._last_solver_result_meta: Dict[str, Any] = {}
         self._table_relayout_pending = False
         self._layout_stabilize_pending: bool = False
         self.top_widget: QWidget | None = None
@@ -441,6 +456,7 @@ class MainWindow(QMainWindow):
         self._improve_original_schedule: Dict[int, Dict[str, Any]] | None = None
         self._improve_total_iters: int = 0
         self._improve_base_penalty: int | None = None
+        self._improve_focus_term: str = ""
 
         self._build_ui()
         self._connect_signals()
@@ -465,6 +481,7 @@ class MainWindow(QMainWindow):
                 "labs_only",
                 "mixed_large",
                 "random",
+                "ss23_uni_like",
                 "target_case",
                 "custom",
             ]
@@ -482,11 +499,18 @@ class MainWindow(QMainWindow):
         self.conflicts_button = QPushButton("Conflicts")
 
         self.room_mode_combo = QComboBox()
-        self.room_mode_combo.addItems(["Strict (CP rooms)", "Fast (Greedy rooms)"])
+        self.room_mode_combo.addItem("Auto", "auto")
+        self.room_mode_combo.addItem("Strict (CP rooms)", "cp_rooms")
+        self.room_mode_combo.addItem("Fast (Greedy rooms)", "greedy")
         self.room_mode_combo.setCurrentIndex(0)
 
         self.objective_cb = QCheckBox("Use CP objective")
         self.objective_cb.setChecked(True)
+        self.debug_diagnostics_cb = QCheckBox("Debug diagnostics")
+        self.debug_diagnostics_cb.setChecked(
+            str(os.getenv("PLANORA_SOLVER_DEBUG", "")).strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
         self.objective_profile_combo = QComboBox()
         for profile_id, label in available_objective_profiles():
             self.objective_profile_combo.addItem(str(label), str(profile_id))
@@ -534,6 +558,12 @@ class MainWindow(QMainWindow):
         self.ls_time_spin.setSuffix(" s")
         self.ls_time_spin.setMaximumWidth(120)
 
+        self.improve_focus_combo = QComboBox()
+        self.improve_focus_combo.addItem("Overall", "")
+        for key in SOFT_WEIGHT_DEFAULTS:
+            self.improve_focus_combo.addItem(str(key), str(key))
+        self.improve_focus_combo.setMinimumWidth(140)
+
         self.export_menu_btn = QToolButton()
         self.export_menu_btn.setText("Export")
         self.export_menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -559,6 +589,7 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("Ready")
         self.quality_label = QLabel("")
         self.quality_label.setWordWrap(True)
+        self.quality_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         def _pair_widget(label: str, widget: QWidget) -> QWidget:
             box = QWidget()
@@ -571,8 +602,8 @@ class MainWindow(QMainWindow):
 
         # Row 0: main actions
         row_actions = QHBoxLayout()
-        row_actions.setContentsMargins(8, 1, 8, 1)
-        row_actions.setSpacing(8)
+        row_actions.setContentsMargins(6, 0, 6, 0)
+        row_actions.setSpacing(6)
         action_widgets: List[QWidget] = [
             _pair_widget("Mode:", self.mode_combo),
             self.generate_button,
@@ -587,42 +618,42 @@ class MainWindow(QMainWindow):
             self.revert_button,
             self.conflicts_button,
         ]
-        for idx, widget in enumerate(action_widgets):
+        for widget in action_widgets:
             row_actions.addWidget(widget)
-            if idx < len(action_widgets) - 1:
-                row_actions.addStretch(1)
+        row_actions.addStretch(1)
         top_layout.addLayout(row_actions)
 
         # Row 1: tuning
         row_tuning = QHBoxLayout()
-        row_tuning.setContentsMargins(8, 1, 8, 1)
-        row_tuning.setSpacing(10)
+        row_tuning.setContentsMargins(6, 0, 6, 0)
+        row_tuning.setSpacing(6)
         tuning_widgets: List[QWidget] = [
             _pair_widget("LS iters:", self.improve_runs_spin),
             _pair_widget("LS time:", self.ls_time_spin),
+            _pair_widget("Focus:", self.improve_focus_combo),
             _pair_widget("Room mode:", self.room_mode_combo),
             _pair_widget("Profile:", self.objective_profile_combo),
             self.objective_cb,
             _pair_widget("Limit:", self.time_limit_spin),
             _pair_widget("Workers:", self.workers_preset_combo),
+            self.debug_diagnostics_cb,
         ]
-        for idx, widget in enumerate(tuning_widgets):
+        for widget in tuning_widgets:
             row_tuning.addWidget(widget)
-            if idx < len(tuning_widgets) - 1:
-                row_tuning.addStretch(1)
+        row_tuning.addStretch(1)
         top_layout.addLayout(row_tuning)
 
         # Row 2: view controls + status
         row_view = QHBoxLayout()
-        row_view.setContentsMargins(8, 1, 8, 1)
-        row_view.setSpacing(10)
+        row_view.setContentsMargins(6, 0, 6, 0)
+        row_view.setSpacing(6)
         row_view.addWidget(_pair_widget("View:", self.view_type_combo))
         row_view.addWidget(self.entity_combo)
         row_view.addWidget(_pair_widget("Week:", self.week_combo))
         row_view.addWidget(_pair_widget("Search:", self.search_scope_combo))
         row_view.addWidget(self.search_edit)
         row_view.addWidget(self.search_button)
-        row_view.addWidget(self.status_label, 1)
+        row_view.addWidget(self.status_label, 2)
         top_layout.addLayout(row_view)
 
         # Emphasize primary admin controls and improve discoverability.
@@ -634,11 +665,13 @@ class MainWindow(QMainWindow):
         self.entity_combo.setMinimumWidth(220)
         self.week_combo.setMinimumWidth(96)
         self.search_scope_combo.setMinimumWidth(110)
-        self.search_edit.setMinimumWidth(260)
+        self.search_edit.setMinimumWidth(200)
         self.workers_preset_combo.setMinimumWidth(120)
         self.objective_profile_combo.setMinimumWidth(150)
         self.status_label.setWordWrap(False)
-        self.status_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.status_label.setMinimumWidth(300)
+        self.status_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.entity_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
@@ -701,8 +734,19 @@ class MainWindow(QMainWindow):
         self.schedule_actions_scroll.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
+        self.schedule_actions_scroll.setMaximumHeight(210)
         schedule_layout.addWidget(self.schedule_actions_scroll, 0)
-        schedule_layout.addWidget(self.quality_label)
+        self.quality_scroll = QScrollArea()
+        self.quality_scroll.setWidget(self.quality_label)
+        self.quality_scroll.setWidgetResizable(True)
+        self.quality_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.quality_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.quality_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.quality_scroll.setMaximumHeight(120)
+        self.quality_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        schedule_layout.addWidget(self.quality_scroll, 0)
         self.workspace_tabs.addTab(schedule_tab, "Schedule")
         self.workspace_tabs.addTab(self._build_generator_tab(), "Generator")
         self.workspace_tabs.addTab(self._build_constraints_tab(), "Constraints")
@@ -983,11 +1027,17 @@ class MainWindow(QMainWindow):
         )
         self.mode_combo.setToolTip("Instance template used when generating data.")
         self.room_mode_combo.setToolTip(
-            "Room assignment strategy: Strict uses CP room variables; Fast uses greedy room assignment."
+            "Room assignment strategy:\n"
+            "- Auto: strict room variables on small instances, greedy room assignment on large instances.\n"
+            "- Strict: CP-SAT chooses rooms with room no-overlap constraints.\n"
+            "- Fast: CP-SAT chooses times, then a greedy pass assigns rooms."
         )
         self.objective_profile_combo.setToolTip(
             "Solve profile:\n"
             "- Fast feasible: prioritize a valid timetable quickly.\n"
+            "- University fast: large-instance time solve with separate greedy rooming.\n"
+            "- University quality: university-fast feasibility plus bounded quality improvement.\n"
+            "- Verification: strict CP room assignment for smaller or audit cases.\n"
             "- Balanced: feasibility first, then bounded quality improvement.\n"
             "- Quality-first: spend more of the budget on soft-penalty reduction."
         )
@@ -996,6 +1046,10 @@ class MainWindow(QMainWindow):
             "- CP: Strict room mode + objective OFF (feasible solution focus)\n"
             "- CP objective: Strict room mode + objective ON (optimize soft constraints)\n"
             "- Greedy: Fast room mode (rooms assigned greedily; fastest but less rigorous)"
+        )
+        self.debug_diagnostics_cb.setToolTip(
+            "Show expanded solver diagnostics when a solve fails or is rejected: "
+            "instance scale, room/staff/group pressure, raw metadata, and solver log tail."
         )
         self.view_type_combo.setToolTip("Choose whether the timetable is filtered by Group, Staff, Room, or All.")
         self.entity_combo.setToolTip("Select which entity to view in the timetable.")
@@ -1037,6 +1091,11 @@ class MainWindow(QMainWindow):
         )
         self.improve_runs_spin.setToolTip("Maximum local-search iterations.")
         self.ls_time_spin.setToolTip("Maximum local-search runtime (seconds).")
+        self.improve_focus_combo.setToolTip(
+            "Local-search improvement focus. Overall uses the normal soft-penalty weights. "
+            "Choosing a term temporarily boosts that term during Improve, so the search spends "
+            "more effort reducing that specific issue."
+        )
         self.selected_activity_combo.setToolTip(
             "Activities in the currently selected cell.\n"
             "Click a timetable cell first, then choose an activity and use the quick actions."
@@ -1299,6 +1358,8 @@ class MainWindow(QMainWindow):
         act_compare.triggered.connect(self.on_compare)
         act_portfolio = QAction("Portfolio Solve Report", self)
         act_portfolio.triggered.connect(self.on_portfolio_solve_report)
+        act_score_breakdown = QAction("Score Breakdown", self)
+        act_score_breakdown.triggered.connect(self.on_show_score_breakdown)
         act_set_operator = QAction("Set Operator Name", self)
         act_set_operator.triggered.connect(self.on_set_operator_name)
         act_undo = QAction("Undo Edit", self)
@@ -1323,6 +1384,8 @@ class MainWindow(QMainWindow):
         act_white_label.triggered.connect(self.on_apply_white_label_profile)
         act_load_sched = QAction("Load Schedule (CSV)", self)
         act_load_sched.triggered.connect(self.on_load_schedule)
+        act_import_timetable = QAction("Import Timetable CSV (create scenario)", self)
+        act_import_timetable.triggered.connect(self.on_import_timetable_csv)
         act_import_wizard = QAction("Import Schedule Wizard (CSV)", self)
         act_import_wizard.triggered.connect(self.on_import_schedule_wizard)
         act_save_ie_template = QAction("Save Import/Export Template", self)
@@ -1331,6 +1394,10 @@ class MainWindow(QMainWindow):
         act_load_ie_template.triggered.connect(self.on_load_import_export_template)
         act_disruption = QAction("Auto-Repair Disruption...", self)
         act_disruption.triggered.connect(self.on_auto_repair_disruption)
+        act_fix_conflicts = QAction("Fix Current Conflicts", self)
+        act_fix_conflicts.triggered.connect(self.on_fix_current_conflicts)
+        act_cp_polish = QAction("Focused CP-SAT Polish", self)
+        act_cp_polish.triggered.connect(self.on_focused_cp_sat_polish)
         act_sandbox_start = QAction("Sandbox: Start Branch", self)
         act_sandbox_start.triggered.connect(self.on_sandbox_start)
         act_branch_save = QAction("Branch: Save Named Branch", self)
@@ -1374,52 +1441,77 @@ class MainWindow(QMainWindow):
         act_about = QAction(f"About {APP_SHORT_NAME}", self)
         act_about.triggered.connect(self.on_show_about)
 
-        self.project_menu.addAction(act_save)
-        self.project_menu.addAction(act_load)
+        file_menu = self.project_menu.addMenu("File")
+        file_menu.addAction(act_save)
+        file_menu.addAction(act_load)
+        file_menu.addAction(act_load_inst)
+        product_menu = file_menu.addMenu("Product Scenario")
+        product_menu.addAction(act_save_product)
+        product_menu.addAction(act_load_product)
+
+        import_menu = self.project_menu.addMenu("Import")
+        import_menu.addAction(act_import_timetable)
+        import_menu.addAction(act_import_wizard)
+        import_menu.addAction(act_load_sched)
+        template_menu = import_menu.addMenu("Import/Export Templates")
+        template_menu.addAction(act_save_ie_template)
+        template_menu.addAction(act_load_ie_template)
+
+        reports_menu = self.project_menu.addMenu("Reports")
+        reports_menu.addAction(act_quality_report)
+        reports_menu.addAction(act_sync_bundle)
+
+        analyze_menu = self.project_menu.addMenu("Analyze")
+        analyze_menu.addAction(act_conflicts)
+        analyze_menu.addAction(act_score_breakdown)
+        analyze_menu.addAction(act_compare)
+        analyze_menu.addAction(act_portfolio)
+        analyze_menu.addAction(act_show_history)
+
+        edit_menu = self.project_menu.addMenu("Edit")
+        edit_menu.addAction(act_undo)
+        edit_menu.addAction(act_redo)
+        edit_menu.addAction(act_revert)
+
+        repair_menu = self.project_menu.addMenu("Repair")
+        repair_menu.addAction(act_fix_conflicts)
+        repair_menu.addAction(act_cp_polish)
+        repair_menu.addSeparator()
+        repair_menu.addAction(act_disruption)
+
+        branch_menu = self.project_menu.addMenu("Branches")
+        branch_menu.addAction(act_sandbox_start)
+        branch_menu.addAction(act_branch_save)
+        branch_menu.addAction(act_branch_load)
+        branch_menu.addAction(act_branch_merge)
+        branch_menu.addSeparator()
+        branch_menu.addAction(act_sandbox_compare)
+        branch_menu.addAction(act_sandbox_apply)
+        branch_menu.addAction(act_sandbox_discard)
+
+        release_menu = self.project_menu.addMenu("Release")
+        release_menu.addAction(act_release_create)
+        release_menu.addAction(act_release_publish)
+        release_menu.addAction(act_protect_base)
+
+        institution_menu = self.project_menu.addMenu("Institution")
+        institution_menu.addAction(act_set_operator)
+        institution_menu.addAction(act_save_institution)
+        institution_menu.addAction(act_load_institution)
+        institution_menu.addAction(act_white_label)
+
+        settings_menu = self.project_menu.addMenu("Settings & Diagnostics")
+        settings_menu.addAction(act_updates)
+        settings_menu.addAction(act_set_update_channel)
+        settings_menu.addSeparator()
+        settings_menu.addAction(act_support_bundle)
+        settings_menu.addAction(act_runtime_logs)
+        settings_menu.addAction(act_audit_log)
+        settings_menu.addSeparator()
+        settings_menu.addAction(act_toggle_crash)
+        settings_menu.addAction(act_toggle_telemetry)
+
         self.project_menu.addSeparator()
-        self.project_menu.addAction(act_compare)
-        self.project_menu.addAction(act_portfolio)
-        self.project_menu.addAction(act_set_operator)
-        self.project_menu.addAction(act_undo)
-        self.project_menu.addAction(act_redo)
-        self.project_menu.addAction(act_revert)
-        self.project_menu.addAction(act_conflicts)
-        self.project_menu.addSeparator()
-        self.project_menu.addAction(act_save_product)
-        self.project_menu.addAction(act_load_product)
-        self.project_menu.addAction(act_save_institution)
-        self.project_menu.addAction(act_load_institution)
-        self.project_menu.addAction(act_white_label)
-        self.project_menu.addAction(act_save_ie_template)
-        self.project_menu.addAction(act_load_ie_template)
-        self.project_menu.addAction(act_load_inst)
-        self.project_menu.addAction(act_load_sched)
-        self.project_menu.addAction(act_import_wizard)
-        self.project_menu.addAction(act_sync_bundle)
-        self.project_menu.addAction(act_quality_report)
-        self.project_menu.addSeparator()
-        self.project_menu.addAction(act_disruption)
-        self.project_menu.addSeparator()
-        self.project_menu.addAction(act_sandbox_start)
-        self.project_menu.addAction(act_branch_save)
-        self.project_menu.addAction(act_branch_load)
-        self.project_menu.addAction(act_branch_merge)
-        self.project_menu.addAction(act_sandbox_compare)
-        self.project_menu.addAction(act_sandbox_apply)
-        self.project_menu.addAction(act_sandbox_discard)
-        self.project_menu.addAction(act_release_create)
-        self.project_menu.addAction(act_release_publish)
-        self.project_menu.addAction(act_protect_base)
-        self.project_menu.addSeparator()
-        self.project_menu.addAction(act_updates)
-        self.project_menu.addAction(act_set_update_channel)
-        self.project_menu.addAction(act_support_bundle)
-        self.project_menu.addAction(act_toggle_crash)
-        self.project_menu.addAction(act_toggle_telemetry)
-        self.project_menu.addAction(act_runtime_logs)
-        self.project_menu.addSeparator()
-        self.project_menu.addAction(act_show_history)
-        self.project_menu.addAction(act_audit_log)
         self.project_menu.addAction(act_about)
 
     def _setup_shortcuts(self) -> None:
@@ -1431,11 +1523,17 @@ class MainWindow(QMainWindow):
             ("Ctrl+Shift+P", "Open command palette", self.on_open_command_palette, "command palette"),
             ("Ctrl+Shift+C", "Show conflicts", self.on_show_conflicts, "show hard conflicts"),
             ("Ctrl+Shift+S", "Portfolio solve report", self.on_portfolio_solve_report, "portfolio solve report"),
+            ("", "Import timetable CSV", self.on_import_timetable_csv, "import csv timetable create scenario"),
+            ("", "Fix current conflicts", self.on_fix_current_conflicts, "repair solve conflicts current hard"),
+            ("", "Focused CP-SAT polish", self.on_focused_cp_sat_polish, "cp sat polish neighborhood focus"),
+            ("", "Show score breakdown", self.on_show_score_breakdown, "quality penalty score drivers"),
+            ("", "Export quality report", self.on_export_quality_report, "quality report export"),
         ]
         self._command_actions: List[QAction] = []
         for shortcut, text, callback, keywords in shortcuts:
             action = QAction(str(text), self)
-            action.setShortcut(str(shortcut))
+            if str(shortcut):
+                action.setShortcut(str(shortcut))
             action.triggered.connect(callback)
             action.setData({"label": str(text), "keywords": str(keywords), "callback": callback})
             self.addAction(action)
@@ -3247,7 +3345,7 @@ class MainWindow(QMainWindow):
         branding = self._effective_branding()
         self.setWindowTitle(str(branding.get("display_name", APP_DISPLAY_NAME)))
         if hasattr(self, "status_label"):
-            self.status_label.setText(self._status_full_text)
+            self._refresh_status_label()
         if hasattr(self, "quality_label") and not self.quality_label.text().strip():
             self.quality_label.setText(
                 f"{branding.get('display_name', APP_DISPLAY_NAME)} ready."
@@ -3988,7 +4086,20 @@ class MainWindow(QMainWindow):
             self.set_status("Failed to apply constraints from controls")
 
     def _on_mode_changed(self) -> None:
-        if self.mode_combo.currentText() == "custom":
+        mode = self.mode_combo.currentText()
+        if mode in {"ss23_uni_like", "uni_like"}:
+            if hasattr(self, "room_mode_combo"):
+                idx = self.room_mode_combo.findData("auto")
+                self.room_mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
+            if hasattr(self, "objective_profile_combo"):
+                idx = self.objective_profile_combo.findData("university_fast")
+                if idx < 0:
+                    idx = self.objective_profile_combo.findData("fast_feasible")
+                if idx >= 0:
+                    self.objective_profile_combo.setCurrentIndex(idx)
+            if hasattr(self, "objective_cb"):
+                self.objective_cb.setChecked(False)
+        if mode == "custom":
             self._ensure_custom_generator_seeded()
             self.workspace_tabs.setCurrentIndex(1)
 
@@ -3999,17 +4110,57 @@ class MainWindow(QMainWindow):
         self._refresh_status_label()
         QApplication.processEvents()
 
+    @staticmethod
+    def _compact_status_text(text: str) -> str:
+        full = str(text or "")
+        match = re.match(
+            r"^Improving\.\.\. (\d+)% \(iter (\d+)/(\d+), "
+            r"(?:original=(\d+), )?current=(\d+), best=(\d+)\)$",
+            full,
+        )
+        if not match:
+            return full
+        pct, done, total, original, current, best = match.groups()
+        if original is None:
+            return f"Improving {pct}% | {done}/{total} | current {current} | best {best}"
+        return f"Improving {pct}% | {done}/{total} | {original}->{current} | best {best}"
+
+    def _selected_improve_focus_term(self) -> str:
+        if not hasattr(self, "improve_focus_combo"):
+            return ""
+        data = self.improve_focus_combo.currentData()
+        term = str(data or "").strip()
+        return term if term in SOFT_WEIGHT_DEFAULTS else ""
+
+    @staticmethod
+    def _focus_label(term: str) -> str:
+        return str(term or "overall").replace("_", " ")
+
+    def _build_focused_improve_instance(self, term: str) -> Instance:
+        if self.inst is None:
+            raise ValueError("No instance loaded")
+        if not term:
+            return self.inst
+        focused = copy.deepcopy(self.inst)
+        weights = dict(SOFT_WEIGHT_DEFAULTS)
+        weights.update(
+            {
+                str(k): int(v)
+                for k, v in dict(getattr(self.inst, "soft_weights", {}) or {}).items()
+                if str(k) in SOFT_WEIGHT_DEFAULTS
+            }
+        )
+        weights[str(term)] = max(1, int(weights.get(str(term), SOFT_WEIGHT_DEFAULTS[str(term)]))) * 10
+        focused.soft_weights = weights
+        return focused
+
     def _refresh_status_label(self) -> None:
         full = str(getattr(self, "_status_full_text", "") or "")
         if not hasattr(self, "status_label"):
             return
         self.status_label.setToolTip(full)
         try:
-            width = max(120, int(self.status_label.width()) - 10)
-            shown = self.status_label.fontMetrics().elidedText(
-                full, Qt.TextElideMode.ElideRight, width
-            )
-            self.status_label.setText(shown)
+            self.status_label.setText(self._compact_status_text(full))
         except Exception:
             self.status_label.setText(full)
 
@@ -4034,6 +4185,7 @@ class MainWindow(QMainWindow):
         self.room_mode_combo.setEnabled(enable)
         self.objective_profile_combo.setEnabled(enable)
         self.objective_cb.setEnabled(enable)
+        self.debug_diagnostics_cb.setEnabled(enable)
         self.time_limit_spin.setEnabled(enable)
         self.workers_preset_combo.setEnabled(enable)
         self.workspace_tabs.setEnabled(enable)
@@ -4120,6 +4272,80 @@ class MainWindow(QMainWindow):
         if mode == "cp_rooms":
             attempts += 1  # strict->greedy fallback
         return max(1, int(attempts))
+
+    def _room_mode_selection(self) -> str:
+        if not hasattr(self, "room_mode_combo") or self.room_mode_combo is None:
+            return "cp_rooms"
+        data = self.room_mode_combo.currentData()
+        if str(data) in {"auto", "cp_rooms", "greedy"}:
+            return str(data)
+        text = str(self.room_mode_combo.currentText()).strip().lower()
+        if "fast" in text or "greedy" in text:
+            return "greedy"
+        if "auto" in text:
+            return "auto"
+        return "cp_rooms"
+
+    def _estimate_cp_room_candidate_count(self, inst: Any | None = None) -> int:
+        inst = inst or self.inst
+        if inst is None:
+            return 0
+        total = 0
+        for act in inst.activities.values():
+            kind = str(act.kind)
+            need = sum(
+                int(inst.groups[g_id].size)
+                for g_id in act.group_ids
+                if g_id in inst.groups
+            )
+            count = 0
+            for room in inst.rooms.values():
+                if int(room.capacity) < int(need):
+                    continue
+                room_type = str(room.room_type)
+                if kind == "LEC":
+                    if room_type == "LECTURE":
+                        count += 1
+                elif kind == "TUT":
+                    if room_type in {"TUTORIAL", "LECTURE"}:
+                        count += 1
+                elif kind == "LAB":
+                    tag = str(getattr(act, "requires_specialization", "") or "").strip()
+                    if tag:
+                        tags = set(getattr(room, "specialization_tags", []) or [])
+                        if room_type == "SPECIALIZED_LAB" and tag in tags:
+                            count += 1
+                    elif room_type in {"COMPUTER_LAB", "SPECIALIZED_LAB"}:
+                        count += 1
+            total += int(count)
+        return int(total)
+
+    def _auto_room_mode_uses_greedy(self, inst: Any | None = None) -> bool:
+        inst = inst or self.inst
+        if inst is None:
+            return False
+        activity_count = len(getattr(inst, "activities", {}) or {})
+        room_count = len(getattr(inst, "rooms", {}) or {})
+        candidate_count = self._estimate_cp_room_candidate_count(inst)
+        return (
+            int(activity_count) >= 1000
+            or int(room_count) >= 100
+            or int(candidate_count) >= 50000
+        )
+
+    def _selected_room_mode(self) -> str:
+        selection = self._room_mode_selection()
+        if selection == "auto":
+            return "greedy" if self._auto_room_mode_uses_greedy() else "cp_rooms"
+        return selection
+
+    def _selected_room_mode_label(self) -> str:
+        selection = self._room_mode_selection()
+        resolved = self._selected_room_mode()
+        if selection == "auto":
+            candidate_count = self._estimate_cp_room_candidate_count()
+            return f"auto -> {resolved} (estimated CP room candidates={candidate_count})"
+        return str(resolved)
 
     def _selected_worker_count(self) -> int:
         if hasattr(self, "workers_preset_combo") and self.workers_preset_combo is not None:
@@ -4335,6 +4561,7 @@ class MainWindow(QMainWindow):
         self.selected_activity_id = None
         self._refresh_quick_actions()
         self.quality_label.setText("")
+        self._last_solver_result_meta = {}
         self._update_diagnostics_dashboard()
 
     def _refresh_diagnostics_controls(self) -> None:
@@ -6435,12 +6662,79 @@ class MainWindow(QMainWindow):
             objective = "on" if attempt.get("use_objective", False) else "off"
             limit = attempt.get("time_limit_seconds")
             limit_txt = "none" if limit in (None, "") else str(limit)
-            raw_status = attempt.get("status", "?")
+            raw_status = attempt.get("raw_status", attempt.get("status", "?"))
+            elapsed = attempt.get("elapsed_seconds")
+            elapsed_txt = ""
+            if elapsed not in (None, ""):
+                try:
+                    elapsed_txt = f", elapsed={float(elapsed):.2f}s"
+                except Exception:
+                    elapsed_txt = f", elapsed={elapsed}s"
+            workers = attempt.get("workers")
+            workers_txt = "" if workers in (None, "") else f", workers={workers}"
+            objective_txt = ""
+            if attempt.get("objective_value") not in (None, ""):
+                try:
+                    objective_txt += f", obj={float(attempt.get('objective_value')):.2f}"
+                except Exception:
+                    objective_txt += f", obj={attempt.get('objective_value')}"
+            if attempt.get("best_objective_bound") not in (None, ""):
+                try:
+                    objective_txt += f", bound={float(attempt.get('best_objective_bound')):.2f}"
+                except Exception:
+                    objective_txt += f", bound={attempt.get('best_objective_bound')}"
+            if attempt.get("relative_gap") not in (None, ""):
+                try:
+                    objective_txt += f", gap={float(attempt.get('relative_gap')) * 100.0:.2f}%"
+                except Exception:
+                    objective_txt += f", gap={attempt.get('relative_gap')}"
             lines.append(
                 f"Attempt {i}: mode={mode}, objective={objective}, "
-                f"limit={limit_txt}s, raw_status={raw_status}"
+                f"limit={limit_txt}s, raw_status={raw_status}{elapsed_txt}{workers_txt}{objective_txt}"
             )
         return lines
+
+    def _cp_bound_summary_from_meta(self, meta: Dict[str, Any] | None = None) -> str:
+        meta = self._last_solver_result_meta if meta is None else meta
+        if not isinstance(meta, dict):
+            return "CP bound: unavailable"
+        attempts = meta.get("attempts")
+        if not isinstance(attempts, list) or not attempts:
+            return "CP bound: unavailable"
+        objective_attempts = [
+            attempt
+            for attempt in attempts
+            if isinstance(attempt, dict) and bool(attempt.get("use_objective", False))
+        ]
+        if not objective_attempts:
+            profile = meta.get("objective_profile")
+            if isinstance(profile, dict):
+                profile = profile.get("id") or profile.get("label")
+            profile_txt = f" ({profile})" if profile else ""
+            return f"CP bound: unavailable{profile_txt}; solve ran without CP objective"
+        attempt = objective_attempts[-1]
+        obj = attempt.get("objective_value")
+        bound = attempt.get("best_objective_bound")
+        gap = attempt.get("relative_gap")
+        if obj in (None, "") and bound in (None, ""):
+            return "CP bound: unavailable; objective attempt found no bounded solution"
+        parts = ["CP bound"]
+        if obj not in (None, ""):
+            try:
+                parts.append(f"obj={float(obj):.2f}")
+            except Exception:
+                parts.append(f"obj={obj}")
+        if bound not in (None, ""):
+            try:
+                parts.append(f"best>={float(bound):.2f}")
+            except Exception:
+                parts.append(f"best>={bound}")
+        if gap not in (None, ""):
+            try:
+                parts.append(f"gap={float(gap) * 100.0:.2f}%")
+            except Exception:
+                parts.append(f"gap={gap}")
+        return " ".join(parts)
 
     def _build_no_feasible_message(self, res: Dict[str, Any], status: int) -> str:
         if res.get("error"):
@@ -6453,7 +6747,7 @@ class MainWindow(QMainWindow):
             f"No feasible schedule found (status {status}).",
             "",
             "Solver settings:",
-            f"- Room mode: {'cp_rooms' if self.room_mode_combo.currentIndex() == 0 else 'greedy'}",
+            f"- Room mode: {self._selected_room_mode_label()}",
             f"- Profile: {self.objective_profile_combo.currentText()}",
             f"- Objective: {'on' if self.objective_cb.isChecked() else 'off'}",
             f"- Time limit: {self.time_limit_spin.value()}s",
@@ -6485,6 +6779,239 @@ class MainWindow(QMainWindow):
                     ]
                 )
         return "\n".join(lines)
+
+    def _solver_debug_enabled(self) -> bool:
+        if hasattr(self, "debug_diagnostics_cb"):
+            try:
+                return bool(self.debug_diagnostics_cb.isChecked())
+            except Exception:
+                pass
+        return str(os.getenv("PLANORA_SOLVER_DEBUG", "")).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
+    @staticmethod
+    def _format_json_debug(value: Any, *, max_chars: int = 12000) -> str:
+        try:
+            text = json.dumps(value, indent=2, sort_keys=True, default=str)
+        except Exception:
+            text = str(value)
+        if len(text) > int(max_chars):
+            return text[: int(max_chars)] + "\n... truncated ..."
+        return text
+
+    def _activity_room_coverage_debug(self, limit: int = 12) -> list[str]:
+        if self.inst is None:
+            return ["No instance loaded."]
+        inst = self.inst
+        missing: list[str] = []
+        by_kind: Dict[str, int] = {}
+        by_kind_missing: Dict[str, int] = {}
+        for act in inst.activities.values():
+            kind = str(act.kind)
+            by_kind[kind] = int(by_kind.get(kind, 0)) + 1
+            need = sum(int(inst.groups[g_id].size) for g_id in act.group_ids if g_id in inst.groups)
+            eligible = []
+            for room in inst.rooms.values():
+                if int(room.capacity) < int(need):
+                    continue
+                if kind == "LEC" and room.room_type == "LECTURE":
+                    eligible.append(room.id)
+                elif kind == "TUT" and room.room_type in {"TUTORIAL", "LECTURE"}:
+                    eligible.append(room.id)
+                elif kind == "LAB":
+                    tag = str(getattr(act, "requires_specialization", "") or "").strip()
+                    if tag:
+                        if room.room_type == "SPECIALIZED_LAB" and tag in set(room.specialization_tags or []):
+                            eligible.append(room.id)
+                    elif room.room_type in {"COMPUTER_LAB", "SPECIALIZED_LAB"}:
+                        eligible.append(room.id)
+            if not eligible:
+                by_kind_missing[kind] = int(by_kind_missing.get(kind, 0)) + 1
+                if len(missing) < int(limit):
+                    missing.append(
+                        f"A{act.id} {kind} C{act.course_id} W{act.week} "
+                        f"groups={act.group_ids} need_cap={need} tag={getattr(act, 'requires_specialization', None) or '-'}"
+                    )
+        lines = [
+            "Room eligibility coverage:",
+            f"- Activities by kind: {by_kind}",
+            f"- Missing eligible rooms by kind: {by_kind_missing or {}}",
+        ]
+        if missing:
+            lines.append("- Missing samples:")
+            lines.extend(f"  {row}" for row in missing)
+        return lines
+
+    def _instance_pressure_debug(self, limit: int = 8) -> list[str]:
+        if self.inst is None:
+            return ["No instance loaded."]
+        inst = self.inst
+        lines: list[str] = [
+            "Instance scale:",
+            f"- Programs: {len(inst.programs)}",
+            f"- Groups: {len(inst.groups)}",
+            f"- Courses: {len(inst.courses)}",
+            f"- Staff: {len(inst.staff)} "
+            f"(profs={sum(1 for s in inst.staff.values() if s.is_prof)}, "
+            f"TAs={sum(1 for s in inst.staff.values() if not s.is_prof)})",
+            f"- Rooms: {len(inst.rooms)}",
+            f"- Activities: {len(inst.activities)}",
+            f"- Calendar: {len(inst.weeks)} weeks x {len(inst.days)} days x {inst.slots_per_day} slots/day",
+            f"- Locks: {len(getattr(inst, 'locked_activities', {}) or {})}",
+        ]
+
+        room_types: Dict[str, int] = {}
+        room_max_caps: Dict[str, int] = {}
+        for room in inst.rooms.values():
+            r_type = str(room.room_type)
+            room_types[r_type] = int(room_types.get(r_type, 0)) + 1
+            room_max_caps[r_type] = max(int(room_max_caps.get(r_type, 0)), int(room.capacity))
+        lines.extend(
+            [
+                "Room pool:",
+                f"- Counts by type: {room_types}",
+                f"- Max capacity by type: {room_max_caps}",
+            ]
+        )
+
+        group_week_loads: list[tuple[int, int, int, str]] = []
+        capacity = len(inst.days) * int(inst.slots_per_day)
+        for g_id, group in inst.groups.items():
+            for week in inst.weeks:
+                load = sum(
+                    int(act.duration)
+                    for act in inst.activities.values()
+                    if int(act.week) == int(week) and int(g_id) in {int(x) for x in act.group_ids}
+                )
+                group_week_loads.append((int(load), int(g_id), int(week), str(group.name)))
+        group_week_loads.sort(reverse=True)
+        lines.append("Highest group-week loads:")
+        for load, g_id, week, name in group_week_loads[: int(limit)]:
+            lines.append(f"- G{g_id} {name} week {week}: {load}/{capacity} slots")
+
+        staff_week_loads: Dict[tuple[int, int], int] = {}
+        for act in inst.activities.values():
+            staff_id = int(act.prof_id if act.kind == "LEC" else act.ta_id)
+            key = (staff_id, int(act.week))
+            staff_week_loads[key] = int(staff_week_loads.get(key, 0)) + int(act.duration)
+        staff_rows = [
+            (load, staff_id, week, str(inst.staff.get(staff_id).name if staff_id in inst.staff else staff_id))
+            for (staff_id, week), load in staff_week_loads.items()
+        ]
+        staff_rows.sort(reverse=True)
+        lines.append("Highest staff-week loads:")
+        for load, staff_id, week, name in staff_rows[: int(limit)]:
+            staff = inst.staff.get(staff_id)
+            cap = getattr(staff, "max_slots_per_week", None) if staff is not None else None
+            cap_txt = "uncapped" if cap is None else str(cap)
+            lines.append(f"- S{staff_id} {name} week {week}: {load} slots, cap={cap_txt}")
+
+        return lines
+
+    def _build_solver_debug_report(self, res: Dict[str, Any], status: int) -> str:
+        lines: list[str] = [
+            self._build_no_feasible_message(res, int(status)),
+            "",
+            "===== DEBUG DIAGNOSTICS =====",
+            "Status legend:",
+            "- UI status -1 = no feasible schedule / CP-SAT UNKNOWN",
+            "- UI status -2 = greedy rooming/extraction failed",
+            "- UI status -3 = strict hard-conflict gate rejected the returned schedule",
+            "- CP-SAT raw status: 0 UNKNOWN, 1 MODEL_INVALID, 2 FEASIBLE, 3 INFEASIBLE, 4 OPTIMAL",
+            "",
+        ]
+        lines.extend(self._instance_pressure_debug())
+        lines.append("")
+        lines.extend(self._activity_room_coverage_debug())
+
+        if self.inst is not None:
+            try:
+                certificate = build_feasibility_certificate(self.inst)
+                scale = dict(certificate.get("scale", {}) or {})
+                recommendation = dict(certificate.get("recommendation", {}) or {})
+                decomposition = dict(certificate.get("decomposition", {}) or {})
+                lines.extend(
+                    [
+                        "",
+                        "Performance certificate:",
+                        f"- Estimated start literals: {scale.get('estimated_start_literals', 0)}",
+                        f"- Estimated CP room candidates: {scale.get('estimated_cp_room_candidates', 0)}",
+                        f"- Estimated conflict edges: {scale.get('estimated_conflict_edges', 0)}",
+                        f"- Recommended profile: {recommendation.get('profile', '?')} "
+                        f"(room_mode={recommendation.get('room_mode', '?')}, "
+                        f"objective_profile={recommendation.get('objective_profile', '?')})",
+                        f"- Reason: {recommendation.get('reason', '')}",
+                    ]
+                )
+                smallest = list(scale.get("smallest_domains", []) or [])[:6]
+                if smallest:
+                    lines.append("- Smallest activity domains:")
+                    lines.extend(
+                        f"  A{row.get('activity_id')} {row.get('kind')} W{row.get('week')}: "
+                        f"starts={row.get('start_domain')}, rooms={row.get('room_domain')}"
+                        for row in smallest
+                    )
+                week_blocks = list(decomposition.get("week_blocks", []) or [])[:6]
+                if week_blocks:
+                    lines.append("- Week decomposition samples:")
+                    lines.extend(
+                        f"  W{row.get('week')}: activities={row.get('activities')}, "
+                        f"staff={row.get('staff')}, groups={row.get('groups')}"
+                        for row in week_blocks
+                    )
+            except Exception as exc:
+                lines.extend(["", f"Performance certificate unavailable: {exc}"])
+
+            reasons = explain_infeasibility(self.inst, max_per_category=20)
+            lines.extend(["", "Expanded structural checks:"])
+            if reasons:
+                lines.extend(f"- {row}" for row in reasons[:40])
+            else:
+                lines.append("- No structural issue found by heuristic checks.")
+
+            diagnosis = build_unsat_rule_diagnosis(self.inst)
+            lines.extend(["", "Expanded rule diagnosis:"])
+            if diagnosis:
+                for row in diagnosis[:20]:
+                    lines.append(
+                        f"- {row.get('rule_id', '?')}: {row.get('summary', '')}"
+                    )
+            else:
+                lines.append("- No rule-level diagnosis rows returned.")
+
+        meta = res.get("meta") if isinstance(res, dict) else {}
+        lines.extend(["", "Raw result metadata:", self._format_json_debug(meta)])
+
+        output = str(getattr(self, "_last_solver_output_log", "") or "")
+        if output:
+            tail = output[-16000:]
+            lines.extend(["", "Solver output tail:", tail])
+        else:
+            lines.extend(["", "Solver output tail:", "(empty)"])
+
+        return "\n".join(lines)
+
+    def _show_solver_report_dialog(self, title: str, text: str) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle(str(title))
+        dlg.resize(980, 720)
+        layout = QVBoxLayout(dlg)
+        editor = QPlainTextEdit(dlg)
+        editor.setReadOnly(True)
+        editor.setPlainText(str(text))
+        editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        layout.addWidget(editor)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        close_btn = QPushButton("Close", dlg)
+        close_btn.clicked.connect(dlg.accept)
+        row.addWidget(close_btn)
+        layout.addLayout(row)
+        dlg.exec()
 
     @staticmethod
     def _top_counts(values: Dict[int, int], limit: int = 3) -> list[tuple[int, int]]:
@@ -6531,7 +7058,7 @@ class MainWindow(QMainWindow):
         time_limit_seconds = float(self.time_limit_spin.value())
         objective_on = bool(self.objective_cb.isChecked())
         return SolveOptions(
-            room_mode="cp_rooms" if self.room_mode_combo.currentIndex() == 0 else "greedy",
+            room_mode=self._selected_room_mode(),
             use_objective=bool(objective_on),
             retry_without_objective=True,
             objective_profile=str(self.objective_profile_combo.currentData() or "balanced"),
@@ -6566,6 +7093,7 @@ class MainWindow(QMainWindow):
         self.base_schedule = {}
         self._set_manual_highlight_base({})
         self.current_schedule = {}
+        self._last_solver_result_meta = {}
         self.locked_activities = {}
         self.held_activity_id = None
         self._bump_schedule_revision()
@@ -6778,9 +7306,17 @@ class MainWindow(QMainWindow):
             self.objective_profile_combo.currentData() or "balanced"
         )
         objective_on = self.objective_cb.isChecked()
-        room_mode = "cp_rooms" if self.room_mode_combo.currentIndex() == 0 else "greedy"
-        if objective_profile == "fast_feasible":
+        room_mode = self._selected_room_mode()
+        if objective_profile in {"fast_feasible", "university_fast"}:
             objective_on = False
+            if objective_profile == "university_fast":
+                room_mode = "greedy"
+        elif objective_profile == "university_quality":
+            objective_on = True
+            room_mode = "greedy"
+        elif objective_profile == "verification":
+            objective_on = True
+            room_mode = "cp_rooms"
         elif objective_profile == "quality_first":
             objective_on = True
         worker_count = int(self._selected_worker_count())
@@ -6794,14 +7330,20 @@ class MainWindow(QMainWindow):
         env_map["TT_CP_WORKERS"] = str(int(worker_count))
         env_map["TT_USE_OBJECTIVE"] = "1" if objective_on else "0"
         env_map["TT_OBJECTIVE_PROFILE"] = str(objective_profile)
+        if self._solver_debug_enabled():
+            env_map["TT_CP_LOG"] = "1"
+            env_map["PLANORA_SOLVER_DEBUG"] = "1"
         phased_enabled = bool(objective_on)
         feasibility_seconds = float(time_limit_seconds)
         improve_budget_seconds = 0.0
         improve_max_rounds = 0
         if objective_profile == "quality_first":
-            feasibility_seconds = max(30.0, float(time_limit_seconds) * 0.65)
+            feasibility_seconds = min(
+                float(time_limit_seconds),
+                max(1.0, float(time_limit_seconds) * 0.65),
+            )
             improve_budget_seconds = max(
-                30.0 if time_limit_seconds >= 30.0 else 0.0,
+                0.0,
                 float(time_limit_seconds) - float(feasibility_seconds),
             )
             env_map["TT_PHASED_SOLVE"] = "1"
@@ -6869,6 +7411,7 @@ class MainWindow(QMainWindow):
         }
         self._solver_output_log = ""
         self._solver_output_partial = ""
+        self._last_solver_output_log = ""
 
         self.set_busy(True)
         lock_count = len(self.locked_activities)
@@ -7273,6 +7816,66 @@ class MainWindow(QMainWindow):
             return
         self._load_validated_schedule(schedule, source=path)
 
+    def on_import_timetable_csv(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import timetable CSV",
+            "",
+            "CSV files (*.csv)",
+        )
+        if not path:
+            return
+        try:
+            self.set_status("Importing timetable CSV...")
+            inst, schedule, meta = import_timetable_csv(path, lock_imported=False)
+        except Exception as exc:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Import error", str(exc))
+            self.set_status("Import error")
+            return
+
+        self.inst = inst
+        self.locked_activities = dict(getattr(inst, "locked_activities", {}) or {})
+        self.base_schedule = {int(a_id): dict(info) for a_id, info in schedule.items()}
+        self.current_schedule = {int(a_id): dict(info) for a_id, info in schedule.items()}
+        self.held_activity_id = None
+        self._set_manual_highlight_base(self.current_schedule)
+        self._bump_schedule_revision()
+        self._reset_history()
+        self._load_constraint_controls_from_instance(self.inst)
+        self._refresh_product_scenario_from_instance()
+        self.populate_weeks()
+        self.update_entities()
+        self.update_table()
+        self.update_quality_summary()
+        self._refresh_history_view()
+        self._refresh_history_buttons()
+        self._append_audit_log(
+            "timetable_csv_imported",
+            {
+                "path": str(path),
+                "activities": int(meta.get("activities_after_shared_event_merge", 0)),
+                "soft_penalty": int(meta.get("soft_penalty", 0)),
+                "hard_conflicts": int(meta.get("validation_error_count", 0)),
+            },
+        )
+        self._save_persistent_history()
+        conflicts = int(meta.get("validation_error_count", 0))
+        penalty = int(meta.get("soft_penalty", 0))
+        self.set_status(
+            f"Imported timetable CSV: {len(schedule)} activities, soft penalty {penalty}, hard conflicts {conflicts}"
+        )
+        if conflicts:
+            preview = "\n".join(str(err) for err in list(meta.get("validation_errors", []) or [])[:8])
+            QMessageBox.warning(
+                self,
+                "Imported with conflicts",
+                "The timetable was imported and left unlocked so Solve/Improve can repair it.\n\n"
+                f"Hard conflicts: {conflicts}\n"
+                f"Soft penalty: {penalty}\n\n"
+                + (preview if preview else "Open Conflicts for details."),
+            )
+
     def on_sandbox_start(self) -> None:
         if not self.current_schedule:
             self.set_status("No schedule to branch")
@@ -7601,6 +8204,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self.proc = None
+        self._last_solver_output_log = str(output)
         self._solver_output_log = ""
         if (
             self._is_solver_process_crash_error(error)
@@ -7672,6 +8276,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self.proc = None
+        self._last_solver_output_log = str(output)
         self._solver_output_log = ""
         if proc is not None:
             try:
@@ -7742,6 +8347,8 @@ class MainWindow(QMainWindow):
         finally:
             self._cleanup_solver_temp_files()
 
+        meta = res.get("meta")
+        self._last_solver_result_meta = dict(meta) if isinstance(meta, dict) else {}
         status = res.get("status", -1)
         if status not in (0, 4):  # 0=FEASIBLE, 4=OPTIMAL
             self.base_schedule = {}
@@ -7752,8 +8359,15 @@ class MainWindow(QMainWindow):
             self._reset_history()
             self.clear_table()
             self.set_status(f"No feasible schedule (status {status})")
-            msg = self._build_no_feasible_message(res, int(status))
-            QMessageBox.information(self, "No feasible schedule", msg)
+            if self._solver_debug_enabled():
+                msg = self._build_solver_debug_report(res, int(status))
+                self._show_solver_report_dialog(
+                    "No feasible schedule - Debug diagnostics",
+                    msg,
+                )
+            else:
+                msg = self._build_no_feasible_message(res, int(status))
+                QMessageBox.information(self, "No feasible schedule", msg)
             self._append_audit_log(
                 "solve_no_feasible",
                 {"status": int(status), "attempts": self._format_solver_attempts(res)},
@@ -7784,13 +8398,34 @@ class MainWindow(QMainWindow):
                 f"Solve rejected: hard conflicts detected ({len(base_hard_errors)})"
             )
             sample = "\n".join(f"- {line}" for line in base_hard_errors[:12])
-            QMessageBox.critical(
-                self,
-                "Invalid solve result",
+            message = (
                 "The solver returned a schedule with hard conflicts and it was rejected.\n\n"
                 f"Conflicts: {len(base_hard_errors)}\n\n"
-                f"{sample}",
+                f"{sample}"
             )
+            if self._solver_debug_enabled():
+                debug_payload = {
+                    "status": -3,
+                    "schedule": {},
+                    "error": "The solver returned a schedule with hard conflicts and it was rejected.",
+                    "meta": {
+                        "hard_conflicts": {
+                            "count": len(base_hard_errors),
+                            "sample": base_hard_errors[:25],
+                            "stage": "ui_post_extract",
+                        }
+                    },
+                }
+                self._show_solver_report_dialog(
+                    "Invalid solve result - Debug diagnostics",
+                    message + "\n\n" + self._build_solver_debug_report(debug_payload, -3),
+                )
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Invalid solve result",
+                    message,
+                )
             self._append_audit_log(
                 "solve_rejected_hard_conflicts", {"count": len(base_hard_errors)}
             )
@@ -7809,13 +8444,31 @@ class MainWindow(QMainWindow):
 
         try:
             if self.inst is not None and self.current_schedule:
-                ls = LocalSearchImprover(self.inst)
+                ls_seconds = float(self.ls_time_spin.value() or 0)
+                if ls_seconds <= 0:
+                    status_msg = f"Solved (status {status})"
+                    if final_attempt:
+                        status_msg += f" | {final_attempt}"
+                    self.set_status(status_msg)
+                    self.populate_weeks()
+                    self.update_entities()
+                    self.update_table()
+                    self.update_quality_summary()
+                    self._append_audit_log(
+                        "solve_finished",
+                        {"status": int(status), "activities": int(len(self.current_schedule))},
+                    )
+                    self._restore_locks_if_needed()
+                    self._save_persistent_history()
+                    return
+                focus_term = self._selected_improve_focus_term()
+                improve_inst = self._build_focused_improve_instance(focus_term)
+                ls = LocalSearchImprover(improve_inst)
                 before = ls.compute_soft_penalty(self.current_schedule)
-                max_seconds = self.ls_time_spin.value() or None
                 improved = ls.improve(
                     self.current_schedule,
                     iterations=int(self.improve_runs_spin.value()),
-                    max_seconds=max_seconds,
+                    max_seconds=ls_seconds,
                 )
                 improved_hard_errors = self._validate_schedule_hard_errors(
                     improved, require_all=True
@@ -7832,8 +8485,13 @@ class MainWindow(QMainWindow):
                     }
                     self._set_manual_highlight_base(self.current_schedule)
                     self._bump_schedule_revision()
+                    metric = (
+                        f"{self._focus_label(focus_term)} focus penalty"
+                        if focus_term
+                        else "soft penalty"
+                    )
                     status_msg = (
-                        f"Solved (status {status}), soft penalty {before} -> {after}"
+                        f"Solved (status {status}), {metric} {before} -> {after}"
                     )
                     if final_attempt:
                         status_msg += f" | {final_attempt}"
@@ -7880,8 +8538,10 @@ class MainWindow(QMainWindow):
         self._improve_original_schedule = {
             a_id: info.copy() for a_id, info in self.current_schedule.items()
         }
+        self._improve_focus_term = self._selected_improve_focus_term()
+        improve_inst = self._build_focused_improve_instance(self._improve_focus_term)
         try:
-            self._improve_base_penalty = LocalSearchImprover(self.inst).compute_soft_penalty(
+            self._improve_base_penalty = LocalSearchImprover(improve_inst).compute_soft_penalty(
                 self._improve_original_schedule
             )
         except Exception:
@@ -7891,13 +8551,16 @@ class MainWindow(QMainWindow):
         self._improve_stop_requested = False
         self.stop_improve_button.setEnabled(True)
         self.set_busy(True)
-        self.set_status(
-            f"Improving... 0% (iter 0/{self._improve_total_iters})"
+        focus_note = (
+            f" focused on {self._focus_label(self._improve_focus_term)}"
+            if self._improve_focus_term
+            else ""
         )
+        self.set_status(f"Improving{focus_note}... 0% (iter 0/{self._improve_total_iters})")
 
         self._improve_thread = QThread(self)
         self._improve_worker = ImproveWorker(
-            self.inst,
+            improve_inst,
             self._improve_original_schedule,
             iterations=int(self._improve_total_iters),
             max_seconds=(float(self.ls_time_spin.value()) or None),
@@ -7968,9 +8631,14 @@ class MainWindow(QMainWindow):
             return
         if improved_schedule != original_schedule:
             self._push_undo_state()
+        metric_label = (
+            f"{self._focus_label(self._improve_focus_term)} focus penalty"
+            if self._improve_focus_term
+            else "global penalty"
+        )
         self._commit_schedule(
             improved_schedule,
-            f"Improved global penalty {int(start_pen)} -> {int(final_pen)}"
+            f"Improved {metric_label} {int(start_pen)} -> {int(final_pen)}"
             + (" [stopped]" if self._improve_stop_requested else ""),
         )
         self._set_manual_highlight_base(self.current_schedule)
@@ -7992,6 +8660,7 @@ class MainWindow(QMainWindow):
         self._improve_running = False
         self._improve_stop_requested = False
         self._improve_base_penalty = None
+        self._improve_focus_term = ""
         self.stop_improve_button.setEnabled(False)
         self.set_busy(False)
         if self._improve_thread is not None:
@@ -9223,11 +9892,26 @@ class MainWindow(QMainWindow):
                     include_conflicts=False,
                 )
                 if not self._held_move_analysis_map:
-                    self._request_held_move_analysis_async(
+                    self._held_move_analysis_map = self._held_move_analysis_from_cache(
                         int(week),
-                        compute_scores=bool(show_score_deltas),
+                        compute_scores=False,
                         include_conflicts=False,
                     )
+                    if not self._held_move_analysis_map:
+                        # Paint valid/blocked targets immediately. Global score
+                        # deltas are computed asynchronously because they are
+                        # expensive on large schedules.
+                        self._held_move_analysis_map = self._build_held_move_analysis(
+                            int(week),
+                            compute_scores=False,
+                            include_conflicts=False,
+                        )
+                    if show_score_deltas:
+                        self._request_held_move_analysis_async(
+                            int(week),
+                            compute_scores=True,
+                            include_conflicts=False,
+                        )
                 held_target_map = {
                     key: bool(v.get("ok", False))
                     for key, v in self._held_move_analysis_map.items()
@@ -9242,11 +9926,11 @@ class MainWindow(QMainWindow):
                     if bool(details.get("ok", False)) and isinstance(score_delta, int):
                         held_delta_map[key] = int(score_delta)
 
-            color_held = QColor("#234f7a")
-            color_valid_target = QColor("#2c5f3c")
-            color_valid_target_better = QColor("#1f6d44")
-            color_valid_target_worse = QColor("#6f5324")
-            color_conflict_target = QColor("#d3a300")
+            color_held = QColor("#1565c0")
+            color_valid_target = QColor("#087f5b")
+            color_valid_target_better = QColor("#0ca678")
+            color_valid_target_worse = QColor("#f08c00")
+            color_conflict_target = QColor("#ffd43b")
             color_changed = QColor("#8a3f7a")
             color_current_conflict = QColor("#8a1f1f")
 
@@ -9301,6 +9985,11 @@ class MainWindow(QMainWindow):
                         analysis = self._held_move_analysis_map.get((str(day), int(col)))
                         if analysis is not None and held_target_map.get((str(day), int(col)), False):
                             delta_here = held_delta_map.get((str(day), int(col)))
+                            if not text:
+                                text = "VALID TARGET"
+                            elif "VALID TARGET" not in text and "BETTER" not in text and "WORSE" not in text:
+                                text = f"VALID TARGET\n{text}"
+                            item.setText(text)
                             if isinstance(delta_here, int) and delta_here < 0:
                                 item.setBackground(QBrush(color_valid_target_better))
                             elif isinstance(delta_here, int) and delta_here > 0:
@@ -9308,6 +9997,12 @@ class MainWindow(QMainWindow):
                             else:
                                 item.setBackground(QBrush(color_valid_target))
                         elif analysis is not None and not bool(analysis.get("ok", False)):
+                            if not text:
+                                text = "BLOCKED"
+                            elif "BLOCKED" not in text:
+                                text = f"BLOCKED\n{text}"
+                            item.setText(text)
+                            item.setForeground(QBrush(QColor("#111111")))
                             item.setBackground(QBrush(color_conflict_target))
                     elif ids and any(int(a_id) in changed_ids for a_id in ids):
                         item.setBackground(QBrush(color_changed))
@@ -9529,6 +10224,9 @@ class MainWindow(QMainWindow):
         header_parts.append(
             f"Profile: {self.objective_profile_combo.currentText()}"
         )
+        cp_bound_summary = self._cp_bound_summary_from_meta()
+        if cp_bound_summary:
+            header_parts.append(cp_bound_summary)
         if isinstance(sla_summary, dict) and sla_summary:
             if bool(sla_summary.get("passed", True)):
                 header_parts.append("SLA: pass")
@@ -9961,8 +10659,8 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    icon_path = _resource_path("app_icon.png")
-    if os.path.exists(icon_path):
+    icon_path = _app_icon_path()
+    if icon_path:
         app.setWindowIcon(QIcon(icon_path))
     win = MainWindow()
     win.showMaximized()

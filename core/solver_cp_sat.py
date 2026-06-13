@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from typing import Dict, List, Tuple, Optional, Set, DefaultDict
 from collections import defaultdict
 
@@ -96,6 +97,7 @@ class TimetableSolver:
         self.allowed_rooms: Dict[int, List[int]] = {}
         self.room_sel: Dict[Tuple[int, int], cp_model.BoolVar] = {}
         self.room_iv: Dict[Tuple[int, int], cp_model.IntervalVar] = {}
+        self.room_candidate_limit: int = self._read_room_candidate_limit()
 
         # build model
         self._precompute()
@@ -106,6 +108,16 @@ class TimetableSolver:
         self._add_decision_strategy()
 
     # ---------- public API ----------
+
+    @staticmethod
+    def _read_room_candidate_limit() -> int:
+        raw = os.getenv("TT_CP_ROOM_CANDIDATE_LIMIT", "").strip()
+        if raw:
+            try:
+                return max(0, int(raw))
+            except Exception:
+                return 24
+        return 24
 
     def solve(
         self,
@@ -479,6 +491,51 @@ class TimetableSolver:
             gids = inst.activities[act_id].group_ids
             return sum(inst.groups[g].size for g in gids if g in inst.groups)
 
+        def trim_room_candidates(a_id: int, rooms: List[int], need: int, kind: str) -> List[int]:
+            limit = int(getattr(self, "room_candidate_limit", 0) or 0)
+            if limit <= 0 or len(rooms) <= limit:
+                return list(rooms)
+
+            locks = getattr(inst, "locked_activities", {}) or {}
+            locked_room = None
+            fixed = locks.get(a_id) if isinstance(locks, dict) else None
+            if isinstance(fixed, dict) and fixed.get("room_id") is not None:
+                try:
+                    locked_room = int(fixed["room_id"])
+                except Exception:
+                    locked_room = None
+
+            def rank(room_id: int) -> tuple[int, int, int]:
+                room = inst.rooms[int(room_id)]
+                if kind == "TUT":
+                    type_rank = 0 if room.room_type == "TUTORIAL" else 1
+                elif kind == "LAB":
+                    type_rank = 0 if room.room_type == "COMPUTER_LAB" else 1
+                else:
+                    type_rank = 0
+                return (int(type_rank), max(0, int(room.capacity) - int(need)), int(room_id))
+
+            ranked = sorted((int(r_id) for r_id in rooms), key=rank)
+            if len(ranked) <= limit:
+                return ranked
+
+            # Keep a few best-fit rooms, then rotate through the rest so large
+            # batches of similar activities do not all fight for the same rooms.
+            fixed_prefix = max(2, min(6, int(limit) // 4))
+            selected: List[int] = list(ranked[:fixed_prefix])
+            pool = [r_id for r_id in ranked if r_id not in set(selected)]
+            remaining = max(0, int(limit) - len(selected))
+            if pool and remaining > 0:
+                start = (int(a_id) * 7) % len(pool)
+                for offset in range(min(remaining, len(pool))):
+                    selected.append(pool[(start + offset) % len(pool)])
+            if locked_room is not None and locked_room in rooms and locked_room not in selected:
+                if selected:
+                    selected[-1] = int(locked_room)
+                else:
+                    selected.append(int(locked_room))
+            return list(dict.fromkeys(selected))
+
         for a_id, act in inst.activities.items():
             rooms: List[int] = []
             need = required_capacity(a_id)
@@ -501,7 +558,12 @@ class TimetableSolver:
 
             if not rooms:
                 raise ValueError(f"No eligible rooms for activity {a_id} ({act.kind})")
-            self.allowed_rooms[a_id] = rooms
+            self.allowed_rooms[a_id] = trim_room_candidates(
+                int(a_id),
+                rooms,
+                int(need),
+                str(act.kind),
+            )
 
     def _build_variables(self) -> None:
         m = self.m
@@ -725,6 +787,32 @@ class TimetableSolver:
                     leader = cluster[0]
                     for a in cluster[1:]:
                         m.Add(self.start[a] == self.start[leader])
+
+        # Symmetry breaking for interchangeable sessions.  Activities with the
+        # same course/kind/week/staff/group footprint can be permuted without
+        # changing the timetable, so force a deterministic start order.
+        by_symmetry_key: DefaultDict[Tuple[int, str, int, int, Tuple[int, ...], int], List[int]] = defaultdict(list)
+        for a_id, act in inst.activities.items():
+            key = (
+                int(act.course_id),
+                str(act.kind),
+                int(act.week),
+                int(self.activity_staff[a_id]),
+                tuple(sorted(int(g) for g in act.group_ids)),
+                int(act.duration),
+            )
+            by_symmetry_key[key].append(int(a_id))
+        clustered_ids = {
+            int(a_id)
+            for week_clusters in self.clusters_by_week_kind.values()
+            for kind_clusters in week_clusters.values()
+            for cluster in kind_clusters
+            for a_id in cluster
+        }
+        for act_ids in by_symmetry_key.values():
+            ordered = [a_id for a_id in sorted(act_ids) if a_id not in clustered_ids]
+            for prev_id, next_id in zip(ordered, ordered[1:]):
+                m.Add(self.start[prev_id] <= self.start[next_id])
 
         # Room-count guards per slot with tutorial support
         num_lec = len(self.lecture_room_ids)
@@ -1338,6 +1426,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
         schedule[a_id]["room_id"] = room_id
 
     clusters = _clusters_for_assignment(inst)
+    room_key_usage: DefaultDict[Tuple[int, int, str], Dict[int, int]] = defaultdict(dict)
 
     def _required_capacity_for_activity(a_id: int) -> int:
         gids = schedule[a_id].get("group_ids", []) or []
@@ -1393,6 +1482,54 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     return False
         return True
 
+    def _room_consistency_keys(member_ids: List[int]) -> List[Tuple[int, int, str]]:
+        keys: List[Tuple[int, int, str]] = []
+        seen: Set[Tuple[int, int, str]] = set()
+        for a_id in member_ids:
+            info = schedule[int(a_id)]
+            c_id = int(info["course_id"])
+            kind = str(info["kind"])
+            for g_id in info.get("group_ids", []) or []:
+                key = (c_id, int(g_id), kind)
+                if key not in seen:
+                    seen.add(key)
+                    keys.append(key)
+        return keys
+
+    def _register_room_assignment(member_ids: List[int], room_id: int) -> None:
+        for a_id in member_ids:
+            schedule[int(a_id)]["room_id"] = int(room_id)
+        for key in _room_consistency_keys(member_ids):
+            bucket = room_key_usage.setdefault(key, {})
+            bucket[int(room_id)] = int(bucket.get(int(room_id), 0)) + 1
+
+    for existing_id, existing_info in schedule.items():
+        existing_room = existing_info.get("room_id")
+        if existing_room is not None:
+            for key in _room_consistency_keys([int(existing_id)]):
+                bucket = room_key_usage.setdefault(key, {})
+                bucket[int(existing_room)] = int(bucket.get(int(existing_room), 0)) + 1
+
+    def _room_cost(room_id: int, required_capacity: int, member_ids: List[int]) -> Tuple[int, int, int]:
+        stability_penalty = 0
+        stability_bonus = 0
+        for key in _room_consistency_keys(member_ids):
+            prior = room_key_usage.get(key, {})
+            if not prior:
+                continue
+            hits = int(prior.get(int(room_id), 0))
+            if hits:
+                stability_bonus += hits
+            else:
+                stability_penalty += sum(int(v) for v in prior.values())
+        room = inst.rooms[int(room_id)]
+        capacity_waste = max(0, int(room.capacity) - int(required_capacity))
+        return (
+            int(stability_penalty) * 1000 - int(stability_bonus) * 100,
+            int(capacity_waste),
+            int(room_id),
+        )
+
     def _pick_room(
         room_ids: List[int],
         occupied: set[int],
@@ -1411,7 +1548,13 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
             and _room_available(r_id, week, day, slot, dur)
             and _travel_buffer_ok(member_ids or [], int(r_id))
         ]
-        candidates.sort(key=lambda r_id: inst.rooms[r_id].capacity)
+        candidates.sort(
+            key=lambda r_id: _room_cost(
+                int(r_id),
+                int(required_capacity),
+                [int(a) for a in (member_ids or [])],
+            )
+        )
         return candidates[0] if candidates else None
 
     def _diagnose_room_failure(
@@ -1565,8 +1708,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                             reason=reason,
                             activity_id=members[0],
                         )
-                    for a_id in members:
-                        schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment(members, int(room_id))
                     occupied.add(room_id)
                     unassigned = [a for a in unassigned if schedule[a]["room_id"] is None]
 
@@ -1615,8 +1757,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                             reason=reason,
                             activity_id=members[0],
                         )
-                    for a_id in members:
-                        schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment(members, int(room_id))
                     occupied.add(room_id)
                     unassigned = [a for a in unassigned if schedule[a]["room_id"] is None]
 
@@ -1697,8 +1838,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                             reason=reason,
                             activity_id=members[0],
                         )
-                    for a_id in members:
-                        schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment(members, int(room_id))
                     occupied.add(room_id)
                     unassigned = [a for a in unassigned if schedule[a]["room_id"] is None]
 
@@ -1754,7 +1894,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                                 reason=reason,
                                 activity_id=a_id,
                             )
-                        schedule[a_id]["room_id"] = room_id
+                        _register_room_assignment([int(a_id)], int(room_id))
                         occupied.add(room_id)
 
                 for a_id in labs_generic:
@@ -1784,7 +1924,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                             reason=reason,
                             activity_id=a_id,
                         )
-                    schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment([int(a_id)], int(room_id))
                     occupied.add(room_id)
 
                 # lectures
@@ -1816,7 +1956,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                             reason=reason,
                             activity_id=a_id,
                         )
-                    schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment([int(a_id)], int(room_id))
                     occupied.add(room_id)
 
                 # tutorials (prefer TUTORIAL then LECTURE)
@@ -1859,5 +1999,5 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                             reason=reason,
                             activity_id=a_id,
                         )
-                    schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment([int(a_id)], int(room_id))
                     occupied.add(room_id)

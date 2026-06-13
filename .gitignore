@@ -218,6 +218,9 @@ docs/PROJECT_TECHNICAL_EXPLAINER.local.md
 
 # Generated timetable artifacts
 timetable_*.docx
+
+# Local/imported schedule data and generated extracts
+/data/
 schedule_*.csv
 groups_*.pdf
 ics_*/

@@ -225,6 +225,70 @@ def test_big_lecture_prefers_large_room():
     assert schedule[1]["room_id"] == 1
 
 
+def test_room_assignment_prefers_prior_room_for_same_course_group_kind():
+    groups = {
+        1: Group(id=1, name="G1", program_id=1, size=30, course_ids=[1]),
+    }
+    rooms = {
+        1: Room(id=1, name="PriorRoom", capacity=80, room_type="LECTURE", specialization_tags=set()),
+        2: Room(
+            id=2,
+            name="SmallerLaterRoom",
+            capacity=40,
+            room_type="LECTURE",
+            specialization_tags=set(),
+            availability={("MON", 1)},
+        ),
+    }
+    courses = {
+        1: Course(
+            id=1,
+            code="C1",
+            name="Course 1",
+            structure_type="LEC_ONLY",
+            lecture_count=2,
+            tutorial_count=0,
+            lab_weeks=0,
+            lab_duration=0,
+            share_lecture_group_ids=[],
+        ),
+    }
+    activities = {
+        1: Activity(
+            id=1,
+            course_id=1,
+            week=1,
+            kind="LEC",
+            duration=1,
+            group_ids=[1],
+            prof_id=0,
+            ta_id=0,
+            requires_specialization=None,
+        ),
+        2: Activity(
+            id=2,
+            course_id=1,
+            week=1,
+            kind="LEC",
+            duration=1,
+            group_ids=[1],
+            prof_id=0,
+            ta_id=0,
+            requires_specialization=None,
+        ),
+    }
+    inst = make_instance(groups=groups, rooms=rooms, activities=activities, courses=courses)
+    schedule = {
+        1: base_schedule_entry(activities[1]),
+        2: {**base_schedule_entry(activities[2]), "slot": 1},
+    }
+
+    assign_rooms_greedily(inst, schedule)
+
+    assert schedule[1]["room_id"] == 1
+    assert schedule[2]["room_id"] == 1
+
+
 def test_shared_lecture_clusters_share_room():
     groups = {
         1: Group(id=1, name="G1", program_id=1, size=40, course_ids=[1]),

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from services.quality_service import compute_penalty_breakdown, evaluate_schedule_sla
+from services.quality_service import compute_penalty_breakdown, evaluate_schedule_sla, rank_penalty_drivers
 from utils.compare import compare_schedules
 from utils.domain import Instance
 from utils.fairness import compute_fairness_dashboard
@@ -248,6 +248,7 @@ def build_stakeholder_quality_report(
             "soft_penalty": int(breakdown.get("total", 0)),
         },
         "soft_penalty_breakdown": dict(breakdown),
+        "top_penalty_drivers": rank_penalty_drivers(inst, schedule),
         "sla": dict(sla),
         "fairness": dict(fairness.get("summary", {})),
         "top_group_risks": list(fairness.get("groups", [])[:5]),

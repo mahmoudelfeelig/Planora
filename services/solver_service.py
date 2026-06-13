@@ -31,6 +31,28 @@ from utils.specs import validate_schedule_against_instance
 _SOLVE_RESULT_CACHE: Dict[str, SolveResult] = {}
 
 OBJECTIVE_PROFILE_PRESETS: Dict[str, Dict[str, Any]] = {
+    "university_fast": {
+        "label": "University fast",
+        "use_objective": False,
+        "retry_without_objective": False,
+        "phased_solve": False,
+        "room_mode": "greedy",
+        "improve_total_seconds": 0.0,
+    },
+    "university_quality": {
+        "label": "University quality",
+        "use_objective": True,
+        "retry_without_objective": True,
+        "phased_solve": True,
+        "room_mode": "greedy",
+    },
+    "verification": {
+        "label": "Verification",
+        "use_objective": True,
+        "retry_without_objective": True,
+        "phased_solve": False,
+        "room_mode": "cp_rooms",
+    },
     "fast_feasible": {
         "label": "Fast feasible",
         "use_objective": False,
@@ -72,6 +94,35 @@ def _is_feasible(raw_status: int) -> bool:
     return int(raw_status) in (int(cp_model.OPTIMAL), int(cp_model.FEASIBLE))
 
 
+def _objective_bound_info(solver: Any, raw_status: int, *, use_objective: bool) -> Dict[str, float | None]:
+    if not bool(use_objective):
+        return {
+            "objective_value": None,
+            "best_objective_bound": None,
+            "relative_gap": None,
+        }
+    objective_value: float | None = None
+    best_bound: float | None = None
+    if _is_feasible(int(raw_status)):
+        try:
+            objective_value = float(solver.ObjectiveValue())
+        except Exception:
+            objective_value = None
+    try:
+        best_bound = float(solver.BestObjectiveBound())
+    except Exception:
+        best_bound = None
+    relative_gap: float | None = None
+    if objective_value is not None and best_bound is not None:
+        denom = max(1.0, abs(float(objective_value)))
+        relative_gap = max(0.0, float(objective_value) - float(best_bound)) / denom
+    return {
+        "objective_value": objective_value,
+        "best_objective_bound": best_bound,
+        "relative_gap": relative_gap,
+    }
+
+
 def _hard_conflict_errors(inst, schedule: Dict[int, Dict[str, Any]]) -> List[str]:
     return validate_schedule_against_instance(
         inst,
@@ -86,6 +137,12 @@ def _canonical_profile_name(profile: str | None) -> str:
     aliases = {
         "fast": "fast_feasible",
         "fast_feasible": "fast_feasible",
+        "university_fast": "university_fast",
+        "uni_fast": "university_fast",
+        "university_quality": "university_quality",
+        "uni_quality": "university_quality",
+        "verify": "verification",
+        "verification": "verification",
         "balanced": "balanced",
         "quality": "quality_first",
         "quality_first": "quality_first",
@@ -200,7 +257,45 @@ def _apply_objective_profile(inst, options: SolveOptions) -> tuple[Any, SolveOpt
     preset = dict(OBJECTIVE_PROFILE_PRESETS.get(profile, OBJECTIVE_PROFILE_PRESETS["balanced"]))
 
     resolved = options
-    if profile == "fast_feasible":
+    if profile == "university_fast":
+        resolved = replace(
+            resolved,
+            room_mode="greedy",
+            use_objective=False,
+            retry_without_objective=False,
+            phased_solve=False,
+            improve_total_seconds=0.0,
+        )
+    elif profile == "university_quality":
+        total_limit = max(0.0, float(resolved.time_limit_seconds or 180.0))
+        feasibility_seconds = (
+            resolved.feasibility_seconds
+            if resolved.feasibility_seconds is not None
+            else min(total_limit, max(1.0, total_limit * 0.75))
+        )
+        improve_total_seconds = (
+            float(resolved.improve_total_seconds)
+            if float(resolved.improve_total_seconds) > 0
+            else max(0.0, total_limit - float(feasibility_seconds))
+        )
+        resolved = replace(
+            resolved,
+            room_mode="greedy",
+            use_objective=True,
+            retry_without_objective=True,
+            phased_solve=True,
+            feasibility_seconds=float(feasibility_seconds),
+            improve_total_seconds=float(improve_total_seconds),
+        )
+    elif profile == "verification":
+        resolved = replace(
+            resolved,
+            room_mode="cp_rooms",
+            use_objective=True,
+            retry_without_objective=True,
+            phased_solve=False,
+        )
+    elif profile == "fast_feasible":
         resolved = replace(
             resolved,
             use_objective=False,
@@ -210,16 +305,19 @@ def _apply_objective_profile(inst, options: SolveOptions) -> tuple[Any, SolveOpt
         )
     elif profile == "balanced":
         if resolved.time_limit_seconds is not None:
+            total_limit = max(0.0, float(resolved.time_limit_seconds))
             feasibility_seconds = (
                 resolved.feasibility_seconds
                 if resolved.feasibility_seconds is not None
-                else max(15.0, min(float(resolved.time_limit_seconds) * 0.75, float(resolved.time_limit_seconds)))
+                else min(total_limit, max(1.0, total_limit * 0.75))
             )
+            feasibility_seconds = min(float(feasibility_seconds), total_limit)
             improve_total_seconds = (
                 float(resolved.improve_total_seconds)
                 if float(resolved.improve_total_seconds) > 0
-                else max(0.0, float(resolved.time_limit_seconds) - float(feasibility_seconds))
+                else max(0.0, total_limit - float(feasibility_seconds))
             )
+            improve_total_seconds = min(float(improve_total_seconds), max(0.0, total_limit - float(feasibility_seconds)))
         else:
             feasibility_seconds = resolved.feasibility_seconds
             improve_total_seconds = resolved.improve_total_seconds
@@ -232,17 +330,35 @@ def _apply_objective_profile(inst, options: SolveOptions) -> tuple[Any, SolveOpt
             improve_total_seconds=float(improve_total_seconds),
         )
     elif profile == "quality_first":
-        total_limit = float(resolved.time_limit_seconds or 180.0)
-        feasibility_seconds = (
-            resolved.feasibility_seconds
-            if resolved.feasibility_seconds is not None
-            else max(30.0, total_limit * 0.65)
-        )
-        improve_total_seconds = (
-            float(resolved.improve_total_seconds)
-            if float(resolved.improve_total_seconds) > 0
-            else max(30.0, total_limit - float(feasibility_seconds))
-        )
+        explicit_limit = resolved.time_limit_seconds is not None
+        total_limit = max(0.0, float(resolved.time_limit_seconds or 180.0))
+        if explicit_limit:
+            feasibility_seconds = (
+                resolved.feasibility_seconds
+                if resolved.feasibility_seconds is not None
+                else min(total_limit, max(1.0, total_limit * 0.65))
+            )
+            feasibility_seconds = min(float(feasibility_seconds), total_limit)
+            improve_total_seconds = (
+                float(resolved.improve_total_seconds)
+                if float(resolved.improve_total_seconds) > 0
+                else max(0.0, total_limit - float(feasibility_seconds))
+            )
+            improve_total_seconds = min(
+                float(improve_total_seconds),
+                max(0.0, total_limit - float(feasibility_seconds)),
+            )
+        else:
+            feasibility_seconds = (
+                resolved.feasibility_seconds
+                if resolved.feasibility_seconds is not None
+                else max(30.0, total_limit * 0.65)
+            )
+            improve_total_seconds = (
+                float(resolved.improve_total_seconds)
+                if float(resolved.improve_total_seconds) > 0
+                else max(30.0, total_limit - float(feasibility_seconds))
+            )
         resolved = replace(
             resolved,
             use_objective=True,
@@ -287,11 +403,19 @@ def _run_solve_attempt(
         random_seed=options.random_seed,
         log_progress=options.log_progress,
     )
+    objective_info = _objective_bound_info(
+        solver,
+        int(raw_status),
+        use_objective=bool(use_objective),
+    )
     attempt = SolveAttempt(
         room_mode=str(room_mode),
         use_objective=bool(use_objective),
         time_limit_seconds=options.time_limit_seconds,
         raw_status=int(raw_status),
+        objective_value=objective_info["objective_value"],
+        best_objective_bound=objective_info["best_objective_bound"],
+        relative_gap=objective_info["relative_gap"],
     )
     return model, solver, int(raw_status), attempt
 
@@ -399,28 +523,100 @@ def solve_instance(
         )
         return model, solver, raw_status, attempt
 
+    def remaining_seconds(deadline: float | None) -> float | None:
+        if deadline is None:
+            return None
+        return max(0.0, float(deadline) - time.perf_counter())
+
     if resolved_options.phased_solve:
         feasibility_limit = (
             resolved_options.feasibility_seconds
             if resolved_options.feasibility_seconds is not None
             else strict_limit
         )
-        phased_options = replace(resolved_options, time_limit_seconds=feasibility_limit)
+        feasibility_deadline = (
+            time.perf_counter() + float(feasibility_limit)
+            if feasibility_limit is not None
+            else None
+        )
+        fallback_reserve = 0.0
+        if (
+            room_mode == "cp_rooms"
+            and feasibility_limit is not None
+            and float(feasibility_limit) >= 60.0
+        ):
+            fallback_reserve = min(
+                90.0,
+                max(15.0, float(feasibility_limit) * 0.20),
+                max(0.0, float(feasibility_limit) - 1.0),
+            )
+        strict_limit_phase = (
+            max(1.0, float(feasibility_limit) - float(fallback_reserve))
+            if feasibility_limit is not None
+            else None
+        )
+        strict_deadline = (
+            time.perf_counter() + float(strict_limit_phase)
+            if strict_limit_phase is not None
+            else feasibility_deadline
+        )
+        phased_options = replace(
+            resolved_options,
+            time_limit_seconds=(
+                remaining_seconds(strict_deadline)
+                if strict_deadline is not None
+                else strict_limit_phase
+            ),
+        )
         model, solver, raw_status, attempt = solve_attempt(room_mode, False, phased_options)
-        if room_mode == "cp_rooms" and not _is_feasible(raw_status):
+        fallback_limit = remaining_seconds(feasibility_deadline)
+        if room_mode == "cp_rooms" and not _is_feasible(raw_status) and (fallback_limit is None or fallback_limit > 0):
             emit("solve_fallback", from_mode="cp_rooms", to_mode="greedy")
-            model, solver, raw_status, attempt = solve_attempt("greedy", False, phased_options)
+            model, solver, raw_status, attempt = solve_attempt(
+                "greedy",
+                False,
+                replace(resolved_options, time_limit_seconds=fallback_limit),
+            )
     else:
+        solve_deadline = (
+            time.perf_counter() + float(resolved_options.time_limit_seconds)
+            if resolved_options.time_limit_seconds is not None
+            else None
+        )
+        first_options = strict_options if use_objective else full_options
+        if solve_deadline is not None and first_options.time_limit_seconds is not None:
+            first_options = replace(
+                first_options,
+                time_limit_seconds=min(
+                    float(first_options.time_limit_seconds),
+                    float(remaining_seconds(solve_deadline) or 0.0),
+                ),
+            )
         model, solver, raw_status, attempt = solve_attempt(
             room_mode,
             use_objective,
-            strict_options if use_objective else full_options,
+            first_options,
         )
-        if resolved_options.retry_without_objective and use_objective and not _is_feasible(raw_status):
-            model, solver, raw_status, attempt = solve_attempt(room_mode, False, full_options)
-        if room_mode == "cp_rooms" and not _is_feasible(raw_status):
+        retry_limit = remaining_seconds(solve_deadline)
+        if (
+            resolved_options.retry_without_objective
+            and use_objective
+            and not _is_feasible(raw_status)
+            and (retry_limit is None or retry_limit > 0)
+        ):
+            model, solver, raw_status, attempt = solve_attempt(
+                room_mode,
+                False,
+                replace(full_options, time_limit_seconds=retry_limit),
+            )
+        fallback_limit = remaining_seconds(solve_deadline)
+        if room_mode == "cp_rooms" and not _is_feasible(raw_status) and (fallback_limit is None or fallback_limit > 0):
             emit("solve_fallback", from_mode="cp_rooms", to_mode="greedy")
-            model, solver, raw_status, attempt = solve_attempt("greedy", False, full_options)
+            model, solver, raw_status, attempt = solve_attempt(
+                "greedy",
+                False,
+                replace(full_options, time_limit_seconds=fallback_limit),
+            )
 
     ui_status = _map_status_to_ui(raw_status)
     if ui_status not in (0, 4):

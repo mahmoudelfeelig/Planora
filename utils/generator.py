@@ -49,6 +49,7 @@ def generate_instance(mode: str = "small_demo") -> Instance:
       - "block_profs"
       - "labs_only"
       - "random"
+      - "ss23_uni_like"
       - "target_case"
     """
 
@@ -97,11 +98,152 @@ def generate_instance(mode: str = "small_demo") -> Instance:
             courses_per_program=(4, 7),
         )
 
+    if mode in {"ss23_uni_like", "uni_like"}:
+        return _generate_ss23_uni_like()
+
     if mode == "target_case":
         from utils.target_profile import generate_target_profile
         return generate_target_profile(seed=42)
 
     raise ValueError(f"Unknown generation mode: {mode}")
+
+
+def _build_ss23_uni_like_room_specs() -> List[Dict[str, Any]]:
+    """
+    Synthetic room pool sized from the extracted SS23 all-majors schedule:
+    161 distinct room labels, split into lecture, tutorial, computer-lab, and
+    specialized-lab capacity bands.
+    """
+    specs: List[Dict[str, Any]] = []
+    for idx in range(1, 61):
+        capacity = 500 if idx <= 18 else 320
+        specs.append(
+            {
+                "name": f"SS23-LH-{idx:03d}",
+                "room_type": "LECTURE",
+                "capacity": capacity,
+                "building": "LECTURE-HALLS",
+            }
+        )
+    for idx in range(1, 86):
+        specs.append(
+            {
+                "name": f"SS23-TR-{idx:03d}",
+                "room_type": "TUTORIAL",
+                "capacity": 90,
+                "building": "TUTORIAL-ROOMS",
+            }
+        )
+    for idx in range(1, 13):
+        specs.append(
+            {
+                "name": f"SS23-PC-{idx:03d}",
+                "room_type": "COMPUTER_LAB",
+                "capacity": 260,
+                "building": "COMPUTER-LABS",
+            }
+        )
+    for idx, tag in enumerate(["LABA", "LABB", "LABC", "LABD"], start=1):
+        specs.append(
+            {
+                "name": f"SS23-SLAB-{idx:03d}",
+                "room_type": "SPECIALIZED_LAB",
+                "capacity": 260,
+                "building": "SPECIALIZED-LABS",
+                "tags": [tag],
+            }
+        )
+    return specs
+
+
+def _build_ss23_uni_like_course_patterns(total_courses: int) -> List[Dict[str, Any]]:
+    patterns: List[Dict[str, Any]] = []
+    lab_tags = ["LABA", "LABB", "LABC", "LABD"]
+    for c_id in range(1, int(total_courses) + 1):
+        row: Dict[str, Any] = {
+            "course_id": c_id,
+            "lecture_count": 12,
+            "tutorial_count": 12,
+            "lab_count": 0,
+            "lab_type": "NONE",
+            "lab_duration": 1,
+            "lab_tag": "",
+        }
+        if c_id % 11 == 0:
+            row.update(
+                {
+                    "lab_count": 12,
+                    "lab_type": "SPECIAL",
+                    "lab_tag": lab_tags[(c_id // 11 - 1) % len(lab_tags)],
+                }
+            )
+        elif c_id % 7 == 0:
+            row.update({"lab_count": 12, "lab_type": "NORMAL"})
+        elif c_id % 3 == 0:
+            row["tutorial_count"] = 0
+        patterns.append(row)
+    return patterns
+
+
+def _generate_ss23_uni_like() -> Instance:
+    """
+    Built-in stress preset extrapolated from data/SS23-All-Majors-Schedule.
+
+    The real PDF has no professor identities, so staff are synthetic: one
+    primary professor per course plus a TA pool sized to roughly half the
+    course catalog.
+    """
+    program_names = [
+        "MCTR 10th",
+        "CSEN 6th",
+        "CSEN 10th",
+        "MGT 6th",
+        "BINF 6th",
+        "GIU AUTO 6th",
+        "GIU ROBO 6th",
+        "GIU MANF 6th",
+        "GIU BA 4th",
+    ]
+    group_counts = [1, 2, 1, 1, 2, 2, 2, 3, 3]
+    course_counts = [8, 12, 8, 8, 10, 10, 10, 11, 11]
+    courses_per_group = [5, 6, 5, 5, 6, 6, 6, 6, 6]
+    total_courses = sum(course_counts)
+
+    inst = generate_custom_instance(
+        num_programs=len(program_names),
+        groups_per_program=1,
+        courses_per_program=1,
+        program_overrides=[
+            {
+                "program_id": idx,
+                "program_name": name,
+                "groups": group_counts[idx - 1],
+                "courses": course_counts[idx - 1],
+                "courses_per_group": courses_per_group[idx - 1],
+            }
+            for idx, name in enumerate(program_names, start=1)
+        ],
+        course_patterns=_build_ss23_uni_like_course_patterns(total_courses),
+        course_names=[f"SS23 Catalog Course {idx:03d}" for idx in range(1, total_courses + 1)],
+        num_professors=88,
+        num_tas=44,
+        room_specs=_build_ss23_uni_like_room_specs(),
+        calendar_days=["MON", "TUE", "WED", "THU", "FRI", "SAT"],
+        calendar_weeks=list(range(1, 13)),
+        slots_per_day=5,
+        seed=2023,
+    )
+    inst.objective_profile = "fast_feasible"
+    inst.sla_targets = {
+        "source_profile": "SS23 all-majors extracted scale",
+        "source_events": 1265,
+        "observed_merged_activities": 1044,
+        "program_rows": len(program_names),
+        "cohorts": sum(group_counts),
+        "courses": total_courses,
+        "rooms": 161,
+    }
+    return inst
 
 
 def _normalize_days(
@@ -833,7 +975,13 @@ def _generate_university(
     # Explicit per-course pattern overrides should take precedence over random
     # block-course tagging so user-provided lecture/tutorial totals are respected.
     if course_pattern_overrides:
-        block_courses.difference_update(int(cid) for cid in course_pattern_overrides.keys())
+        override_ids = {int(cid) for cid in course_pattern_overrides.keys()}
+        block_courses.difference_update(override_ids)
+        labs_only_for_program = {
+            int(p_id): int(c_id)
+            for p_id, c_id in labs_only_for_program.items()
+            if int(c_id) not in override_ids
+        }
 
     # ----- staff (profs, block profs, TAs) -----
 
@@ -1513,7 +1661,7 @@ def _cli_main(argv: List[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description="Generate a timetable instance.")
     parser.add_argument("--mode", default="target_case",
-                        choices=["small_demo","mixed_large","block_profs","labs_only","random","target_case"],
+                        choices=["small_demo","mixed_large","block_profs","labs_only","random","ss23_uni_like","target_case"],
                         help="Scenario to generate")
     parser.add_argument("--seed", type=int, default=None, help="Random seed override for 'random' mode")
     parser.add_argument("--out", required=True, help="Output path (.json or .pkl)")

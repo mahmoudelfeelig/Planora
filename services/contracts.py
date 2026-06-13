@@ -46,6 +46,9 @@ class SolveAttempt:
     use_objective: bool
     time_limit_seconds: Optional[float]
     raw_status: int
+    objective_value: Optional[float] = None
+    best_objective_bound: Optional[float] = None
+    relative_gap: Optional[float] = None
 
 
 @dataclass

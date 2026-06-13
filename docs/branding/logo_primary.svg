@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="520" height="120" viewBox="0 0 520 120">
-  <rect width="520" height="120" rx="24" fill="#10131A"/>
-  <rect x="22" y="22" width="76" height="76" rx="18" fill="#181F2A" stroke="#6F8F6A" stroke-width="4"/>
-  <path d="M40 78 L60 42 L82 78" fill="none" stroke="#7D63D9" stroke-width="7" stroke-linecap="round"/>
-  <circle cx="60" cy="60" r="8" fill="#6F8F6A"/>
-  <text x="122" y="72" fill="#F2F4F8" font-size="42" font-family="Segoe UI, sans-serif">Planora</text>
-</svg>

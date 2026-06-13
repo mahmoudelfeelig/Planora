@@ -1387,21 +1387,24 @@ class LocalSearchImprover:
 
         # Group-first deterministic pass:
         # week-by-week scan and best-delta relocations for high-penalty groups.
-        systematic_budget = max(8, min(320, int(iterations * 0.7)))
+        tiny_time_budget = max_seconds is not None and float(max_seconds) <= 0.10
+        systematic_budget = 0 if tiny_time_budget else max(8, min(320, int(iterations * 0.7)))
         systematic_seconds = None
         if max_seconds is not None:
             # Keep deterministic pre-pass proportional to total budget; do not
             # enforce a hard minimum so tiny max_seconds calls remain responsive.
             systematic_seconds = max(0.0, float(max_seconds) * 0.45)
-        current_pen, systematic_moves = self._systematic_group_week_sweep(
-            current,
-            int(current_pen),
-            max_moves=int(systematic_budget),
-            max_passes=3,
-            start_ts=float(start_ts),
-            max_seconds=systematic_seconds,
-            stop_hook=stop_hook,
-        )
+        systematic_moves = 0
+        if int(systematic_budget) > 0:
+            current_pen, systematic_moves = self._systematic_group_week_sweep(
+                current,
+                int(current_pen),
+                max_moves=int(systematic_budget),
+                max_passes=3,
+                start_ts=float(start_ts),
+                max_seconds=systematic_seconds,
+                stop_hook=stop_hook,
+            )
         if int(current_pen) < int(best_pen):
             best_pen = int(current_pen)
             best = {a_id: info.copy() for a_id, info in current.items()}

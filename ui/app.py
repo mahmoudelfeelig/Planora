@@ -17,6 +17,14 @@ def _resource_path(*parts: str) -> str:
     return os.path.normpath(os.path.join(base, *parts))
 
 
+def _app_icon_path() -> str:
+    for filename in ("Logo.ico", "app_icon.png"):
+        path = _resource_path(filename)
+        if os.path.exists(path):
+            return path
+    return ""
+
+
 def _run_engine_cli_if_requested() -> int | None:
     if len(sys.argv) < 2 or sys.argv[1] != "--engine-cli":
         return None
@@ -74,8 +82,8 @@ def main() -> None:
     app.setApplicationName(APP_SHORT_NAME)
     app.setApplicationDisplayName(APP_DISPLAY_NAME)
     app.setOrganizationName(APP_PUBLISHER)
-    icon_path = _resource_path("app_icon.png")
-    if os.path.exists(icon_path):
+    icon_path = _app_icon_path()
+    if icon_path:
         app.setWindowIcon(QIcon(icon_path))
     win = MainWindow()
     win.showMaximized()

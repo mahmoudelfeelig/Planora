@@ -87,3 +87,55 @@ def test_import_schedule_wizard_uses_mapped_reader(monkeypatch, qt_app, tmp_path
     finally:
         win.close()
         win.deleteLater()
+
+
+def test_import_timetable_csv_loads_created_scenario(monkeypatch, qt_app, tmp_path):
+    win = ui_window.MainWindow()
+    try:
+        path = tmp_path / "raw.csv"
+        path.write_text("week,day,slot,course,major,room\n1,Monday,1,CS101,G1,R1\n", encoding="utf-8")
+        inst = generate_instance("small_demo")
+        a_id, act = next(iter(inst.activities.items()))
+        schedule = {
+            int(a_id): {
+                "week": int(act.week),
+                "day": inst.days[0],
+                "slot": 0,
+                "duration": int(act.duration),
+                "room_id": next(iter(inst.rooms.keys())),
+                "staff_id": int(act.prof_id if act.kind == "LEC" else act.ta_id),
+                "course_id": int(act.course_id),
+                "group_ids": list(act.group_ids),
+                "kind": str(act.kind),
+            }
+        }
+
+        monkeypatch.setattr(
+            ui_window.QFileDialog,
+            "getOpenFileName",
+            lambda *args, **kwargs: (str(path), "CSV"),
+        )
+        monkeypatch.setattr(
+            ui_window,
+            "import_timetable_csv",
+            lambda *args, **kwargs: (
+                inst,
+                schedule,
+                {
+                    "activities_after_shared_event_merge": len(schedule),
+                    "soft_penalty": 12,
+                    "validation_error_count": 0,
+                    "validation_errors": [],
+                },
+            ),
+        )
+
+        win.on_import_timetable_csv()
+
+        assert win.inst is inst
+        assert win.base_schedule == schedule
+        assert win.current_schedule == schedule
+        assert "soft penalty 12" in win.status_label.toolTip()
+    finally:
+        win.close()
+        win.deleteLater()

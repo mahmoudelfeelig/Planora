@@ -80,11 +80,50 @@ def _normalize_objective_profile(raw: str | None) -> str:
     aliases = {
         "fast": "fast_feasible",
         "fast_feasible": "fast_feasible",
+        "university_fast": "university_fast",
+        "uni_fast": "university_fast",
+        "university_quality": "university_quality",
+        "uni_quality": "university_quality",
+        "verify": "verification",
+        "verification": "verification",
         "balanced": "balanced",
         "quality": "quality_first",
         "quality_first": "quality_first",
     }
     return aliases.get(text, "balanced")
+
+
+def _profile_budget_split(
+    *,
+    profile: str,
+    time_limit: float | None,
+    feasibility_seconds: float | None,
+    improve_total_seconds: float,
+) -> tuple[float | None, float]:
+    if time_limit is None or float(time_limit) <= 0:
+        return feasibility_seconds, float(improve_total_seconds)
+
+    total_limit = max(0.0, float(time_limit))
+    if str(profile) == "quality_first":
+        feasibility = (
+            float(feasibility_seconds)
+            if feasibility_seconds is not None
+            else min(total_limit, max(1.0, total_limit * 0.65))
+        )
+    else:
+        feasibility = (
+            float(feasibility_seconds)
+            if feasibility_seconds is not None
+            else min(total_limit, max(1.0, total_limit * 0.75))
+        )
+    feasibility = min(float(feasibility), total_limit)
+    improve = (
+        float(improve_total_seconds)
+        if float(improve_total_seconds) > 0
+        else max(0.0, total_limit - float(feasibility))
+    )
+    improve = min(float(improve), max(0.0, total_limit - float(feasibility)))
+    return float(feasibility), float(improve)
 
 
 def main() -> int:
@@ -138,6 +177,34 @@ def main() -> int:
         def _is_feasible(raw_status: int) -> bool:
             return raw_status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
+        def _objective_bound_info(solver: cp_model.CpSolver, raw_status: int, *, objective: bool) -> dict[str, float | None]:
+            if not bool(objective):
+                return {
+                    "objective_value": None,
+                    "best_objective_bound": None,
+                    "relative_gap": None,
+                }
+            objective_value = None
+            best_bound = None
+            if _is_feasible(int(raw_status)):
+                try:
+                    objective_value = float(solver.ObjectiveValue())
+                except Exception:
+                    objective_value = None
+            try:
+                best_bound = float(solver.BestObjectiveBound())
+            except Exception:
+                best_bound = None
+            relative_gap = None
+            if objective_value is not None and best_bound is not None:
+                denom = max(1.0, abs(float(objective_value)))
+                relative_gap = max(0.0, float(objective_value) - float(best_bound)) / denom
+            return {
+                "objective_value": objective_value,
+                "best_objective_bound": best_bound,
+                "relative_gap": relative_gap,
+            }
+
         def _solve_attempt(mode: str, objective: bool, limit: float | None):
             nonlocal attempts
             attempt_idx = len(attempts) + 1
@@ -156,12 +223,23 @@ def main() -> int:
                 log_progress=log_progress,
             )
             elapsed = time.perf_counter() - t0
+            objective_info = _objective_bound_info(
+                sat_solver,
+                int(sat_status),
+                objective=bool(objective),
+            )
             attempts.append(
                 {
                     "room_mode": mode,
                     "use_objective": objective,
                     "time_limit_seconds": limit,
                     "status": int(sat_status),
+                    "raw_status": int(sat_status),
+                    "elapsed_seconds": float(elapsed),
+                    "workers": int(workers) if workers is not None else None,
+                    "objective_value": objective_info["objective_value"],
+                    "best_objective_bound": objective_info["best_objective_bound"],
+                    "relative_gap": objective_info["relative_gap"],
                 }
             )
             _emit_progress(
@@ -173,6 +251,11 @@ def main() -> int:
                 elapsed_seconds=float(elapsed),
             )
             return model, sat_solver, sat_status
+
+        def _remaining(deadline: float | None) -> float | None:
+            if deadline is None:
+                return None
+            return max(0.0, float(deadline) - time.perf_counter())
 
         # Optional time limit via env var (seconds). Keep defaults if unset.
         tl = os.getenv("TT_TIME_LIMIT")
@@ -191,7 +274,30 @@ def main() -> int:
         improve_max_rounds = _read_int_env("TT_IMPROVE_MAX_ROUNDS")
         if improve_max_rounds is None:
             improve_max_rounds = 12
-        if objective_profile == "fast_feasible":
+        if objective_profile == "university_fast":
+            room_mode = "greedy"
+            use_objective = False
+            retry_without_objective = False
+            phased_solve = False
+            improve_total_seconds = 0.0
+        elif objective_profile == "university_quality":
+            room_mode = "greedy"
+            use_objective = True
+            retry_without_objective = True
+            phased_solve = True
+            feasibility_seconds, improve_total_seconds = _profile_budget_split(
+                profile="balanced",
+                time_limit=time_limit,
+                feasibility_seconds=feasibility_seconds,
+                improve_total_seconds=improve_total_seconds,
+            )
+        elif objective_profile == "verification":
+            room_mode = "cp_rooms"
+            use_objective = True
+            retry_without_objective = True
+            phased_solve = False
+            improve_total_seconds = 0.0
+        elif objective_profile == "fast_feasible":
             use_objective = False
             retry_without_objective = False
             phased_solve = False
@@ -200,19 +306,22 @@ def main() -> int:
             use_objective = True
             retry_without_objective = True
             phased_solve = True
-            if time_limit is not None and time_limit > 0:
-                feasibility_seconds = (
-                    feasibility_seconds
-                    if feasibility_seconds is not None
-                    else max(30.0, float(time_limit) * 0.65)
-                )
-                if improve_total_seconds <= 0:
-                    improve_total_seconds = max(
-                        30.0, float(time_limit) - float(feasibility_seconds)
-                    )
+            feasibility_seconds, improve_total_seconds = _profile_budget_split(
+                profile=objective_profile,
+                time_limit=time_limit,
+                feasibility_seconds=feasibility_seconds,
+                improve_total_seconds=improve_total_seconds,
+            )
             improve_slice_seconds = max(float(improve_slice_seconds), 6.0)
             improve_iters_per_slice = max(int(improve_iters_per_slice), 1500)
             improve_max_rounds = max(int(improve_max_rounds), 16)
+        elif objective_profile == "balanced" and phased_solve:
+            feasibility_seconds, improve_total_seconds = _profile_budget_split(
+                profile=objective_profile,
+                time_limit=time_limit,
+                feasibility_seconds=feasibility_seconds,
+                improve_total_seconds=improve_total_seconds,
+            )
         _emit_progress(
             "run_start",
             phased=bool(phased_solve),
@@ -228,10 +337,41 @@ def main() -> int:
 
         if phased_solve:
             feasibility_limit = feasibility_seconds if feasibility_seconds is not None else strict_limit
-            solver_model, sat, status = _solve_attempt(room_mode, False, feasibility_limit)
-            if room_mode == "cp_rooms" and not _is_feasible(status):
+            fallback_reserve = 0.0
+            if (
+                room_mode == "cp_rooms"
+                and feasibility_limit is not None
+                and float(feasibility_limit) >= 60.0
+            ):
+                fallback_reserve = min(
+                    90.0,
+                    max(15.0, float(feasibility_limit) * 0.20),
+                    max(0.0, float(feasibility_limit) - 1.0),
+                )
+            strict_limit_phase = (
+                max(1.0, float(feasibility_limit) - float(fallback_reserve))
+                if feasibility_limit is not None
+                else None
+            )
+            feasibility_deadline = (
+                time.perf_counter() + float(feasibility_limit)
+                if feasibility_limit is not None
+                else None
+            )
+            strict_deadline = (
+                time.perf_counter() + float(strict_limit_phase)
+                if strict_limit_phase is not None
+                else feasibility_deadline
+            )
+            solver_model, sat, status = _solve_attempt(
+                room_mode,
+                False,
+                _remaining(strict_deadline) if strict_deadline is not None else strict_limit_phase,
+            )
+            fallback_limit = _remaining(feasibility_deadline)
+            if room_mode == "cp_rooms" and not _is_feasible(status) and (fallback_limit is None or fallback_limit > 0):
                 _emit_progress("solve_fallback", from_mode="cp_rooms", to_mode="greedy")
-                solver_model, sat, status = _solve_attempt("greedy", False, feasibility_limit)
+                solver_model, sat, status = _solve_attempt("greedy", False, fallback_limit)
             meta["phased"] = {
                 "enabled": True,
                 "feasibility_seconds": feasibility_limit,
@@ -239,18 +379,37 @@ def main() -> int:
                 "improve_slice_seconds": improve_slice_seconds,
                 "improve_iters_per_slice": improve_iters_per_slice,
                 "improve_max_rounds": improve_max_rounds,
+                "cp_rooms_fallback_reserve_seconds": fallback_reserve,
             }
         else:
-            solver_model, sat, status = _solve_attempt(room_mode, use_objective, strict_limit)
+            solve_deadline = (
+                time.perf_counter() + float(time_limit)
+                if time_limit is not None
+                else None
+            )
+            base_limit = strict_limit if use_objective else time_limit
+            first_limit = (
+                min(float(base_limit), float(_remaining(solve_deadline)))
+                if solve_deadline is not None and base_limit is not None
+                else base_limit
+            )
+            solver_model, sat, status = _solve_attempt(room_mode, use_objective, first_limit)
 
             # Retry in the same room mode without objective when objective search times out/returns unknown.
-            if retry_without_objective and use_objective and not _is_feasible(status):
-                solver_model, sat, status = _solve_attempt(room_mode, False, time_limit)
+            retry_limit = _remaining(solve_deadline)
+            if (
+                retry_without_objective
+                and use_objective
+                and not _is_feasible(status)
+                and (retry_limit is None or retry_limit > 0)
+            ):
+                solver_model, sat, status = _solve_attempt(room_mode, False, retry_limit)
 
             # Fallback: if strict mode still fails, retry with greedy rooming and no objective for feasibility.
-            if room_mode == "cp_rooms" and not _is_feasible(status):
+            fallback_limit = _remaining(solve_deadline)
+            if room_mode == "cp_rooms" and not _is_feasible(status) and (fallback_limit is None or fallback_limit > 0):
                 _emit_progress("solve_fallback", from_mode="cp_rooms", to_mode="greedy")
-                solver_model, sat, status = _solve_attempt("greedy", False, time_limit)
+                solver_model, sat, status = _solve_attempt("greedy", False, fallback_limit)
             meta["phased"] = {"enabled": False}
     except Exception as e:
         print(f"[error] CP build/solve failed: {e}", file=sys.stderr)
@@ -258,6 +417,8 @@ def main() -> int:
         return 3
 
     ui_status = _map_status_to_ui(status)
+    meta["final_raw_status"] = int(status)
+    meta["final_ui_status"] = int(ui_status)
 
     # Only write a schedule if we are FEASIBLE or OPTIMAL by the UI's convention
     if ui_status not in (0, 4):

@@ -1,0 +1,91 @@
+name: Package Smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  portable-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Qt runtime libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libopengl0 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0
+
+      - name: Build portable package
+        run: |
+          chmod +x scripts/unix/build_installer.sh
+          python scripts/smoke/run_packaged_engine_smoke.py --help >/dev/null
+          ./scripts/unix/build_installer.sh --skip-tests --python "$(command -v python)"
+
+      - name: Smoke test packaged engine
+        run: |
+          python scripts/smoke/run_packaged_engine_smoke.py --engine-exe "$(pwd)/dist/SchedulerEngine"
+
+      - name: Verify archive output
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            test -f dist/Scheduler-linux-v1.0.tar.gz
+          else
+            test -f dist/Scheduler-macos-v1.0.zip
+          fi
+
+  windows-installer-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: .\scripts\windows\build_installer.ps1 -SkipTests -PythonExe python
+
+      - name: Smoke test packaged worker from dist
+        shell: pwsh
+        run: python .\scripts\smoke\run_packaged_engine_smoke.py --engine-exe .\dist\Scheduler\SchedulerEngine.exe
+
+      - name: Install silently and smoke test installed worker
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem .\dist\installer\Planora-Setup-v*.exe | Select-Object -First 1
+          if (-not $installer) { throw 'Installer not found.' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'PlanoraInstalled'
+          $proc = Start-Process -FilePath $installer.FullName -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$installDir") -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "Installer exited with code $($proc.ExitCode)" }
+          $worker = Join-Path $installDir 'SchedulerEngine.exe'
+          if (-not (Test-Path $worker)) { throw "Installed worker missing at $worker" }
+          if (-not (Test-Path (Join-Path $installDir 'Scheduler.exe'))) { throw 'Installed UI executable missing.' }
+          python .\scripts\smoke\run_packaged_engine_smoke.py --engine-exe $worker

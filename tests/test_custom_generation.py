@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from utils.generator import ROOM_CATEGORY_CAPACITY, generate_custom_instance
+from utils.generator import ROOM_CATEGORY_CAPACITY, generate_custom_instance, generate_instance
 
 
 def test_generate_custom_instance_applies_counts_staff_mapping_and_rooms():
@@ -277,3 +277,44 @@ def test_generate_custom_instance_supports_calendar_and_room_metadata():
     for room in inst.rooms.values():
         assert room.availability is not None
         assert all(day in {"MON", "TUE", "WED", "THU", "FRI"} for day, _slot in room.availability)
+
+
+def test_ss23_uni_like_preset_matches_extracted_scale():
+    inst = generate_instance("ss23_uni_like")
+
+    assert inst.days == ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
+    assert inst.weeks == list(range(1, 13))
+    assert int(inst.slots_per_day) == 5
+    assert len(inst.programs) == 9
+    assert len(inst.groups) == 17
+    assert len(inst.courses) == 88
+    assert len(inst.rooms) == 161
+    assert len([s for s in inst.staff.values() if s.is_prof]) == 88
+    assert len([s for s in inst.staff.values() if not s.is_prof]) == 44
+    assert 1000 <= len(inst.activities) <= 2200
+
+    room_types = {room.room_type for room in inst.rooms.values()}
+    assert room_types == {"LECTURE", "TUTORIAL", "COMPUTER_LAB", "SPECIALIZED_LAB"}
+    assert getattr(inst, "objective_profile", "") == "fast_feasible"
+    assert inst.sla_targets["source_events"] == 1265
+    assert inst.sla_targets["observed_merged_activities"] == 1044
+
+    for act in inst.activities.values():
+        needed_capacity = sum(inst.groups[g_id].size for g_id in act.group_ids)
+        eligible = []
+        for room in inst.rooms.values():
+            if room.capacity < needed_capacity:
+                continue
+            if act.kind == "LEC" and room.room_type == "LECTURE":
+                eligible.append(room.id)
+            elif act.kind == "TUT" and room.room_type in {"TUTORIAL", "LECTURE"}:
+                eligible.append(room.id)
+            elif act.kind == "LAB" and act.requires_specialization:
+                if (
+                    room.room_type == "SPECIALIZED_LAB"
+                    and act.requires_specialization in room.specialization_tags
+                ):
+                    eligible.append(room.id)
+            elif act.kind == "LAB" and room.room_type in {"COMPUTER_LAB", "SPECIALIZED_LAB"}:
+                eligible.append(room.id)
+        assert eligible, f"activity {act.id} has no eligible room"
