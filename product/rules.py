@@ -39,6 +39,32 @@ HARD_RULES: Dict[str, RuleDefinition] = {
             inst, value, key="week1_lectures_only"
         ),
     ),
+    "force_repeat_weekly_pattern": RuleDefinition(
+        rule_id="force_repeat_weekly_pattern",
+        category="hard",
+        title="Repeat weekly pattern",
+        description=(
+            "After the first teaching week, recurring activities with the same "
+            "course, kind, staff, group set, and duration must keep the same "
+            "day, slot, and room."
+        ),
+        target="hard_constraints",
+        default_value=False,
+        compile_hook=lambda inst, value: _set_hard_flag(
+            inst, value, key="force_repeat_weekly_pattern"
+        ),
+    ),
+    "enforce_course_totals": RuleDefinition(
+        rule_id="enforce_course_totals",
+        category="hard",
+        title="Course total metadata",
+        description="Requires generated course metadata to match the number of lecture, tutorial, and lab sessions.",
+        target="hard_constraints",
+        default_value=True,
+        compile_hook=lambda inst, value: _set_hard_flag(
+            inst, value, key="enforce_course_totals"
+        ),
+    ),
     "enforce_block_professor_rules": RuleDefinition(
         rule_id="enforce_block_professor_rules",
         category="hard",

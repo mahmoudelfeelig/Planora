@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import os
 import pickle
+import random
 import time
 import json
 import traceback
@@ -165,6 +166,7 @@ def main() -> int:
         log_progress_env = os.getenv("TT_CP_LOG", "").strip().lower()
         log_progress = log_progress_env not in ("", "0", "false", "no")
         workers = _read_int_env("TT_CP_WORKERS")
+        random_seed = _read_int_env("TT_RANDOM_SEED")
         attempts: list[dict[str, object]] = []
         meta: dict[str, object] = {
             "attempts": attempts,
@@ -220,6 +222,7 @@ def main() -> int:
             sat_solver, sat_status = model.solve(
                 time_limit_seconds=limit,
                 workers=workers,
+                random_seed=random_seed,
                 log_progress=log_progress,
             )
             elapsed = time.perf_counter() - t0
@@ -237,6 +240,7 @@ def main() -> int:
                     "raw_status": int(sat_status),
                     "elapsed_seconds": float(elapsed),
                     "workers": int(workers) if workers is not None else None,
+                    "random_seed": int(random_seed) if random_seed is not None else None,
                     "objective_value": objective_info["objective_value"],
                     "best_objective_bound": objective_info["best_objective_bound"],
                     "relative_gap": objective_info["relative_gap"],
@@ -489,6 +493,8 @@ def main() -> int:
                 iters_per_slice=int(improve_iters_per_slice),
             )
             improver = LocalSearchImprover(inst)
+            if random_seed is not None:
+                random.seed(int(random_seed))
             best_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
             best_penalty = int(improver.compute_soft_penalty(best_schedule))
             base_penalty = best_penalty

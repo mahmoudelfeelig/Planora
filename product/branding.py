@@ -4,8 +4,8 @@ from copy import deepcopy
 from typing import Any, Dict
 
 APP_SHORT_NAME = "Planora"
-APP_DISPLAY_NAME = "Planora Academic Scheduler"
-APP_SUBTITLE = "Academic scheduling workspace"
+APP_DISPLAY_NAME = "Planora"
+APP_SUBTITLE = "Academic scheduling"
 APP_OWNER_NAME = "feel"
 APP_PUBLISHER = "feel"
 APP_VERSION = "1.0"

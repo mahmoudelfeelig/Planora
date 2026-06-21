@@ -8,7 +8,8 @@ import pytest
 PyQt6 = pytest.importorskip("PyQt6.QtWidgets")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication  # noqa: E402
-from PyQt6.QtCore import Qt  # noqa: E402
+from PyQt6.QtCore import QPoint, QPointF, Qt  # noqa: E402
+from PyQt6.QtGui import QWheelEvent  # noqa: E402
 
 from ui.app import MainWindow  # noqa: E402
 
@@ -66,6 +67,41 @@ def test_generate_shows_empty_calendar_before_solve(qt_app):
             win.schedule_view_scroll.verticalScrollBarPolicy()
             == Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
+    finally:
+        win.close()
+        win.deleteLater()
+
+
+def test_schedule_outer_scroll_area_moves_from_table_wheel_input(qt_app):
+    win = MainWindow()
+    try:
+        win.resize(700, 520)
+        win.show()
+        win.mode_combo.setCurrentText("small_demo")
+        win.on_generate()
+        win._apply_table_relayout()
+        qt_app.processEvents()
+
+        vertical = win.schedule_view_scroll.verticalScrollBar()
+        horizontal = win.schedule_view_scroll.horizontalScrollBar()
+        assert vertical.maximum() > 0
+        assert horizontal.maximum() > 0
+        assert win.table._external_scroll_area is win.schedule_view_scroll
+
+        vertical.setValue(0)
+        event = QWheelEvent(
+            QPointF(20, 20),
+            QPointF(20, 20),
+            QPoint(0, 0),
+            QPoint(0, -120),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+        win.table.wheelEvent(event)
+        assert vertical.value() > 0
+        assert event.isAccepted()
     finally:
         win.close()
         win.deleteLater()

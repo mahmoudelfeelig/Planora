@@ -115,6 +115,7 @@ from services.template_profile_service import (
     save_import_export_template_profile,
 )
 from services.timetable_import_service import import_timetable_csv
+from services.timetable_import_service import suggest_timetable_mapping
 from ui.constants import (
     APP_COPYRIGHT_LINE,
     APP_DISPLAY_NAME,
@@ -155,6 +156,10 @@ from services.runtime_ops_service import (
     save_runtime_settings,
     write_crash_report,
 )
+from services.schedule_ops_service import (
+    build_focused_improve_instance,
+    focus_penalty_activity_ids,
+)
 from services.scenario_service import (
     build_builtin_product_scenario,
     build_product_scenario_from_instance,
@@ -173,6 +178,7 @@ from ui.dialogs import (
     MoveConflictDialog,
     ConflictInspectorDialog,
     ImportScheduleWizardDialog,
+    TimetableCsvImportWizardDialog,
     SearchResultsDialog,
 )
 from ui.backend_client import create_backend_client
@@ -462,6 +468,7 @@ class MainWindow(QMainWindow):
         self._connect_signals()
         self._load_templates()
         self._load_persistent_history()
+        self._load_ui_control_preferences()
         self._apply_branding_profile()
         self._append_audit_log("app_started", {"window": self.windowTitle()})
 
@@ -522,6 +529,11 @@ class MainWindow(QMainWindow):
         self.time_limit_spin.setRange(5, 3600)
         self.time_limit_spin.setValue(DEFAULT_TIME_LIMIT)
         self.time_limit_spin.setSuffix(" s")
+
+        self.random_seed_spin = StepSpinBox()
+        self.random_seed_spin.setRange(1, 2_147_483_647)
+        self.random_seed_spin.setValue(2023)
+        self.random_seed_spin.setMaximumWidth(120)
 
         self.workers_preset_combo = QComboBox()
         self._worker_preset_counts: Dict[str, int] = {}
@@ -634,16 +646,28 @@ class MainWindow(QMainWindow):
             _pair_widget("Room mode:", self.room_mode_combo),
             _pair_widget("Profile:", self.objective_profile_combo),
             self.objective_cb,
-            _pair_widget("Limit:", self.time_limit_spin),
-            _pair_widget("Workers:", self.workers_preset_combo),
-            self.debug_diagnostics_cb,
         ]
         for widget in tuning_widgets:
             row_tuning.addWidget(widget)
         row_tuning.addStretch(1)
         top_layout.addLayout(row_tuning)
 
-        # Row 2: view controls + status
+        # Row 2: solver runtime/debug controls
+        row_solver = QHBoxLayout()
+        row_solver.setContentsMargins(6, 0, 6, 0)
+        row_solver.setSpacing(6)
+        solver_widgets: List[QWidget] = [
+            _pair_widget("Limit:", self.time_limit_spin),
+            _pair_widget("Workers:", self.workers_preset_combo),
+            _pair_widget("Seed:", self.random_seed_spin),
+            self.debug_diagnostics_cb,
+        ]
+        for widget in solver_widgets:
+            row_solver.addWidget(widget)
+        row_solver.addStretch(1)
+        top_layout.addLayout(row_solver)
+
+        # Row 3: view controls + status
         row_view = QHBoxLayout()
         row_view.setContentsMargins(6, 0, 6, 0)
         row_view.setSpacing(6)
@@ -715,6 +739,7 @@ class MainWindow(QMainWindow):
         self.schedule_view_scroll.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
+        self.table.setExternalScrollArea(self.schedule_view_scroll)
         schedule_tab_layout.addWidget(self.schedule_view_scroll)
         schedule_content = QWidget()
         self.schedule_view_scroll.setWidget(schedule_content)
@@ -816,6 +841,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         try:
+            self._save_ui_control_preferences()
+        except Exception:
+            pass
+        try:
             self._save_persistent_history()
         except Exception:
             pass
@@ -889,6 +918,69 @@ class MainWindow(QMainWindow):
             central.updateGeometry()
         self._refresh_status_label()
         self.table.updateGeometry()
+
+    def _load_ui_control_preferences(self) -> None:
+        prefs = dict(self._runtime_settings.get("ui_preferences", {}) or {})
+
+        def _set_combo_data(combo: QComboBox, value: Any) -> None:
+            idx = combo.findData(value)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+
+        if "room_mode" in prefs:
+            _set_combo_data(self.room_mode_combo, str(prefs.get("room_mode")))
+        if "objective_profile" in prefs:
+            _set_combo_data(self.objective_profile_combo, str(prefs.get("objective_profile")))
+        if "improve_focus" in prefs:
+            _set_combo_data(self.improve_focus_combo, str(prefs.get("improve_focus")))
+        if "workers" in prefs:
+            try:
+                _set_combo_data(self.workers_preset_combo, int(prefs.get("workers")))
+            except Exception:
+                pass
+        if "time_limit_seconds" in prefs:
+            try:
+                self.time_limit_spin.setValue(int(prefs.get("time_limit_seconds")))
+            except Exception:
+                pass
+        if "random_seed" in prefs:
+            try:
+                self.random_seed_spin.setValue(int(prefs.get("random_seed")))
+            except Exception:
+                pass
+        if "improve_iterations" in prefs:
+            try:
+                self.improve_runs_spin.setValue(int(prefs.get("improve_iterations")))
+            except Exception:
+                pass
+        if "improve_seconds" in prefs:
+            try:
+                self.ls_time_spin.setValue(int(prefs.get("improve_seconds")))
+            except Exception:
+                pass
+        if "use_cp_objective" in prefs:
+            self.objective_cb.setChecked(bool(prefs.get("use_cp_objective")))
+        if "debug_diagnostics" in prefs:
+            self.debug_diagnostics_cb.setChecked(bool(prefs.get("debug_diagnostics")))
+
+    def _save_ui_control_preferences(self) -> None:
+        prefs = {
+            "room_mode": str(self.room_mode_combo.currentData() or "auto"),
+            "objective_profile": str(self.objective_profile_combo.currentData() or "balanced"),
+            "improve_focus": str(self.improve_focus_combo.currentData() or ""),
+            "workers": int(self._selected_worker_count()),
+            "time_limit_seconds": int(self.time_limit_spin.value()),
+            "random_seed": int(self.random_seed_spin.value()),
+            "improve_iterations": int(self.improve_runs_spin.value()),
+            "improve_seconds": int(self.ls_time_spin.value()),
+            "use_cp_objective": bool(self.objective_cb.isChecked()),
+            "debug_diagnostics": bool(self.debug_diagnostics_cb.isChecked()),
+        }
+        self._runtime_settings["ui_preferences"] = prefs
+        self._runtime_settings = save_runtime_settings(
+            self._runtime_paths["settings"],
+            self._runtime_settings,
+        )
 
     def _defer_layout_stabilization(self) -> None:
         if self._layout_stabilize_pending:
@@ -1062,6 +1154,30 @@ class MainWindow(QMainWindow):
         )
         self.search_button.setToolTip("Open searchable results and jump directly to matches.")
         self.time_limit_spin.setToolTip("Maximum solver runtime (seconds).")
+        self.random_seed_spin.setToolTip(
+            "Deterministic seed for CP-SAT and local improvement random choices."
+        )
+        self.hard_repeat_week_cb.setToolTip(
+            "After the first/lecture-only week, recurring activities with the same "
+            "course, kind, staff member, group set, and duration must use the same "
+            "day, slot, and room."
+        )
+        self.hard_course_totals_cb.setToolTip(
+            "Validate generated course metadata against the activity totals. "
+            "Turn this off for raw imported timetables with incomplete course metadata."
+        )
+        self.hard_travel_buffers_cb.setToolTip(
+            "Require configured transition buffers when shared staff/groups move between rooms."
+        )
+        self.hard_building_closures_cb.setToolTip(
+            "Respect declared building or campus closure rules."
+        )
+        self.hard_calendar_rules_cb.setToolTip(
+            "Respect calendar blackout, holiday, and special-week closure rules."
+        )
+        self.hard_precedence_rules_cb.setToolTip(
+            "Enforce configured before/after activity precedence rules."
+        )
         self.workers_preset_combo.setToolTip(
             "CP-SAT worker preset: Min=1 thread, Medium=about half cores, Max=all available cores."
         )
@@ -1139,6 +1255,9 @@ class MainWindow(QMainWindow):
         self.custom_programs_spin.setToolTip("Number of programs to synthesize.")
         self.custom_groups_per_program_spin.setToolTip(
             "Default groups per program; can be overridden per-row below."
+        )
+        self.custom_group_size_spin.setToolTip(
+            "Default students per group; can be overridden per program below."
         )
         self.custom_courses_per_program_spin.setToolTip(
             "Default courses per program; per-program/course-pattern overrides apply."
@@ -1256,6 +1375,7 @@ class MainWindow(QMainWindow):
         self.staff_add_course_btn.clicked.connect(self._on_add_course_to_selected_staff)
         self.custom_programs_spin.valueChanged.connect(self._on_custom_size_changed)
         self.custom_groups_per_program_spin.valueChanged.connect(self._on_custom_size_changed)
+        self.custom_group_size_spin.valueChanged.connect(self._on_custom_size_changed)
         self.custom_courses_per_program_spin.valueChanged.connect(self._on_custom_size_changed)
         self.custom_course_names_edit.textChanged.connect(self._refresh_staff_course_picker)
         self.custom_course_names_edit.textChanged.connect(
@@ -1305,10 +1425,16 @@ class MainWindow(QMainWindow):
         self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
         self.table.customContextMenuRequested.connect(self.on_table_context_menu)
         self.hard_week1_cb.toggled.connect(self.on_constraint_controls_changed)
+        self.hard_repeat_week_cb.toggled.connect(self.on_constraint_controls_changed)
+        self.hard_course_totals_cb.toggled.connect(self.on_constraint_controls_changed)
         self.hard_block_prof_cb.toggled.connect(self.on_constraint_controls_changed)
         self.hard_staff_daily_cb.toggled.connect(self.on_constraint_controls_changed)
         self.hard_staff_weekly_cb.toggled.connect(self.on_constraint_controls_changed)
         self.hard_room_availability_cb.toggled.connect(self.on_constraint_controls_changed)
+        self.hard_travel_buffers_cb.toggled.connect(self.on_constraint_controls_changed)
+        self.hard_building_closures_cb.toggled.connect(self.on_constraint_controls_changed)
+        self.hard_calendar_rules_cb.toggled.connect(self.on_constraint_controls_changed)
+        self.hard_precedence_rules_cb.toggled.connect(self.on_constraint_controls_changed)
         self.objective_profile_combo.currentIndexChanged.connect(
             self.on_constraint_controls_changed
         )
@@ -1676,6 +1802,9 @@ class MainWindow(QMainWindow):
         self.custom_groups_per_program_spin = StepSpinBox()
         self.custom_groups_per_program_spin.setRange(1, 20)
         self.custom_groups_per_program_spin.setValue(2)
+        self.custom_group_size_spin = StepSpinBox()
+        self.custom_group_size_spin.setRange(1, 2000)
+        self.custom_group_size_spin.setValue(60)
         self.custom_courses_per_program_spin = StepSpinBox()
         self.custom_courses_per_program_spin.setRange(1, 20)
         self.custom_courses_per_program_spin.setValue(6)
@@ -1700,6 +1829,7 @@ class MainWindow(QMainWindow):
         )
         counts_form.addRow("Programs", self.custom_programs_spin)
         counts_form.addRow("Groups per program", self.custom_groups_per_program_spin)
+        counts_form.addRow("Students per group", self.custom_group_size_spin)
         counts_form.addRow("Courses per program", self.custom_courses_per_program_spin)
         counts_form.addRow("Slots per day", self.custom_slots_per_day_spin)
         counts_form.addRow("Teaching days (CSV)", self.custom_days_edit)
@@ -1732,9 +1862,9 @@ class MainWindow(QMainWindow):
         plan_controls.addStretch(1)
         plan_layout.addLayout(plan_controls)
 
-        self.custom_program_table = QTableWidget(0, 5)
+        self.custom_program_table = QTableWidget(0, 6)
         self.custom_program_table.setHorizontalHeaderLabels(
-            ["Program ID", "Program Name", "Groups", "Courses", "Courses/Group"]
+            ["Program ID", "Program Name", "Groups", "Group Size", "Courses", "Courses/Group"]
         )
         self.custom_program_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
@@ -1907,11 +2037,23 @@ class MainWindow(QMainWindow):
         self.hard_staff_daily_cb = QCheckBox("Enforce staff daily caps")
         self.hard_staff_weekly_cb = QCheckBox("Enforce staff weekly caps")
         self.hard_room_availability_cb = QCheckBox("Enforce room availability")
+        self.hard_repeat_week_cb = QCheckBox("Force same weekly pattern after week 1")
+        self.hard_course_totals_cb = QCheckBox("Enforce course total metadata")
+        self.hard_travel_buffers_cb = QCheckBox("Enforce travel-time buffers")
+        self.hard_building_closures_cb = QCheckBox("Enforce building closures")
+        self.hard_calendar_rules_cb = QCheckBox("Enforce calendar blackout rules")
+        self.hard_precedence_rules_cb = QCheckBox("Enforce activity precedence rules")
         hard_layout.addWidget(self.hard_week1_cb)
+        hard_layout.addWidget(self.hard_repeat_week_cb)
+        hard_layout.addWidget(self.hard_course_totals_cb)
         hard_layout.addWidget(self.hard_block_prof_cb)
         hard_layout.addWidget(self.hard_staff_daily_cb)
         hard_layout.addWidget(self.hard_staff_weekly_cb)
         hard_layout.addWidget(self.hard_room_availability_cb)
+        hard_layout.addWidget(self.hard_travel_buffers_cb)
+        hard_layout.addWidget(self.hard_building_closures_cb)
+        hard_layout.addWidget(self.hard_calendar_rules_cb)
+        hard_layout.addWidget(self.hard_precedence_rules_cb)
         layout.addWidget(hard_box)
 
         soft_box = QGroupBox("Soft Constraint Weights")
@@ -2354,6 +2496,7 @@ class MainWindow(QMainWindow):
     def _reset_custom_program_table(self) -> None:
         rows = int(self.custom_programs_spin.value())
         default_groups = int(self.custom_groups_per_program_spin.value())
+        default_group_size = int(self.custom_group_size_spin.value())
         default_courses = int(self.custom_courses_per_program_spin.value())
         was_sorting = self.custom_program_table.isSortingEnabled()
         self.custom_program_table.setSortingEnabled(False)
@@ -2371,10 +2514,13 @@ class MainWindow(QMainWindow):
                 row, 2, self._make_numeric_item(default_groups)
             )
             self.custom_program_table.setItem(
-                row, 3, self._make_numeric_item(default_courses)
+                row, 3, self._make_numeric_item(default_group_size)
             )
             self.custom_program_table.setItem(
                 row, 4, self._make_numeric_item(default_courses)
+            )
+            self.custom_program_table.setItem(
+                row, 5, self._make_numeric_item(default_courses)
             )
         self._custom_program_table_internal_change = False
         self.custom_program_table.blockSignals(False)
@@ -2387,7 +2533,7 @@ class MainWindow(QMainWindow):
             )
         total = 0
         for row in range(self.custom_program_table.rowCount()):
-            item = self.custom_program_table.item(row, 3)
+            item = self.custom_program_table.item(row, 4)
             try:
                 courses = max(1, int(str(item.text()).strip())) if item is not None else int(
                     self.custom_courses_per_program_spin.value()
@@ -2550,7 +2696,7 @@ class MainWindow(QMainWindow):
             return
         if item is None:
             return
-        if item.column() not in (2, 3, 4):
+        if item.column() not in (2, 3, 4, 5):
             return
         self._custom_program_table_internal_change = True
         try:
@@ -2559,19 +2705,21 @@ class MainWindow(QMainWindow):
             except Exception:
                 if item.column() == 2:
                     val = int(self.custom_groups_per_program_spin.value())
+                elif item.column() == 3:
+                    val = int(self.custom_group_size_spin.value())
                 else:
                     val = int(self.custom_courses_per_program_spin.value())
             item.setText(str(val))
-            if item.column() == 3:
-                cpg_item = self.custom_program_table.item(item.row(), 4)
+            if item.column() == 4:
+                cpg_item = self.custom_program_table.item(item.row(), 5)
                 if cpg_item is not None:
                     try:
                         cpg = max(1, int(str(cpg_item.text()).strip()))
                     except Exception:
                         cpg = int(val)
                     cpg_item.setText(str(min(int(val), int(cpg))))
-            elif item.column() == 4:
-                courses_item = self.custom_program_table.item(item.row(), 3)
+            elif item.column() == 5:
+                courses_item = self.custom_program_table.item(item.row(), 4)
                 if courses_item is not None:
                     try:
                         courses = max(1, int(str(courses_item.text()).strip()))
@@ -2839,8 +2987,9 @@ class MainWindow(QMainWindow):
             pid_item = self.custom_program_table.item(row, 0)
             name_item = self.custom_program_table.item(row, 1)
             groups_item = self.custom_program_table.item(row, 2)
-            courses_item = self.custom_program_table.item(row, 3)
-            cpg_item = self.custom_program_table.item(row, 4)
+            group_size_item = self.custom_program_table.item(row, 3)
+            courses_item = self.custom_program_table.item(row, 4)
+            cpg_item = self.custom_program_table.item(row, 5)
             try:
                 pid = int(str(pid_item.text()).strip()) if pid_item is not None else row + 1
                 pname = (
@@ -2849,6 +2998,7 @@ class MainWindow(QMainWindow):
                     else f"Program-{int(pid)}"
                 )
                 groups = max(1, int(str(groups_item.text()).strip())) if groups_item is not None else int(self.custom_groups_per_program_spin.value())
+                group_size = max(1, int(str(group_size_item.text()).strip())) if group_size_item is not None else int(self.custom_group_size_spin.value())
                 courses = max(1, int(str(courses_item.text()).strip())) if courses_item is not None else int(self.custom_courses_per_program_spin.value())
                 courses_per_group = max(1, int(str(cpg_item.text()).strip())) if cpg_item is not None else courses
             except Exception:
@@ -2858,6 +3008,7 @@ class MainWindow(QMainWindow):
                     "program_id": int(pid),
                     "program_name": str(pname),
                     "groups": int(groups),
+                    "group_size": int(group_size),
                     "courses": int(courses),
                     "courses_per_group": min(int(courses), int(courses_per_group)),
                 }
@@ -2902,6 +3053,7 @@ class MainWindow(QMainWindow):
         return {
             "num_programs": int(self.custom_programs_spin.value()),
             "groups_per_program": int(self.custom_groups_per_program_spin.value()),
+            "group_size": int(self.custom_group_size_spin.value()),
             "courses_per_program": int(self.custom_courses_per_program_spin.value()),
             "program_overrides": program_overrides,
             "course_patterns": course_patterns,
@@ -2954,6 +3106,7 @@ class MainWindow(QMainWindow):
         groups_per_program = max(
             1, _ival("groups_per_program", int(self.custom_groups_per_program_spin.value()))
         )
+        group_size = max(1, _ival("group_size", int(self.custom_group_size_spin.value())))
         courses_per_program = max(
             1, _ival("courses_per_program", int(self.custom_courses_per_program_spin.value()))
         )
@@ -2984,6 +3137,7 @@ class MainWindow(QMainWindow):
         for spin, value in (
             (self.custom_programs_spin, num_programs),
             (self.custom_groups_per_program_spin, groups_per_program),
+            (self.custom_group_size_spin, group_size),
             (self.custom_courses_per_program_spin, courses_per_program),
             (self.custom_slots_per_day_spin, slots_per_day),
             (self.custom_num_profs_spin, num_professors),
@@ -3018,6 +3172,7 @@ class MainWindow(QMainWindow):
                     pid = int(row_cfg.get("program_id"))
                     pname = str(row_cfg.get("program_name", "")).strip() or f"Program-{pid}"
                     groups = max(1, int(row_cfg.get("groups", groups_per_program)))
+                    row_group_size = max(1, int(row_cfg.get("group_size", group_size)))
                     courses = max(1, int(row_cfg.get("courses", courses_per_program)))
                     cpg = max(1, int(row_cfg.get("courses_per_group", courses)))
                 except Exception:
@@ -3027,9 +3182,10 @@ class MainWindow(QMainWindow):
                     continue
                 self.custom_program_table.setItem(row, 1, NaturalSortTableItem(pname))
                 self.custom_program_table.setItem(row, 2, self._make_numeric_item(groups))
-                self.custom_program_table.setItem(row, 3, self._make_numeric_item(courses))
+                self.custom_program_table.setItem(row, 3, self._make_numeric_item(row_group_size))
+                self.custom_program_table.setItem(row, 4, self._make_numeric_item(courses))
                 self.custom_program_table.setItem(
-                    row, 4, self._make_numeric_item(min(courses, cpg))
+                    row, 5, self._make_numeric_item(min(courses, cpg))
                 )
 
         self._reset_custom_course_pattern_table()
@@ -3855,16 +4011,28 @@ class MainWindow(QMainWindow):
         soft = template.get("soft", {})
         controls: List[Any] = [
             self.hard_week1_cb,
+            self.hard_repeat_week_cb,
+            self.hard_course_totals_cb,
             self.hard_block_prof_cb,
             self.hard_staff_daily_cb,
             self.hard_staff_weekly_cb,
             self.hard_room_availability_cb,
+            self.hard_travel_buffers_cb,
+            self.hard_building_closures_cb,
+            self.hard_calendar_rules_cb,
+            self.hard_precedence_rules_cb,
             *self.soft_weight_spins.values(),
         ]
         for control in controls:
             control.blockSignals(True)
         if isinstance(hard, dict):
             self.hard_week1_cb.setChecked(bool(hard.get("week1_lectures_only", True)))
+            self.hard_repeat_week_cb.setChecked(
+                bool(hard.get("force_repeat_weekly_pattern", False))
+            )
+            self.hard_course_totals_cb.setChecked(
+                bool(hard.get("enforce_course_totals", True))
+            )
             self.hard_block_prof_cb.setChecked(
                 bool(hard.get("enforce_block_professor_rules", True))
             )
@@ -3876,6 +4044,18 @@ class MainWindow(QMainWindow):
             )
             self.hard_room_availability_cb.setChecked(
                 bool(hard.get("enforce_room_availability", True))
+            )
+            self.hard_travel_buffers_cb.setChecked(
+                bool(hard.get("enforce_travel_time_buffers", True))
+            )
+            self.hard_building_closures_cb.setChecked(
+                bool(hard.get("enforce_building_closures", True))
+            )
+            self.hard_calendar_rules_cb.setChecked(
+                bool(hard.get("enforce_calendar_rules", True))
+            )
+            self.hard_precedence_rules_cb.setChecked(
+                bool(hard.get("enforce_precedence_rules", True))
             )
         if isinstance(soft, dict):
             for key, spin in self.soft_weight_spins.items():
@@ -3922,10 +4102,16 @@ class MainWindow(QMainWindow):
     def _collect_constraint_settings(self) -> tuple[Dict[str, bool], Dict[str, int]]:
         hard = {
             "week1_lectures_only": self.hard_week1_cb.isChecked(),
+            "force_repeat_weekly_pattern": self.hard_repeat_week_cb.isChecked(),
+            "enforce_course_totals": self.hard_course_totals_cb.isChecked(),
             "enforce_block_professor_rules": self.hard_block_prof_cb.isChecked(),
             "enforce_staff_daily_caps": self.hard_staff_daily_cb.isChecked(),
             "enforce_staff_weekly_caps": self.hard_staff_weekly_cb.isChecked(),
             "enforce_room_availability": self.hard_room_availability_cb.isChecked(),
+            "enforce_travel_time_buffers": self.hard_travel_buffers_cb.isChecked(),
+            "enforce_building_closures": self.hard_building_closures_cb.isChecked(),
+            "enforce_calendar_rules": self.hard_calendar_rules_cb.isChecked(),
+            "enforce_precedence_rules": self.hard_precedence_rules_cb.isChecked(),
         }
         soft = {k: int(spin.value()) for k, spin in self.soft_weight_spins.items()}
         return hard, soft
@@ -3999,10 +4185,16 @@ class MainWindow(QMainWindow):
     def _load_constraint_controls_from_instance(self, inst: Instance | None) -> None:
         hard_defaults = {
             "week1_lectures_only": True,
+            "force_repeat_weekly_pattern": False,
+            "enforce_course_totals": True,
             "enforce_block_professor_rules": True,
             "enforce_staff_daily_caps": True,
             "enforce_staff_weekly_caps": True,
             "enforce_room_availability": True,
+            "enforce_travel_time_buffers": True,
+            "enforce_building_closures": True,
+            "enforce_calendar_rules": True,
+            "enforce_precedence_rules": True,
         }
         soft_defaults = {
             "stud_free_days": 10,
@@ -4038,20 +4230,32 @@ class MainWindow(QMainWindow):
             )
         controls: List[Any] = [
             self.hard_week1_cb,
+            self.hard_repeat_week_cb,
+            self.hard_course_totals_cb,
             self.hard_block_prof_cb,
             self.hard_staff_daily_cb,
             self.hard_staff_weekly_cb,
             self.hard_room_availability_cb,
+            self.hard_travel_buffers_cb,
+            self.hard_building_closures_cb,
+            self.hard_calendar_rules_cb,
+            self.hard_precedence_rules_cb,
             self.objective_profile_combo,
             *self.soft_weight_spins.values(),
         ]
         for control in controls:
             control.blockSignals(True)
         self.hard_week1_cb.setChecked(hard["week1_lectures_only"])
+        self.hard_repeat_week_cb.setChecked(hard["force_repeat_weekly_pattern"])
+        self.hard_course_totals_cb.setChecked(hard["enforce_course_totals"])
         self.hard_block_prof_cb.setChecked(hard["enforce_block_professor_rules"])
         self.hard_staff_daily_cb.setChecked(hard["enforce_staff_daily_caps"])
         self.hard_staff_weekly_cb.setChecked(hard["enforce_staff_weekly_caps"])
         self.hard_room_availability_cb.setChecked(hard["enforce_room_availability"])
+        self.hard_travel_buffers_cb.setChecked(hard["enforce_travel_time_buffers"])
+        self.hard_building_closures_cb.setChecked(hard["enforce_building_closures"])
+        self.hard_calendar_rules_cb.setChecked(hard["enforce_calendar_rules"])
+        self.hard_precedence_rules_cb.setChecked(hard["enforce_precedence_rules"])
         profile_idx = self.objective_profile_combo.findData(str(objective_profile))
         if profile_idx < 0:
             profile_idx = self.objective_profile_combo.findData("balanced")
@@ -4139,20 +4343,7 @@ class MainWindow(QMainWindow):
     def _build_focused_improve_instance(self, term: str) -> Instance:
         if self.inst is None:
             raise ValueError("No instance loaded")
-        if not term:
-            return self.inst
-        focused = copy.deepcopy(self.inst)
-        weights = dict(SOFT_WEIGHT_DEFAULTS)
-        weights.update(
-            {
-                str(k): int(v)
-                for k, v in dict(getattr(self.inst, "soft_weights", {}) or {}).items()
-                if str(k) in SOFT_WEIGHT_DEFAULTS
-            }
-        )
-        weights[str(term)] = max(1, int(weights.get(str(term), SOFT_WEIGHT_DEFAULTS[str(term)]))) * 10
-        focused.soft_weights = weights
-        return focused
+        return build_focused_improve_instance(self.inst, term)
 
     def _refresh_status_label(self) -> None:
         full = str(getattr(self, "_status_full_text", "") or "")
@@ -4187,6 +4378,7 @@ class MainWindow(QMainWindow):
         self.objective_cb.setEnabled(enable)
         self.debug_diagnostics_cb.setEnabled(enable)
         self.time_limit_spin.setEnabled(enable)
+        self.random_seed_spin.setEnabled(enable)
         self.workers_preset_combo.setEnabled(enable)
         self.workspace_tabs.setEnabled(enable)
         self.custom_reset_staff_btn.setEnabled(enable)
@@ -5440,6 +5632,109 @@ class MainWindow(QMainWindow):
         )
         self._start_solver_process(keep_locks=True)
 
+    def on_fix_current_conflicts(self) -> None:
+        self._solve_current_conflicts()
+
+    def _focus_penalty_activity_ids(self, term: str, *, limit: int = 80) -> List[int]:
+        if self.inst is None or not self.current_schedule:
+            return []
+        return focus_penalty_activity_ids(
+            self.inst,
+            self.current_schedule,
+            term,
+            limit=int(limit),
+        )
+
+    def on_focused_cp_sat_polish(self) -> None:
+        if self.inst is None or not self.current_schedule:
+            self.set_status("No schedule to polish")
+            return
+        if self.proc is not None:
+            QMessageBox.warning(self, "Busy", "Solver already running.")
+            return
+        term = self._selected_improve_focus_term()
+        if not term:
+            QMessageBox.information(
+                self,
+                "Focused CP-SAT polish",
+                "Choose a Focus term first, then run focused CP-SAT polish.",
+            )
+            self.set_status("Focused CP-SAT polish needs a focus term")
+            return
+        affected = self._focus_penalty_activity_ids(term, limit=100)
+        if not affected:
+            self.set_status(f"No activities found for {self._focus_label(term)}")
+            return
+        prior_locks = {
+            int(a_id): dict(lock)
+            for a_id, lock in self.locked_activities.items()
+            if isinstance(lock, dict)
+        }
+        self.locked_activities = build_freeze_locks(
+            self.current_schedule,
+            unlocked_activity_ids=set(int(a_id) for a_id in affected),
+        )
+        self._sync_locks_to_instance()
+        self._restore_locks_after_solve = prior_locks
+        profile_before = self.objective_profile_combo.currentData()
+        objective_before = self.objective_cb.isChecked()
+        room_before = self.room_mode_combo.currentData()
+        try:
+            profile_idx = self.objective_profile_combo.findData("balanced")
+            if profile_idx >= 0:
+                self.objective_profile_combo.setCurrentIndex(profile_idx)
+            room_idx = self.room_mode_combo.findData("greedy")
+            if room_idx >= 0:
+                self.room_mode_combo.setCurrentIndex(room_idx)
+            self.objective_cb.setChecked(True)
+            self.set_status(
+                f"Focused CP-SAT polish: {self._focus_label(term)} "
+                f"({len(affected)} activities, locks={len(self.locked_activities)})"
+            )
+            self._append_audit_log(
+                "focused_cp_sat_polish_started",
+                {
+                    "term": str(term),
+                    "affected_activities": int(len(affected)),
+                    "frozen_activities": int(len(self.locked_activities)),
+                },
+            )
+            self._start_solver_process(keep_locks=True)
+        finally:
+            profile_restore = self.objective_profile_combo.findData(profile_before)
+            if profile_restore >= 0:
+                self.objective_profile_combo.setCurrentIndex(profile_restore)
+            room_restore = self.room_mode_combo.findData(room_before)
+            if room_restore >= 0:
+                self.room_mode_combo.setCurrentIndex(room_restore)
+            self.objective_cb.setChecked(bool(objective_before))
+
+    def on_show_score_breakdown(self) -> None:
+        if self.inst is None or not self.current_schedule:
+            self.set_status("No schedule to score")
+            return
+        try:
+            breakdown = compute_penalty_breakdown(self.inst, self.current_schedule)
+            drivers = rank_penalty_drivers(self.inst, self.current_schedule, limit=12)
+        except Exception as exc:
+            traceback.print_exc()
+            QMessageBox.warning(self, "Score breakdown", str(exc))
+            return
+        total = int(breakdown.get("total", 0))
+        lines = [f"Global soft penalty: {total}", "", "Top penalty drivers:"]
+        for row in drivers:
+            lines.append(
+                f"- {row['term']}: {int(row['penalty'])} "
+                f"({float(row['share']) * 100:.1f}%)"
+            )
+        lines.append("")
+        lines.append("All terms:")
+        for key, value in sorted(breakdown.items()):
+            if key != "total":
+                lines.append(f"- {key}: {int(value)}")
+        QMessageBox.information(self, "Score breakdown", "\n".join(lines))
+        self.set_status(f"Score breakdown shown: soft penalty {total}")
+
     def _toggle_activity_lock(self, a_id: int, *, time_lock: bool) -> None:
         if a_id not in self.current_schedule:
             return
@@ -5558,6 +5853,48 @@ class MainWindow(QMainWindow):
             f" | soft penalty {int(before)} -> {int(after)} "
             f"(Δ {delta:+d}, {self._describe_penalty_delta(delta)})"
         )
+
+    def _show_improvement_delta_report(
+        self,
+        before_schedule: Dict[int, Dict[str, Any]],
+        after_schedule: Dict[int, Dict[str, Any]],
+        *,
+        title: str = "Improvement report",
+    ) -> None:
+        if self.inst is None:
+            return
+        try:
+            before = compute_penalty_breakdown(self.inst, before_schedule)
+            after = compute_penalty_breakdown(self.inst, after_schedule)
+        except Exception:
+            return
+        rows: List[Tuple[str, int, int, int]] = []
+        for term in sorted(set(before.keys()) | set(after.keys())):
+            if term == "total":
+                continue
+            b = int(before.get(term, 0))
+            a = int(after.get(term, 0))
+            if b != a:
+                rows.append((str(term), b, a, int(a - b)))
+        rows.sort(key=lambda row: (row[3], row[0]))
+        moved = sum(
+            1
+            for a_id, info in after_schedule.items()
+            if dict(before_schedule.get(int(a_id), {})) != dict(info)
+        )
+        lines = [
+            f"Global soft penalty: {int(before.get('total', 0))} -> {int(after.get('total', 0))}",
+            f"Delta: {int(after.get('total', 0)) - int(before.get('total', 0)):+d}",
+            f"Moved activities: {int(moved)}",
+            "",
+            "Changed penalty terms:",
+        ]
+        if rows:
+            for term, b, a, delta in rows[:12]:
+                lines.append(f"- {term}: {b} -> {a} ({delta:+d})")
+        else:
+            lines.append("- No modeled soft-penalty terms changed.")
+        QMessageBox.information(self, str(title), "\n".join(lines))
 
     def _sync_instance_staff_from_schedule(
         self, schedule: Dict[int, Dict[str, Any]]
@@ -6711,14 +7048,17 @@ class MainWindow(QMainWindow):
             if isinstance(profile, dict):
                 profile = profile.get("id") or profile.get("label")
             profile_txt = f" ({profile})" if profile else ""
-            return f"CP bound: unavailable{profile_txt}; solve ran without CP objective"
+            return (
+                f"CP gap: unavailable{profile_txt}; ran without CP objective, "
+                "so no lower bound was computed"
+            )
         attempt = objective_attempts[-1]
         obj = attempt.get("objective_value")
         bound = attempt.get("best_objective_bound")
         gap = attempt.get("relative_gap")
         if obj in (None, "") and bound in (None, ""):
             return "CP bound: unavailable; objective attempt found no bounded solution"
-        parts = ["CP bound"]
+        parts = ["CP bound/gap"]
         if obj not in (None, ""):
             try:
                 parts.append(f"obj={float(obj):.2f}")
@@ -7065,6 +7405,7 @@ class MainWindow(QMainWindow):
             time_limit_seconds=float(time_limit_seconds),
             strict_limit_seconds=min(float(time_limit_seconds), 300.0),
             workers=int(self._selected_worker_count()),
+            random_seed=int(self.random_seed_spin.value()),
             phased_solve=bool(objective_on),
             feasibility_seconds=None,
             improve_total_seconds=0.0,
@@ -7328,6 +7669,7 @@ class MainWindow(QMainWindow):
         env_map["TT_ROOM_MODE"] = room_mode
         env_map["TT_TIME_LIMIT"] = str(self.time_limit_spin.value())
         env_map["TT_CP_WORKERS"] = str(int(worker_count))
+        env_map["TT_RANDOM_SEED"] = str(int(self.random_seed_spin.value()))
         env_map["TT_USE_OBJECTIVE"] = "1" if objective_on else "0"
         env_map["TT_OBJECTIVE_PROFILE"] = str(objective_profile)
         if self._solver_debug_enabled():
@@ -7826,12 +8168,87 @@ class MainWindow(QMainWindow):
         if not path:
             return
         try:
-            self.set_status("Importing timetable CSV...")
-            inst, schedule, meta = import_timetable_csv(path, lock_imported=False)
+            headers, preview_rows = self._read_csv_preview_rows(path)
         except Exception as exc:
             traceback.print_exc()
             QMessageBox.critical(self, "Import error", str(exc))
             self.set_status("Import error")
+            return
+        if not headers:
+            QMessageBox.warning(self, "Import error", "No CSV headers found.")
+            self.set_status("Import error")
+            return
+
+        default_mapping = suggest_timetable_mapping(headers)
+        dlg = TimetableCsvImportWizardDialog(
+            self,
+            headers,
+            preview_rows,
+            default_mapping=default_mapping,
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            self.set_status("Import canceled")
+            return
+        field_map = dict(dlg.selected_mapping())
+        transform_config = {}
+        try:
+            transform_config = dict(dlg.transform_config())
+        except Exception:
+            transform_config = {}
+
+        teaching_load_path: str | None = None
+        load_staff = QMessageBox.question(
+            self,
+            "Use teaching-load assignments?",
+            "Optionally select an XLSX teaching-load workbook to map real lecturers and TAs.\n"
+            "Choose No to use balanced synthetic staff pools.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if load_staff == QMessageBox.StandardButton.Yes:
+            selected, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select teaching-load workbook",
+                "",
+                "Excel workbook (*.xlsx)",
+            )
+            if str(selected).lower().endswith(".xlsx"):
+                teaching_load_path = str(selected)
+
+        try:
+            self.set_status("Importing timetable CSV...")
+            inst, schedule, meta = import_timetable_csv(
+                path,
+                lock_imported=False,
+                field_map=field_map,
+                transform_config=transform_config,
+                teaching_load_path=teaching_load_path,
+            )
+        except Exception as exc:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Import error", str(exc))
+            self.set_status("Import error")
+            return
+
+        preview_lines = [
+            f"Source rows: {int(meta.get('source_events', 0))}",
+            f"Activities after merge: {int(meta.get('activities_after_shared_event_merge', len(schedule)))}",
+            f"Groups: {int(meta.get('groups', len(inst.groups)))}",
+            f"Courses: {int(meta.get('courses', len(inst.courses)))}",
+            f"Rooms: {int(meta.get('rooms', len(inst.rooms)))}",
+            f"Teaching-load course matches: {int(meta.get('teaching_load_matches', 0))}",
+            f"Soft penalty: {int(meta.get('soft_penalty', 0))}",
+            f"Hard conflicts: {int(meta.get('validation_error_count', 0))}",
+        ]
+        decision = QMessageBox.question(
+            self,
+            "Import timetable CSV?",
+            "Import preview:\n\n"
+            + "\n".join(preview_lines)
+            + "\n\nThe imported placements will remain unlocked so Solve/Repair can move them.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if decision != QMessageBox.StandardButton.Yes:
+            self.set_status("Import canceled")
             return
 
         self.inst = inst
@@ -7854,6 +8271,7 @@ class MainWindow(QMainWindow):
             "timetable_csv_imported",
             {
                 "path": str(path),
+                "teaching_load_path": str(teaching_load_path or ""),
                 "activities": int(meta.get("activities_after_shared_event_merge", 0)),
                 "soft_penalty": int(meta.get("soft_penalty", 0)),
                 "hard_conflicts": int(meta.get("validation_error_count", 0)),
@@ -7875,6 +8293,34 @@ class MainWindow(QMainWindow):
                 f"Soft penalty: {penalty}\n\n"
                 + (preview if preview else "Open Conflicts for details."),
             )
+        save_decision = QMessageBox.question(
+            self,
+            "Save imported scenario?",
+            "Save this imported CSV as a reusable scheduler scenario now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if save_decision == QMessageBox.StandardButton.Yes:
+            out_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save imported scenario",
+                "imported_timetable_scenario.json",
+                "Scenario (*.json *.pkl)",
+            )
+            if out_path:
+                try:
+                    write_scenario(
+                        out_path,
+                        self.inst,
+                        self.current_schedule,
+                        meta={
+                            "source_import": dict(meta),
+                            "operator_name": str(self._operator_name),
+                        },
+                    )
+                    self.set_status(f"Imported timetable saved to {out_path}")
+                except Exception as exc:
+                    traceback.print_exc()
+                    QMessageBox.warning(self, "Save scenario error", str(exc))
 
     def on_sandbox_start(self) -> None:
         if not self.current_schedule:
@@ -8642,6 +9088,12 @@ class MainWindow(QMainWindow):
             + (" [stopped]" if self._improve_stop_requested else ""),
         )
         self._set_manual_highlight_base(self.current_schedule)
+        if improved_schedule != original_schedule:
+            self._show_improvement_delta_report(
+                original_schedule,
+                improved_schedule,
+                title="Improve before/after report",
+            )
 
     def _on_improve_worker_error(self, message: str) -> None:
         traceback.print_exc()
@@ -10618,6 +11070,44 @@ class MainWindow(QMainWindow):
         else:  # TUT
             if room.room_type not in ("LECTURE", "TUTORIAL"):
                 return False, "Tutorial must use a lecture/tutorial room."
+
+        if _flag("force_repeat_weekly_pattern", False) and inst.weeks:
+            first_week = min(int(wk) for wk in inst.weeks)
+            if int(w) != int(first_week):
+                repeat_key = (
+                    int(act.course_id),
+                    str(act.kind),
+                    int(new_staff_id),
+                    tuple(sorted(int(g) for g in groups)),
+                    int(dur),
+                )
+                for b_id, b in schedule.items():
+                    if int(b_id) == int(a_id):
+                        continue
+                    other_act = inst.activities.get(int(b_id))
+                    if other_act is None:
+                        continue
+                    if int(b.get("week", 0)) == int(first_week):
+                        continue
+                    other_key = (
+                        int(other_act.course_id),
+                        str(other_act.kind),
+                        int(b.get("staff_id", -1)),
+                        tuple(sorted(int(g) for g in (b.get("group_ids", []) or []))),
+                        int(b.get("duration", 1)),
+                    )
+                    if other_key != repeat_key:
+                        continue
+                    if (
+                        str(b.get("day")) != str(new_day)
+                        or int(b.get("slot", -1)) != int(new_slot)
+                        or int(b.get("room_id", -1)) != int(new_room_id)
+                    ):
+                        return (
+                            False,
+                            f"Repeat weekly pattern requires matching A{b_id} "
+                            "to use the same day, slot, and room.",
+                        )
 
         new_slots = set(range(int(new_slot), int(new_slot) + int(dur)))
         for b_id, b in schedule.items():

@@ -16,7 +16,7 @@ def test_performance_service_recommends_university_fast_for_ss23_scale():
     recommendation = recommend_solver_profile(inst)
     certificate = build_feasibility_certificate(inst)
 
-    assert scale["activities"] == 1704
+    assert scale["activities"] == 1621
     assert scale["estimated_cp_room_candidates"] >= 50000
     assert recommendation["profile"] == "university_fast"
     assert recommendation["room_mode"] == "greedy"
@@ -37,4 +37,3 @@ def test_decomposition_plan_reports_week_and_program_blocks():
     ]
     assert len(plan["week_blocks"]) == len(inst.weeks)
     assert plan["program_blocks"]
-

@@ -1,4 +1,4 @@
-#define MyAppName "Planora Academic Scheduler"
+#define MyAppName "Planora"
 #define MyAppVersion "1.0"
 #define MyAppPublisher "feel"
 #define MyAppExeName "Scheduler.exe"

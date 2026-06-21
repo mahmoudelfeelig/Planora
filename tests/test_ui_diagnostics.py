@@ -160,6 +160,15 @@ def test_project_menu_is_grouped_into_task_submenus(qt_app):
         assert "Show Conflicts" in [
             action.text() for action in submenus["Analyze"].actions()
         ]
+        assert "Score Breakdown" in [
+            action.text() for action in submenus["Analyze"].actions()
+        ]
+        assert "Fix Current Conflicts" in [
+            action.text() for action in submenus["Repair"].actions()
+        ]
+        assert "Focused CP-SAT Polish" in [
+            action.text() for action in submenus["Repair"].actions()
+        ]
         assert "Sandbox: Start Branch" in [
             action.text() for action in submenus["Branches"].actions()
         ]

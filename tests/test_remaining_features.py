@@ -93,7 +93,7 @@ def test_diagnostics_services_generate_rule_diagnosis_and_reports(tmp_path: Path
     report = build_stakeholder_quality_report(inst, schedule, branding=branding)
     outputs = write_stakeholder_quality_report(tmp_path, report)
     assert Path(outputs["json"]).exists()
-    assert "Planora Academic Scheduler" in Path(outputs["markdown"]).read_text(encoding="utf-8")
+    assert "Planora" in Path(outputs["markdown"]).read_text(encoding="utf-8")
 
 
 def test_runtime_ops_services_roundtrip(tmp_path: Path):

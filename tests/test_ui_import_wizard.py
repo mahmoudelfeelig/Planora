@@ -115,6 +115,28 @@ def test_import_timetable_csv_loads_created_scenario(monkeypatch, qt_app, tmp_pa
             "getOpenFileName",
             lambda *args, **kwargs: (str(path), "CSV"),
         )
+
+        class FakeTimetableWizard:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def exec(self):
+                return QDialog.DialogCode.Accepted
+
+            def selected_mapping(self):
+                return {
+                    "week": "week",
+                    "day": "day",
+                    "slot": "slot",
+                    "course": "course",
+                    "group": "major",
+                    "room": "room",
+                }
+
+            def transform_config(self):
+                return {}
+
+        monkeypatch.setattr(ui_window, "TimetableCsvImportWizardDialog", FakeTimetableWizard)
         monkeypatch.setattr(
             ui_window,
             "import_timetable_csv",
@@ -128,6 +150,16 @@ def test_import_timetable_csv_loads_created_scenario(monkeypatch, qt_app, tmp_pa
                     "validation_errors": [],
                 },
             ),
+        )
+        monkeypatch.setattr(
+            ui_window.QMessageBox,
+            "question",
+            staticmethod(lambda *args, **kwargs: ui_window.QMessageBox.StandardButton.Yes),
+        )
+        monkeypatch.setattr(
+            ui_window.QFileDialog,
+            "getSaveFileName",
+            lambda *args, **kwargs: ("", ""),
         )
 
         win.on_import_timetable_csv()

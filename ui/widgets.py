@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QDrag, QMouseEvent, QPixmap
-from PyQt6.QtWidgets import QTableWidget
+from PyQt6.QtGui import QDrag, QMouseEvent, QPixmap, QWheelEvent
+from PyQt6.QtWidgets import QScrollArea, QTableWidget
 
 
 class ScheduleTableWidget(QTableWidget):
@@ -12,10 +12,36 @@ class ScheduleTableWidget(QTableWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._drag_start_pos: QPoint | None = None
+        self._external_scroll_area: QScrollArea | None = None
         self.setAcceptDrops(True)
         self.setDragEnabled(True)
         self.setDragDropMode(QTableWidget.DragDropMode.DragDrop)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
+
+    def setExternalScrollArea(self, area: QScrollArea | None) -> None:
+        self._external_scroll_area = area
+
+    def wheelEvent(self, event: QWheelEvent) -> None:  # type: ignore[override]
+        area = self._external_scroll_area
+        if area is None:
+            super().wheelEvent(event)
+            return
+        pixel = event.pixelDelta()
+        angle = event.angleDelta()
+        horizontal = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+        horizontal = horizontal or abs(pixel.x()) > abs(pixel.y()) or abs(angle.x()) > abs(angle.y())
+        bar = area.horizontalScrollBar() if horizontal else area.verticalScrollBar()
+        raw_delta = pixel.x() if horizontal else pixel.y()
+        if raw_delta == 0:
+            raw_delta = angle.x() if horizontal else angle.y()
+            raw_delta = int(raw_delta / 8)
+        before = int(bar.value())
+        step = max(1, int(bar.singleStep()))
+        bar.setValue(before - int(raw_delta or step))
+        if int(bar.value()) != before or int(bar.maximum()) > 0:
+            event.accept()
+            return
+        super().wheelEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton:

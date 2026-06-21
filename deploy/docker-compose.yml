@@ -1,0 +1,27 @@
+services:
+  planora-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      PLANORA_DB_PATH: /app/data/planora.sqlite3
+    ports:
+      - "8787:8787"
+    volumes:
+      - planora-data:/app/data
+
+  planora-web:
+    image: node:22-slim
+    working_dir: /app/web
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_PLANORA_API_URL: http://localhost:8787
+    ports:
+      - "5173:5173"
+    volumes:
+      - ..:/app
+    depends_on:
+      - planora-api
+
+volumes:
+  planora-data:

@@ -53,6 +53,7 @@ def explain_infeasibility(inst: Instance, *, max_per_category: int = 6) -> List[
 
     # 4) Staff availability -> no allowed starts
     no_start = []
+    locks = getattr(inst, "locked_activities", {}) or {}
     for a in inst.activities.values():
         sid = a.prof_id if a.kind == "LEC" else a.ta_id
         staff = inst.staff.get(sid)
@@ -67,8 +68,7 @@ def explain_infeasibility(inst: Instance, *, max_per_category: int = 6) -> List[
         if max_start < 0:
             continue
         # If locked, ensure it falls in allowed times
-        lock = getattr(inst, "locked_activities", {}) or {}
-        fixed = lock.get(a.id) if isinstance(lock, dict) else None
+        fixed = locks.get(a.id) if isinstance(locks, dict) else None
         if fixed and isinstance(fixed, dict) and "day" in fixed and "slot" in fixed:
             day = str(fixed["day"])
             slot = int(fixed["slot"])
@@ -80,6 +80,45 @@ def explain_infeasibility(inst: Instance, *, max_per_category: int = 6) -> List[
                 no_start.append(f"A{a.id} locked to day '{day}' outside staff availability")
             continue
     for msg in no_start[:max_per_category]:
+        reasons.append(msg)
+
+    # 4b) Locked placements can directly contradict each other before search starts.
+    locked_staff: Dict[Tuple[int, int, str, int], int] = {}
+    locked_group: Dict[Tuple[int, int, str, int], int] = {}
+    locked_room: Dict[Tuple[int, int, str, int], int] = {}
+    lock_conflicts: List[str] = []
+    if isinstance(locks, dict):
+        for a in inst.activities.values():
+            fixed = locks.get(a.id)
+            if not isinstance(fixed, dict) or "day" not in fixed or "slot" not in fixed:
+                continue
+            try:
+                day = str(fixed["day"])
+                slot0 = int(fixed["slot"])
+                room_id = int(fixed["room_id"]) if fixed.get("room_id") is not None else None
+            except Exception:
+                continue
+            staff_id = int(a.prof_id if a.kind == "LEC" else a.ta_id)
+            for off in range(int(a.duration)):
+                slot = slot0 + off
+                s_key = (staff_id, int(a.week), day, slot)
+                prev = locked_staff.get(s_key)
+                if prev is not None and prev != int(a.id):
+                    lock_conflicts.append(f"Locked staff overlap: A{prev} and A{a.id} at week {a.week} {day} slot {slot + 1}")
+                locked_staff[s_key] = int(a.id)
+                for g_id in a.group_ids:
+                    g_key = (int(g_id), int(a.week), day, slot)
+                    prev = locked_group.get(g_key)
+                    if prev is not None and prev != int(a.id):
+                        lock_conflicts.append(f"Locked group overlap: A{prev} and A{a.id} at week {a.week} {day} slot {slot + 1}")
+                    locked_group[g_key] = int(a.id)
+                if room_id is not None:
+                    r_key = (room_id, int(a.week), day, slot)
+                    prev = locked_room.get(r_key)
+                    if prev is not None and prev != int(a.id):
+                        lock_conflicts.append(f"Locked room overlap: A{prev} and A{a.id} in room {room_id} at week {a.week} {day} slot {slot + 1}")
+                    locked_room[r_key] = int(a.id)
+    for msg in lock_conflicts[:max_per_category]:
         reasons.append(msg)
 
     # 5) Room eligibility per activity
@@ -157,5 +196,30 @@ def explain_infeasibility(inst: Instance, *, max_per_category: int = 6) -> List[
                 )
                 break
 
-    return reasons
+    # 8) Suspicious shared lecture metadata. Imported timetables often contain
+    # multiple real lecture rows for the same course/week; marking them as one
+    # shared lecture cluster forces impossible co-location.
+    shared_rows: List[str] = []
+    for c_id, course in inst.courses.items():
+        shared = getattr(course, "share_lecture_group_ids", None) or []
+        if not shared:
+            continue
+        shared_set = {int(g) for g in shared}
+        by_week: Dict[int, int] = defaultdict(int)
+        for a in inst.activities.values():
+            if int(a.course_id) != int(c_id) or a.kind != "LEC":
+                continue
+            if not any(int(g) in shared_set for g in a.group_ids):
+                continue
+            by_week[int(a.week)] += 1
+        crowded = [(w, count) for w, count in by_week.items() if int(count) > 1]
+        if crowded:
+            week, count = crowded[0]
+            shared_rows.append(
+                f"Course {course.code} has {count} shared-lecture rows in week {week}; "
+                "verify share_lecture_group_ids is not falsely clustering imported rows"
+            )
+    for msg in shared_rows[:max_per_category]:
+        reasons.append(msg)
 
+    return reasons

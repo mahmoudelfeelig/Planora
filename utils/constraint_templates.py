@@ -11,10 +11,16 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Dict[str, Any]]] = {
     "Balanced": {
         "hard": {
             "week1_lectures_only": True,
+            "force_repeat_weekly_pattern": False,
+            "enforce_course_totals": True,
             "enforce_block_professor_rules": True,
             "enforce_staff_daily_caps": True,
             "enforce_staff_weekly_caps": True,
             "enforce_room_availability": True,
+            "enforce_travel_time_buffers": True,
+            "enforce_building_closures": True,
+            "enforce_calendar_rules": True,
+            "enforce_precedence_rules": True,
         },
         "soft": {
             "stud_free_days": 10,
@@ -33,10 +39,16 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Dict[str, Any]]] = {
     "Compact Student Weeks": {
         "hard": {
             "week1_lectures_only": True,
+            "force_repeat_weekly_pattern": False,
+            "enforce_course_totals": True,
             "enforce_block_professor_rules": True,
             "enforce_staff_daily_caps": True,
             "enforce_staff_weekly_caps": True,
             "enforce_room_availability": True,
+            "enforce_travel_time_buffers": True,
+            "enforce_building_closures": True,
+            "enforce_calendar_rules": True,
+            "enforce_precedence_rules": True,
         },
         "soft": {
             "stud_free_days": 14,
@@ -55,10 +67,16 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Dict[str, Any]]] = {
     "Staff Friendly": {
         "hard": {
             "week1_lectures_only": True,
+            "force_repeat_weekly_pattern": False,
+            "enforce_course_totals": True,
             "enforce_block_professor_rules": True,
             "enforce_staff_daily_caps": True,
             "enforce_staff_weekly_caps": True,
             "enforce_room_availability": True,
+            "enforce_travel_time_buffers": True,
+            "enforce_building_closures": True,
+            "enforce_calendar_rules": True,
+            "enforce_precedence_rules": True,
         },
         "soft": {
             "stud_free_days": 8,

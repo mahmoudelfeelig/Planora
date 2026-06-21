@@ -3,8 +3,12 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
+import random
 import time
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import replace
+from threading import Lock
 from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 from ortools.sat.python import cp_model
@@ -29,6 +33,26 @@ from utils.generator import instance_to_json
 from utils.specs import validate_schedule_against_instance
 
 _SOLVE_RESULT_CACHE: Dict[str, SolveResult] = {}
+
+
+def _solve_portfolio_candidate_process(
+    idx: int,
+    profile_id: str,
+    inst: Any,
+    candidate_options: SolveOptions,
+) -> tuple[int, str, SolveOptions, SolveResult, int | None]:
+    candidate_inst = copy.deepcopy(inst)
+    result = solve_instance(candidate_inst, candidate_options, progress_hook=None)
+    soft_penalty = None
+    if result.is_feasible and result.schedule:
+        quality = dict((result.meta or {}).get("quality") or {})
+        soft_penalty = int(
+            quality.get(
+                "soft_penalty",
+                compute_penalty_breakdown(candidate_inst, result.schedule).get("total", 0),
+            )
+        )
+    return int(idx - 1), str(profile_id), candidate_options, result, soft_penalty
 
 OBJECTIVE_PROFILE_PRESETS: Dict[str, Dict[str, Any]] = {
     "university_fast": {
@@ -683,6 +707,8 @@ def solve_instance(
             iters_per_slice=int(resolved_options.improve_iters_per_slice),
         )
         improver = LocalSearchImprover(inst_work)
+        if resolved_options.random_seed is not None:
+            random.seed(int(resolved_options.random_seed))
         best_schedule = {int(a_id): dict(info) for a_id, info in schedule.items()}
         start_penalty = int(improver.compute_soft_penalty(best_schedule))
         best_penalty = int(start_penalty)
@@ -794,41 +820,156 @@ def solve_portfolio(
     *,
     progress_hook: Callable[[str, Dict[str, Any]], None] | None = None,
 ) -> PortfolioResult:
-    candidates: List[PortfolioCandidate] = []
     base_options = replace(options)
+    profile_options = list(build_portfolio_solve_options(base_options))
+    total = len(profile_options)
+    progress_lock = Lock()
 
-    for idx, (profile_id, candidate_options) in enumerate(
-        build_portfolio_solve_options(base_options),
-        start=1,
-    ):
+    def _emit(event: str, payload: Dict[str, Any]) -> None:
         if progress_hook is not None:
-            progress_hook(
-                "portfolio_candidate_start",
+            with progress_lock:
+                progress_hook(str(event), dict(payload))
+
+    def _run_candidate(idx: int, profile_id: str, candidate_options: SolveOptions) -> tuple[int, PortfolioCandidate]:
+        _emit(
+            "portfolio_candidate_start",
+            {"index": int(idx), "total": int(total), "profile": str(profile_id)},
+        )
+        candidate_inst = copy.deepcopy(inst)
+        result = solve_instance(
+            candidate_inst,
+            candidate_options,
+            progress_hook=lambda event, payload: _emit(
+                event,
                 {
-                    "index": int(idx),
-                    "total": 3,
-                    "profile": str(profile_id),
+                    **dict(payload or {}),
+                    "portfolio_index": int(idx),
+                    "portfolio_profile": str(profile_id),
                 },
-            )
-        result = solve_instance(inst, candidate_options, progress_hook=progress_hook)
+            ),
+        )
         soft_penalty = None
         if result.is_feasible and result.schedule:
             quality = dict((result.meta or {}).get("quality") or {})
             soft_penalty = int(
-                quality.get("soft_penalty", compute_penalty_breakdown(inst, result.schedule).get("total", 0))
+                quality.get(
+                    "soft_penalty",
+                    compute_penalty_breakdown(candidate_inst, result.schedule).get("total", 0),
+                )
             )
-        candidates.append(
-            PortfolioCandidate(
-                name=str(profile_id),
-                options=candidate_options,
-                result=result,
-                soft_penalty=soft_penalty,
-            )
+        candidate = PortfolioCandidate(
+            name=str(profile_id),
+            options=candidate_options,
+            result=result,
+            soft_penalty=soft_penalty,
         )
+        _emit(
+            "portfolio_candidate_done",
+            {
+                "index": int(idx),
+                "total": int(total),
+                "profile": str(profile_id),
+                "status": int(result.status),
+                "soft_penalty": soft_penalty,
+            },
+        )
+        return int(idx - 1), candidate
+
+    candidates: List[PortfolioCandidate | None] = [None] * total
+    parallel_enabled = str(os.getenv("PLANORA_PORTFOLIO_PARALLEL", "1")).strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+    if parallel_enabled and total > 1:
+        max_workers = min(total, max(1, int(getattr(options, "portfolio_workers", 0) or 3)))
+        portfolio_backend = str(os.getenv("PLANORA_PORTFOLIO_BACKEND", "process")).strip().lower()
+        process_safe = getattr(solve_instance, "__module__", __name__) == __name__
+        if portfolio_backend in {"process", "processes", "subprocess"} and process_safe:
+            try:
+                with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                    futures = []
+                    for idx, (profile_id, candidate_options) in enumerate(profile_options, start=1):
+                        adjusted_options = replace(
+                            candidate_options,
+                            workers=max(
+                                1,
+                                int(candidate_options.workers or max_workers) // int(max_workers),
+                            ),
+                        )
+                        _emit(
+                            "portfolio_candidate_start",
+                            {"index": int(idx), "total": int(total), "profile": str(profile_id)},
+                        )
+                        futures.append(
+                            executor.submit(
+                                _solve_portfolio_candidate_process,
+                                idx,
+                                str(profile_id),
+                                inst,
+                                adjusted_options,
+                            )
+                        )
+                    for future in as_completed(futures):
+                        slot, profile_id, candidate_options, result, soft_penalty = future.result()
+                        candidate = PortfolioCandidate(
+                            name=str(profile_id),
+                            options=candidate_options,
+                            result=result,
+                            soft_penalty=soft_penalty,
+                        )
+                        candidates[int(slot)] = candidate
+                        _emit(
+                            "portfolio_candidate_done",
+                            {
+                                "index": int(slot) + 1,
+                                "total": int(total),
+                                "profile": str(profile_id),
+                                "status": int(result.status),
+                                "soft_penalty": soft_penalty,
+                                "backend": "process",
+                            },
+                        )
+            except Exception as exc:
+                _emit("portfolio_backend_fallback", {"backend": "thread", "reason": str(exc)})
+                candidates = [None] * total
+        if any(candidate is None for candidate in candidates):
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(
+                        _run_candidate,
+                        idx,
+                        str(profile_id),
+                        replace(
+                            candidate_options,
+                            workers=max(
+                                1,
+                                int(candidate_options.workers or max_workers) // int(max_workers),
+                            ),
+                        ),
+                    )
+                    for idx, (profile_id, candidate_options) in enumerate(profile_options, start=1)
+                ]
+                for future in as_completed(futures):
+                    slot, candidate = future.result()
+                    candidates[int(slot)] = candidate
+    else:
+        for idx, (profile_id, candidate_options) in enumerate(profile_options, start=1):
+            slot, candidate = _run_candidate(idx, str(profile_id), candidate_options)
+            candidates[int(slot)] = candidate
+
+    ordered_candidates: List[PortfolioCandidate] = [
+        candidate
+        for candidate in candidates
+        if candidate is not None
+    ]
+    if len(ordered_candidates) != total:
+        raise RuntimeError("Portfolio solve finished with missing candidate results.")
 
     feasible = [
         (idx, candidate)
-        for idx, candidate in enumerate(candidates)
+        for idx, candidate in enumerate(ordered_candidates)
         if candidate.result.is_feasible and candidate.result.schedule
     ]
     if feasible:
@@ -840,8 +981,8 @@ def solve_portfolio(
             )
         )
         best_index = int(feasible[0][0])
-        best_candidate = candidates[best_index]
-        for idx, candidate in enumerate(candidates):
+        best_candidate = ordered_candidates[best_index]
+        for idx, candidate in enumerate(ordered_candidates):
             if idx == best_index or not candidate.result.is_feasible or not candidate.result.schedule:
                 continue
             candidate.rank_explanation = explain_solution_ranking(
@@ -859,7 +1000,7 @@ def solve_portfolio(
     else:
         best_index = -1
 
-    return PortfolioResult(candidates=candidates, best_index=int(best_index))
+    return PortfolioResult(candidates=ordered_candidates, best_index=int(best_index))
 
 
 def improve_schedule(

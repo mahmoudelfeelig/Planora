@@ -1,0 +1,30 @@
+{$PLANORA_DOMAIN} {
+    encode gzip zstd
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "same-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        -Server
+    }
+
+    handle_path /api/* {
+        reverse_proxy planora-api:8787
+    }
+
+    @api path /health /ready /openapi.json /auth/*
+    handle @api {
+        reverse_proxy planora-api:8787
+    }
+
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+
+    tls {$PLANORA_TLS_EMAIL}
+}

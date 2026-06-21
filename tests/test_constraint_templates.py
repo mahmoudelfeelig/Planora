@@ -9,6 +9,29 @@ from utils.constraint_templates import (
 from utils.generator import generate_instance
 
 
+EXPECTED_HARD_FLAGS = {
+    "week1_lectures_only",
+    "force_repeat_weekly_pattern",
+    "enforce_course_totals",
+    "enforce_block_professor_rules",
+    "enforce_staff_daily_caps",
+    "enforce_staff_weekly_caps",
+    "enforce_room_availability",
+    "enforce_travel_time_buffers",
+    "enforce_building_closures",
+    "enforce_calendar_rules",
+    "enforce_precedence_rules",
+}
+
+
+def test_default_templates_cover_all_hard_constraint_flags():
+    assert DEFAULT_TEMPLATES
+    for name, template in DEFAULT_TEMPLATES.items():
+        hard = template.get("hard", {})
+        assert EXPECTED_HARD_FLAGS.issubset(set(hard.keys())), name
+        assert all(isinstance(hard[key], bool) for key in EXPECTED_HARD_FLAGS)
+
+
 def test_template_store_roundtrip(tmp_path):
     p = tmp_path / "templates.json"
     templates = dict(DEFAULT_TEMPLATES)

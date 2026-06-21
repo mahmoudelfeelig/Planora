@@ -3,6 +3,43 @@ from __future__ import annotations
 from utils.generator import ROOM_CATEGORY_CAPACITY, generate_custom_instance, generate_instance
 
 
+def test_custom_generator_applies_group_size_and_staff_week_availability():
+    inst = generate_custom_instance(
+        num_programs=1,
+        groups_per_program=2,
+        group_size=73,
+        courses_per_program=2,
+        program_overrides=[
+            {
+                "program_id": 1,
+                "groups": 2,
+                "group_size": 91,
+                "courses": 2,
+                "courses_per_group": 2,
+            }
+        ],
+        course_patterns=[
+            {"course_id": 1, "lecture_count": 12, "tutorial_count": 11, "lab_count": 0},
+            {"course_id": 2, "lecture_count": 12, "tutorial_count": 11, "lab_count": 0},
+        ],
+        num_professors=2,
+        num_tas=2,
+        professor_course_map={1: [1], 2: [2]},
+        ta_course_map={1: [1], 2: [2]},
+        professor_weeks={1: [1, 2], 2: [3, 4]},
+        ta_weeks={1: [2, 3], 2: [3, 4]},
+        calendar_weeks=[1, 2, 3, 4],
+        seed=19,
+    )
+
+    assert {group.size for group in inst.groups.values()} == {91}
+    for activity in inst.activities.values():
+        staff_id = activity.prof_id if activity.kind == "LEC" else activity.ta_id
+        assert int(activity.week) in inst.staff[int(staff_id)].available_weeks
+        if activity.kind != "LEC":
+            assert int(activity.week) != 1
+
+
 def test_generate_custom_instance_applies_counts_staff_mapping_and_rooms():
     inst = generate_custom_instance(
         num_programs=3,
@@ -292,6 +329,19 @@ def test_ss23_uni_like_preset_matches_extracted_scale():
     assert len([s for s in inst.staff.values() if s.is_prof]) == 88
     assert len([s for s in inst.staff.values() if not s.is_prof]) == 44
     assert 1000 <= len(inst.activities) <= 2200
+    signatures = [
+        (
+            int(act.course_id),
+            int(act.week),
+            str(act.kind),
+            tuple(sorted(int(g) for g in act.group_ids)),
+            int(act.duration),
+            int(act.prof_id),
+            int(act.ta_id),
+        )
+        for act in inst.activities.values()
+    ]
+    assert len(signatures) == len(set(signatures))
 
     room_types = {room.room_type for room in inst.rooms.values()}
     assert room_types == {"LECTURE", "TUTORIAL", "COMPUTER_LAB", "SPECIALIZED_LAB"}

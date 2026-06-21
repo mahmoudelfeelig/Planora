@@ -17,6 +17,21 @@ from services.solver_service import solve_instance
 from utils.generator import generate_instance
 
 
+EXPECTED_HARD_RULE_IDS = {
+    "week1_lectures_only",
+    "force_repeat_weekly_pattern",
+    "enforce_course_totals",
+    "enforce_block_professor_rules",
+    "enforce_staff_daily_caps",
+    "enforce_staff_weekly_caps",
+    "enforce_room_availability",
+    "enforce_travel_time_buffers",
+    "enforce_building_closures",
+    "enforce_calendar_rules",
+    "enforce_precedence_rules",
+}
+
+
 def test_builtin_product_scenario_compiles_to_instance():
     scenario = build_builtin_product_scenario("small_demo", name="Planora demo")
     inst = compile_scenario_instance(scenario)
@@ -67,7 +82,7 @@ def test_product_scenario_from_legacy_instance_compiles():
 def test_rule_registry_covers_hard_and_soft_rules():
     assert set(HARD_RULES.keys()).issubset(set(RULE_REGISTRY.keys()))
     assert set(SOFT_RULES.keys()).issubset(set(RULE_REGISTRY.keys()))
-    assert "week1_lectures_only" in HARD_RULES
+    assert EXPECTED_HARD_RULE_IDS.issubset(set(HARD_RULES.keys()))
     assert "stud_free_days" in SOFT_RULES
 
 

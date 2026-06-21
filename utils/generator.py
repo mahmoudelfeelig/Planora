@@ -163,7 +163,7 @@ def _build_ss23_uni_like_course_patterns(total_courses: int) -> List[Dict[str, A
         row: Dict[str, Any] = {
             "course_id": c_id,
             "lecture_count": 12,
-            "tutorial_count": 12,
+            "tutorial_count": 11,
             "lab_count": 0,
             "lab_type": "NONE",
             "lab_duration": 1,
@@ -172,13 +172,13 @@ def _build_ss23_uni_like_course_patterns(total_courses: int) -> List[Dict[str, A
         if c_id % 11 == 0:
             row.update(
                 {
-                    "lab_count": 12,
+                    "lab_count": 11,
                     "lab_type": "SPECIAL",
                     "lab_tag": lab_tags[(c_id // 11 - 1) % len(lab_tags)],
                 }
             )
         elif c_id % 7 == 0:
-            row.update({"lab_count": 12, "lab_type": "NORMAL"})
+            row.update({"lab_count": 11, "lab_type": "NORMAL"})
         elif c_id % 3 == 0:
             row["tutorial_count"] = 0
         patterns.append(row)
@@ -360,7 +360,7 @@ def _room_capacity_from_spec(spec: Dict[str, Any]) -> int:
 
 
 def _normalize_session_count(value: Any, *, default: int, allow_zero: bool) -> int:
-    allowed = {12, 18, 24}
+    allowed = {11, 12, 18, 24}
     if allow_zero:
         allowed.add(0)
     try:
@@ -503,6 +503,7 @@ def generate_custom_instance(
     *,
     num_programs: int,
     groups_per_program: int | None = None,
+    group_size: int | None = None,
     courses_per_program: int | None = None,
     program_overrides: List[Dict[str, Any]] | None = None,
     course_patterns: List[Dict[str, Any]] | Dict[int, Dict[str, Any]] | None = None,
@@ -531,7 +532,8 @@ def generate_custom_instance(
       - all courses are assigned exactly one professor and one TA
       - when maps are partial/empty, remaining courses are assigned round-robin
       - professor_weeks / ta_weeks are optional week-availability overrides (empty -> all weeks)
-      - program_overrides rows may define: program_id, program_name, groups, courses, courses_per_group
+      - group_size sets a global cohort size; program overrides may replace it per program
+      - program_overrides rows may define: program_id, program_name, groups, group_size, courses, courses_per_group
       - course_patterns rows may define: course_id, lecture_count, tutorial_count, lab_count,
         lab_type (NONE/NORMAL/SPECIAL), lab_duration, lab_tag.
         Course structure is inferred from counts (e.g., lab-only or tut-only).
@@ -553,13 +555,17 @@ def generate_custom_instance(
     slots_per_day_value = max(3, int(slots_per_day if slots_per_day is not None else SLOTS_PER_DAY))
 
     default_groups = int(groups_per_program) if groups_per_program is not None else 2
+    default_group_size = int(group_size) if group_size is not None else None
     default_courses = int(courses_per_program) if courses_per_program is not None else 6
     if default_groups < 1:
         raise ValueError("groups_per_program must be >= 1")
+    if default_group_size is not None and default_group_size < 1:
+        raise ValueError("group_size must be >= 1")
     if default_courses < 1:
         raise ValueError("courses_per_program must be >= 1")
 
     program_group_counts = [int(default_groups) for _ in range(int(num_programs))]
+    program_group_sizes = [default_group_size for _ in range(int(num_programs))]
     program_course_counts = [int(default_courses) for _ in range(int(num_programs))]
     program_courses_per_group = [int(default_courses) for _ in range(int(num_programs))]
     program_names = [f"Program-{idx}" for idx in range(1, int(num_programs) + 1)]
@@ -576,15 +582,20 @@ def generate_custom_instance(
         idx = pid - 1
         pname = str(raw.get("program_name", "")).strip()
         groups_val = raw.get("groups", program_group_counts[idx])
+        group_size_val = raw.get("group_size", program_group_sizes[idx])
         courses_val = raw.get("courses", program_course_counts[idx])
         cpg_val = raw.get("courses_per_group", program_courses_per_group[idx])
         try:
             groups_int = max(1, int(groups_val))
+            group_size_int = (
+                max(1, int(group_size_val)) if group_size_val not in (None, "") else None
+            )
             courses_int = max(1, int(courses_val))
             cpg_int = max(1, int(cpg_val))
         except Exception:
             continue
         program_group_counts[idx] = groups_int
+        program_group_sizes[idx] = group_size_int
         program_course_counts[idx] = courses_int
         program_courses_per_group[idx] = min(courses_int, cpg_int)
         if pname:
@@ -654,6 +665,7 @@ def generate_custom_instance(
         calendar_weeks=weeks_list,
         slots_per_day=slots_per_day_value,
         program_group_counts=program_group_counts,
+        program_group_sizes=program_group_sizes,
         program_course_counts=program_course_counts,
         program_courses_per_group=program_courses_per_group,
         program_names=program_names,
@@ -762,8 +774,77 @@ def generate_custom_instance(
         act.ta_id = int(course.ta_id)
 
     inst.staff = staff
+    _redistribute_activities_for_staff_weeks(inst)
     _ensure_activity_room_coverage(inst)
     return inst
+
+
+def _redistribute_activities_for_staff_weeks(inst: Instance) -> None:
+    """Keep generated activity weeks inside the assigned staff availability."""
+    calendar_weeks = sorted(int(w) for w in inst.weeks)
+    if not calendar_weeks:
+        return
+    first_week = min(calendar_weeks)
+
+    def eligible_weeks(act: Activity) -> List[int]:
+        staff_id = int(act.prof_id if act.kind == "LEC" else act.ta_id)
+        staff = inst.staff[int(staff_id)]
+        available = getattr(staff, "available_weeks", None)
+        allowed = set(calendar_weeks) if available is None else {
+            int(w) for w in available if int(w) in set(calendar_weeks)
+        }
+        if act.kind != "LEC":
+            allowed.discard(int(first_week))
+        if not allowed:
+            raise ValueError(
+                f"Staff {staff_id} has no available teaching week for {act.kind} course {act.course_id}"
+            )
+        return sorted(allowed)
+
+    clustered_ids: set[int] = set()
+    clusters: DefaultDict[str, List[int]] = defaultdict(list)
+    for act in inst.activities.values():
+        cluster_key = str(getattr(act, "cluster_key", "") or "")
+        if cluster_key:
+            clusters[cluster_key].append(int(act.id))
+            clustered_ids.add(int(act.id))
+    for member_ids in clusters.values():
+        common: set[int] | None = None
+        for a_id in member_ids:
+            allowed = set(eligible_weeks(inst.activities[int(a_id)]))
+            common = allowed if common is None else common & allowed
+        if not common:
+            raise ValueError(
+                f"Cluster {getattr(inst.activities[member_ids[0]], 'cluster_key', '')} "
+                "has no week available to every assigned staff member"
+            )
+        original = int(inst.activities[member_ids[0]].week)
+        selected = min(sorted(common), key=lambda week: (abs(int(week) - original), int(week)))
+        for a_id in member_ids:
+            inst.activities[int(a_id)].week = int(selected)
+
+    buckets: DefaultDict[Tuple[int, str, Tuple[int, ...], int], List[int]] = defaultdict(list)
+    for act in inst.activities.values():
+        if int(act.id) in clustered_ids:
+            continue
+        key = (
+            int(act.course_id),
+            str(act.kind),
+            tuple(sorted(int(g) for g in act.group_ids)),
+            int(act.duration),
+        )
+        buckets[key].append(int(act.id))
+    for activity_ids in buckets.values():
+        ordered_ids = sorted(activity_ids)
+        allowed = eligible_weeks(inst.activities[ordered_ids[0]])
+        counts = _distribute_sessions(len(ordered_ids), allowed, rng=None)
+        assigned_weeks = [
+            int(week)
+            for week in allowed
+            for _ in range(int(counts.get(int(week), 0)))
+        ]
+        for a_id, week in zip(ordered_ids, assigned_weeks):
+            inst.activities[int(a_id)].week = int(week)
 
 
 # ---------- core generator ----------
@@ -784,6 +865,7 @@ def _generate_university(
     calendar_weeks: List[int] | None = None,
     slots_per_day: int = SLOTS_PER_DAY,
     program_group_counts: List[int] | None = None,
+    program_group_sizes: List[int | None] | None = None,
     program_course_counts: List[int] | None = None,
     program_courses_per_group: List[int] | None = None,
     program_names: List[str] | None = None,
@@ -813,6 +895,8 @@ def _generate_university(
 
     if program_group_counts is not None and len(program_group_counts) != int(num_programs):
         raise ValueError("program_group_counts must match num_programs")
+    if program_group_sizes is not None and len(program_group_sizes) != int(num_programs):
+        raise ValueError("program_group_sizes must match num_programs")
     if program_course_counts is not None and len(program_course_counts) != int(num_programs):
         raise ValueError("program_course_counts must match num_programs")
     if program_courses_per_group is not None and len(program_courses_per_group) != int(num_programs):
@@ -844,7 +928,10 @@ def _generate_university(
             g_id = next_group_id
             next_group_id += 1
             g_name = f"P{p}-G{gi+1}"
-            size = rng.randint(40, 80)
+            configured_size = (
+                program_group_sizes[p - 1] if program_group_sizes is not None else None
+            )
+            size = max(1, int(configured_size)) if configured_size is not None else rng.randint(40, 80)
 
             groups[g_id] = Group(
                 id=g_id,
