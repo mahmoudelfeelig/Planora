@@ -92,6 +92,7 @@ PYI_ARGS=(
   -m PyInstaller
   --noconfirm
   --clean
+  --noupx
   --windowed
   --onedir
   --name Scheduler
@@ -113,6 +114,44 @@ PYI_ARGS=(
   ui/app.py
 )
 "$PY" "${PYI_ARGS[@]}"
+
+echo "[3/4] Building dedicated solver worker executable..."
+ENGINE_ARGS=(
+  -m PyInstaller
+  --noconfirm
+  --clean
+  --noupx
+  --console
+  --onefile
+  --name SchedulerEngine
+  --collect-binaries ortools
+  --collect-data ortools
+  --hidden-import ortools.sat.python.cp_model_helper
+  --hidden-import ortools.util.python.sorted_interval_list
+  --exclude-module pytest
+  --exclude-module torch
+  --exclude-module torchvision
+  --exclude-module onnx
+  --exclude-module onnxruntime
+  --exclude-module tensorflow
+  --exclude-module matplotlib
+  --exclude-module IPython
+  core/engine_cli.py
+)
+"$PY" "${ENGINE_ARGS[@]}"
+
+ENGINE_BIN="$ROOT_DIR/dist/SchedulerEngine"
+if [[ -x "$ENGINE_BIN" ]]; then
+  if [[ -d "$ROOT_DIR/dist/Scheduler" ]]; then
+    cp "$ENGINE_BIN" "$ROOT_DIR/dist/Scheduler/SchedulerEngine"
+  fi
+  if [[ -d "$ROOT_DIR/dist/Scheduler.app/Contents/MacOS" ]]; then
+    cp "$ENGINE_BIN" "$ROOT_DIR/dist/Scheduler.app/Contents/MacOS/SchedulerEngine"
+  fi
+else
+  echo "Expected worker executable missing: $ENGINE_BIN" >&2
+  exit 1
+fi
 
 if [[ "$SKIP_PACKAGE" -eq 1 ]]; then
   echo "[4/4] Skipping package archive (--skip-package)."

@@ -5,8 +5,19 @@ import pickle
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from utils.domain import Activity, Course, Group, Instance, Program, Room, StaffMember
+from utils.domain import (
+    Activity,
+    Course,
+    GenericResource,
+    Group,
+    Instance,
+    Program,
+    Room,
+    StaffMember,
+)
 from utils.generator import instance_to_json
+
+LEGACY_SCENARIO_SCHEMA_VERSION = 2
 
 
 def _to_int_list(values: List[Any]) -> List[int]:
@@ -94,10 +105,25 @@ def instance_from_json(data: Dict[str, Any]) -> Instance:
             name=str(r["name"]),
             capacity=int(r["capacity"]),
             room_type=str(r["room_type"]),
+            campus=str(r.get("campus", "MAIN") or "MAIN"),
+            building=str(r.get("building", "") or ""),
+            floor=str(r.get("floor", "") or ""),
+            features=_to_str_set(r.get("features", [])),
             specialization_tags=_to_str_set(r.get("specialization_tags", [])),
             availability=_availability_from_json(r.get("availability", None)),
         )
         for rid, r in (data.get("rooms") or {}).items()
+    }
+    generic_resources = {
+        int(rid): GenericResource(
+            id=int(r["id"]),
+            name=str(r["name"]),
+            resource_type=str(r.get("resource_type", "GENERIC")),
+            capacity=int(r.get("capacity", 1) or 1),
+            tags=_to_str_set(r.get("tags", [])),
+            availability=_availability_from_json(r.get("availability", None)),
+        )
+        for rid, r in (data.get("generic_resources") or {}).items()
     }
     activities = {
         int(aid): Activity(
@@ -110,6 +136,7 @@ def instance_from_json(data: Dict[str, Any]) -> Instance:
             prof_id=int(a["prof_id"]),
             ta_id=int(a["ta_id"]),
             requires_specialization=a.get("requires_specialization", None),
+            resource_ids=_to_int_list(a.get("resource_ids", [])),
         )
         for aid, a in (data.get("activities") or {}).items()
     }
@@ -124,9 +151,17 @@ def instance_from_json(data: Dict[str, Any]) -> Instance:
         staff=staff,
         rooms=rooms,
         activities=activities,
+        generic_resources=generic_resources,
         locked_activities=data.get("locked_activities", {}) or {},
         soft_weights=data.get("soft_weights", {}) or {},
+        objective_profile=str(data.get("objective_profile", "balanced") or "balanced"),
         hard_constraints=data.get("hard_constraints", {}) or {},
+        travel_time_rules=data.get("travel_time_rules", {}) or {},
+        room_closures=data.get("room_closures", []) or [],
+        calendar_rules=data.get("calendar_rules", {}) or {},
+        precedence_rules=data.get("precedence_rules", []) or [],
+        sla_targets=data.get("sla_targets", {}) or {},
+        term_blocks=data.get("term_blocks", []) or [],
     )
 
     # Restore optional time labeling fields when present.
@@ -280,7 +315,12 @@ def write_scenario(path: str | Path, inst: Instance, schedule: Dict[int, Dict[st
     path = Path(path)
     meta = meta or {}
     if path.suffix.lower() == ".pkl":
-        payload = {"instance": inst, "schedule": schedule, "meta": meta}
+        payload = {
+            "schema_version": LEGACY_SCENARIO_SCHEMA_VERSION,
+            "instance": inst,
+            "schedule": schedule,
+            "meta": meta,
+        }
         path.write_bytes(pickle.dumps(payload))
         return
     if path.suffix.lower() == ".json":
@@ -292,6 +332,7 @@ def write_scenario(path: str | Path, inst: Instance, schedule: Dict[int, Dict[st
             if hasattr(inst, key):
                 data[key] = getattr(inst, key)
         payload = {
+            "schema_version": LEGACY_SCENARIO_SCHEMA_VERSION,
             "instance": data,
             "schedule": schedule_to_rows(schedule),
             "meta": meta,
@@ -305,9 +346,13 @@ def read_scenario(path: str | Path) -> Tuple[Instance, Dict[int, Dict[str, Any]]
     path = Path(path)
     if path.suffix.lower() == ".pkl":
         payload = pickle.loads(path.read_bytes())
-        return payload["instance"], payload["schedule"], payload.get("meta", {})
+        if isinstance(payload, dict) and "instance" in payload and "schedule" in payload:
+            return payload["instance"], payload["schedule"], payload.get("meta", {})
+        raise ValueError("Unsupported legacy scenario pickle payload")
     if path.suffix.lower() == ".json":
         payload = json.loads(path.read_text(encoding="utf-8"))
+        if "instance" not in payload:
+            raise ValueError("Scenario JSON missing 'instance' payload")
         inst = instance_from_json(payload["instance"])
         schedule = schedule_from_rows(payload.get("schedule", []))
         meta = payload.get("meta", {})

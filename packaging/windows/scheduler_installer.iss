@@ -1,6 +1,6 @@
-#define MyAppName "University Timetabling Scheduler"
+#define MyAppName "Planora"
 #define MyAppVersion "1.0"
-#define MyAppPublisher "Scheduler Project Contributors"
+#define MyAppPublisher "feel"
 #define MyAppExeName "Scheduler.exe"
 
 [Setup]
@@ -8,12 +8,12 @@ AppId={{A6E24A0A-BB51-4F56-BF31-BD0DAB6C6A50}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\University Timetabling Scheduler
+DefaultDirName={autopf}\Planora
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 LicenseFile=..\..\LICENSE
 OutputDir=..\..\dist\installer
-OutputBaseFilename=Scheduler-Setup-v{#MyAppVersion}
+OutputBaseFilename=Planora-Setup-v{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern

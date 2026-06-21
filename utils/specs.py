@@ -4,6 +4,13 @@ from collections import defaultdict
 from typing import Iterable, Any
 
 from utils.domain import Instance
+from utils.schedule_rules import (
+    calendar_slot_blocked,
+    generic_resource_violations,
+    precedence_violations,
+    room_is_available,
+    travel_buffer_violations,
+)
 
 SPEC_DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
 SPEC_WEEKS = list(range(1, 13))
@@ -179,6 +186,8 @@ def validate_schedule_against_instance(
             errors.append(f"A{a_id} invalid day {day}")
         if week is not None and week not in set(int(w) for w in inst.weeks):
             errors.append(f"A{a_id} invalid week {week}")
+        if week is not None and day in inst.days and calendar_slot_blocked(inst, week=int(week), day=str(day)):
+            errors.append(f"A{a_id} scheduled in blocked calendar window {week}/{day}")
         if slot is not None and dur is not None:
             if dur <= 0:
                 errors.append(f"A{a_id} duration must be positive, got {dur}")
@@ -243,13 +252,16 @@ def validate_schedule_against_instance(
                 tags = getattr(room, "specialization_tags", []) or []
                 if room.room_type != "SPECIALIZED_LAB" or tag not in tags:
                     errors.append(f"A{a_id} requires lab tag {tag} but room {room_id} not matching")
-            # Availability
-            avail = getattr(room, "availability", None)
-            if _flag("enforce_room_availability", True) and isinstance(avail, set) and slot is not None and dur is not None:
-                for off in range(dur):
-                    if (day, slot + off) not in avail:
-                        errors.append(f"A{a_id} room {room_id} unavailable at {day} slot {slot + off}")
-                        break
+            if slot is not None and dur is not None and week is not None:
+                if not room_is_available(
+                    inst,
+                    int(room_id),
+                    week=int(week),
+                    day=str(day),
+                    start_slot=int(slot),
+                    dur=int(dur),
+                ):
+                    errors.append(f"A{a_id} room {room_id} unavailable at {day} slot {slot}")
 
         if (
             week is not None
@@ -326,6 +338,10 @@ def validate_schedule_against_instance(
         for a_id, info in parsed.items():
             if int(info.get("week")) == first_week and str(info.get("kind")) in ("TUT", "LAB"):
                 errors.append(f"A{a_id} violates week-1 lectures-only rule")
+
+    errors.extend(precedence_violations(inst, parsed))
+    errors.extend(travel_buffer_violations(inst, parsed))
+    errors.extend(generic_resource_violations(inst, parsed))
 
     # Overlap checks
     group_occ: dict[tuple[int, int, str, int], int] = {}

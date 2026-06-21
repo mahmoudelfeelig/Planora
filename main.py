@@ -8,8 +8,9 @@ from datetime import datetime, date, time, timedelta
 from ortools.sat.python import cp_model
 
 from utils.generator import generate_instance
-from core.solver_cp_sat import TimetableSolver
 from core.metaheuristics import LocalSearchImprover
+from services.contracts import ImproveOptions, SolveOptions
+from services.solver_service import improve_schedule, solve_instance
 from utils.domain import Instance
 from utils.exporter import (
     export_group_schedules_to_docx,
@@ -321,6 +322,7 @@ def main():
     check_staff_weekly_capacity(inst)  # prints warnings only
 
     room_mode = os.getenv("TT_ROOM_MODE", "cp_rooms")
+    objective_profile = os.getenv("TT_OBJECTIVE_PROFILE", "balanced")
     use_objective_env = os.getenv("TT_USE_OBJECTIVE", "1").strip()
     use_objective = use_objective_env not in ("0", "false", "False", "no")
     log_progress_env = os.getenv("TT_CP_LOG", "").strip().lower()
@@ -329,29 +331,30 @@ def main():
     strict_limit_env = os.getenv("TT_STRICT_TIME_LIMIT")
     strict_limit = float(strict_limit_env) if strict_limit_env else min(CP_TIME_LIMIT, 300.0)
 
-    solver_model = TimetableSolver(inst, room_mode=room_mode, use_objective=use_objective)
-    cp_solver, status = solver_model.solve(
-        time_limit_seconds=strict_limit,
-        workers=CP_WORKERS,
-        log_progress=log_progress,
-    )
-
-    # Fallback to faster mode if strict solve fails (unknown/infeasible)
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE) and room_mode == "cp_rooms":
-        print("Strict CP-rooming did not find a solution (status =", status, "); falling back to greedy rooming...")
-        solver_model = TimetableSolver(inst, room_mode="greedy", use_objective=False)
-        cp_solver, status = solver_model.solve(
+    solve_result = solve_instance(
+        inst,
+        SolveOptions(
+            room_mode=room_mode,
+            use_objective=use_objective,
+            retry_without_objective=True,
+            objective_profile=str(objective_profile),
             time_limit_seconds=CP_TIME_LIMIT,
+            strict_limit_seconds=strict_limit,
             workers=CP_WORKERS,
             log_progress=log_progress,
-        )
+        ),
+    )
 
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        print("No feasible solution, status:", status)
+    if not solve_result.is_feasible:
+        print("No feasible solution, status:", solve_result.raw_status)
         return
 
-    schedule = solver_model.extract_solution(cp_solver)
-    print(f"CP-SAT status: {status} (0=FEASIBLE, 4=OPTIMAL); time limit = {CP_TIME_LIMIT}s")
+    schedule = solve_result.schedule
+    print(
+        f"CP-SAT status: {solve_result.raw_status} "
+        f"(ui={solve_result.status}, 0=FEASIBLE, 4=OPTIMAL); "
+        f"time limit = {CP_TIME_LIMIT}s; attempts = {len(solve_result.attempts)}"
+    )
 
     # optional local search: off by default to avoid breaking hard rules
     improved = schedule
@@ -367,11 +370,16 @@ def main():
             if ls_progress:
                 print(f"[ls] iter {iteration}/{LS_ITERATIONS} best={best_pen} current={current_pen}")
 
-        improved = ls.improve(
-            schedule, iterations=LS_ITERATIONS,
-            start_temp=LS_START_TEMP, end_temp=LS_END_TEMP,
-            max_seconds=LS_MAX_SECONDS,
-            progress_every=1000,
+        improved = improve_schedule(
+            inst,
+            schedule,
+            ImproveOptions(
+                iterations=LS_ITERATIONS,
+                start_temp=LS_START_TEMP,
+                end_temp=LS_END_TEMP,
+                max_seconds=LS_MAX_SECONDS,
+                progress_every=1000,
+            ),
             progress_hook=_ls_progress_hook if ls_progress else None,
         )
         print("Soft penalty after local search:", ls.compute_soft_penalty(improved))

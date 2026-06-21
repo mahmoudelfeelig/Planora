@@ -59,8 +59,22 @@ class Room:
     name: str
     capacity: int
     room_type: str                 # "LECTURE", "TUTORIAL", "SPECIALIZED_LAB", "COMPUTER_LAB"
+    campus: str = "MAIN"
+    building: str = ""
+    floor: str = ""
+    features: Set[str] = field(default_factory=set)
     specialization_tags: Set[str] = field(default_factory=set)
     # Optional availability; when None, the room is assumed available for all (day, slot) pairs.
+    availability: Optional[Set[Tuple[str, int]]] = None
+
+
+@dataclass
+class GenericResource:
+    id: int
+    name: str
+    resource_type: str
+    capacity: int = 1
+    tags: Set[str] = field(default_factory=set)
     availability: Optional[Set[Tuple[str, int]]] = None
 
 
@@ -75,6 +89,7 @@ class Activity:
     prof_id: int
     ta_id: int
     requires_specialization: str | None = None
+    resource_ids: List[int] = field(default_factory=list)
 
 
 @dataclass
@@ -89,6 +104,7 @@ class Instance:
     staff: Dict[int, StaffMember]
     rooms: Dict[int, Room]
     activities: Dict[int, Activity]
+    generic_resources: Dict[int, GenericResource] = field(default_factory=dict)
 
     # Optional: activity locks for partial re-solving. Keys are activity ids; values may contain
     # any of: "day" (str), "slot" (int), "room_id" (int).
@@ -97,5 +113,26 @@ class Instance:
     # Optional: global soft constraint weights for CP objective (when used).
     soft_weights: Dict[str, int] = field(default_factory=dict)
 
+    # Optional: preferred solve profile for downstream services/UI.
+    objective_profile: str = "balanced"
+
     # Optional: hard-constraint toggles consumed by solver/validators.
     hard_constraints: Dict[str, bool] = field(default_factory=dict)
+
+    # Optional: travel buffers in slots (`same_building`, `cross_building`, `cross_campus`).
+    travel_time_rules: Dict[str, int] = field(default_factory=dict)
+
+    # Optional: building/campus closure rules.
+    room_closures: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Optional: calendar blackout/holiday/exam rules.
+    calendar_rules: Dict[str, Any] = field(default_factory=dict)
+
+    # Optional: precedence constraints between activities.
+    precedence_rules: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Optional: target thresholds used for quality/SLA reporting.
+    sla_targets: Dict[str, Any] = field(default_factory=dict)
+
+    # Optional: arbitrary named term blocks across the week sequence.
+    term_blocks: List[Dict[str, Any]] = field(default_factory=list)

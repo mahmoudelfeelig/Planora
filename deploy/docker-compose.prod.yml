@@ -1,0 +1,86 @@
+services:
+  planora-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    environment:
+      PLANORA_DB_PATH: /app/data/planora.sqlite3
+      PLANORA_PRODUCTION: "1"
+      PLANORA_DOMAIN: ${PLANORA_DOMAIN}
+      PLANORA_AUTH_SECRET: ${PLANORA_AUTH_SECRET}
+      PLANORA_AUTH_ISSUER: ${PLANORA_AUTH_ISSUER:-planora}
+      PLANORA_AUTH_AUDIENCE: ${PLANORA_AUTH_AUDIENCE:-planora-web}
+      PLANORA_ALLOWED_ORIGINS: https://${PLANORA_DOMAIN}
+      PLANORA_TRUST_DEV_HEADERS: "0"
+      PLANORA_SESSION_TTL_SECONDS: ${PLANORA_SESSION_TTL_SECONDS:-28800}
+      PLANORA_MAX_REQUEST_BYTES: ${PLANORA_MAX_REQUEST_BYTES:-20971520}
+      PLANORA_RATE_LIMIT_PER_MINUTE: ${PLANORA_RATE_LIMIT_PER_MINUTE:-120}
+      PLANORA_REGISTRATION_ENABLED: ${PLANORA_REGISTRATION_ENABLED:-1}
+      PLANORA_EMAIL_VERIFICATION_REQUIRED: ${PLANORA_EMAIL_VERIFICATION_REQUIRED:-1}
+      PLANORA_TOKEN_PEPPER: ${PLANORA_TOKEN_PEPPER}
+      PLANORA_PUBLIC_BASE_URL: https://${PLANORA_DOMAIN}
+      PLANORA_SMTP_HOST: ${PLANORA_SMTP_HOST}
+      PLANORA_SMTP_PORT: ${PLANORA_SMTP_PORT:-587}
+      PLANORA_SMTP_USERNAME: ${PLANORA_SMTP_USERNAME}
+      PLANORA_SMTP_PASSWORD: ${PLANORA_SMTP_PASSWORD}
+      PLANORA_SMTP_FROM: ${PLANORA_SMTP_FROM}
+      PLANORA_SMTP_STARTTLS: ${PLANORA_SMTP_STARTTLS:-1}
+    volumes:
+      - planora-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/ready', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  planora-web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+      args:
+        VITE_PLANORA_API_URL: /api
+    restart: unless-stopped
+    environment:
+      PLANORA_DOMAIN: ${PLANORA_DOMAIN}
+      PLANORA_TLS_EMAIL: ${PLANORA_TLS_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      planora-api:
+        condition: service_healthy
+    volumes:
+      - planora-caddy-data:/data
+      - planora-caddy-config:/config
+
+  planora-backup:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    command: ["python", "scripts/backup_planora.py", "--source", "/app/data/planora.sqlite3", "--destination-dir", "/backups", "--watch-seconds", "21600", "--keep", "28"]
+    depends_on:
+      planora-api:
+        condition: service_healthy
+    volumes:
+      - planora-data:/app/data:ro
+      - planora-backups:/backups
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  planora-data:
+  planora-caddy-data:
+  planora-caddy-config:
+  planora-backups:

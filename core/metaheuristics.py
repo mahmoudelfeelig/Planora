@@ -5,6 +5,14 @@ import math
 import time
 
 from utils.domain import Instance
+from utils.schedule_rules import (
+    calendar_slot_blocked,
+    generic_resource_violations,
+    generic_resources_available,
+    precedence_violations,
+    room_is_available,
+    travel_buffer_violations,
+)
 
 
 class LocalSearchImprover:
@@ -31,6 +39,10 @@ class LocalSearchImprover:
         self._acts_by_group: Dict[int, List[int]] = {}
         self._acts_by_staff: Dict[int, List[int]] = {}
         self._priority_activity_ids: Set[int] = set()
+        self._group_week_penalty_cache: Dict[Tuple[int, int], int] = {}
+        self._group_stability_penalty_cache: Dict[Tuple[int, int, int], int] = {}
+        self._staff_week_penalty_cache: Dict[Tuple[int, int], int] = {}
+        self._room_key_penalty_cache: Dict[Tuple[int, int, str], int] = {}
 
     # ---------- state ----------
 
@@ -137,6 +149,10 @@ class LocalSearchImprover:
         self._locked = getattr(inst, "locked_activities", {}) or {}
         self._allowed_rooms = {}
         self._cluster_by_act = {}
+        self._group_week_penalty_cache = {}
+        self._group_stability_penalty_cache = {}
+        self._staff_week_penalty_cache = {}
+        self._room_key_penalty_cache = {}
         self._compute_allowed_rooms()
         self._compute_clusters()
 
@@ -195,17 +211,15 @@ class LocalSearchImprover:
     def _is_block_staff(self, staff) -> bool:
         return bool(getattr(staff, "blocks_only", False) or getattr(staff, "prefers_block", False) or getattr(staff, "is_block_prof", False))
 
-    def _room_available(self, room_id: int, day: str, start_slot: int, dur: int) -> bool:
-        room = self.inst.rooms[room_id]
-        avail = getattr(room, "availability", None)
-        if avail is None:
-            return True
-        pairs = getattr(room, "availability", None)
-        if isinstance(pairs, set):
-            for off in range(dur):
-                if (day, start_slot + off) not in pairs:
-                    return False
-        return True
+    def _room_available(self, room_id: int, week: int, day: str, start_slot: int, dur: int) -> bool:
+        return room_is_available(
+            self.inst,
+            int(room_id),
+            week=int(week),
+            day=str(day),
+            start_slot=int(start_slot),
+            dur=int(dur),
+        )
 
     def _can_place_time(self, schedule, a_id, new_day, new_slot) -> bool:
         inst = self.inst
@@ -217,6 +231,8 @@ class LocalSearchImprover:
         st_id = info["staff_id"]
 
         if new_slot < 0 or new_slot + dur > inst.slots_per_day:
+            return False
+        if calendar_slot_blocked(inst, week=int(w), day=str(new_day)):
             return False
 
         locked = self._locked.get(a_id, {})
@@ -237,7 +253,15 @@ class LocalSearchImprover:
                 return False
 
         # Time moves keep room fixed, so enforce room availability at target slot.
-        if r is not None and not self._room_available(int(r), str(new_day), int(new_slot), int(dur)):
+        if r is not None and not self._room_available(int(r), int(w), str(new_day), int(new_slot), int(dur)):
+            return False
+        if not generic_resources_available(
+            inst,
+            getattr(act, "resource_ids", []) or [],
+            day=str(new_day),
+            start_slot=int(new_slot),
+            dur=int(dur),
+        ):
             return False
 
         # soft block staff: cap distinct teaching days to 2
@@ -274,6 +298,19 @@ class LocalSearchImprover:
             load_week = self.staff_week_load[st_id][w]
             if load_week > int(max_per_week):
                 return False
+
+        trial = {
+            int(other_id): dict(other_info)
+            for other_id, other_info in schedule.items()
+        }
+        trial[int(a_id)]["day"] = str(new_day)
+        trial[int(a_id)]["slot"] = int(new_slot)
+        if precedence_violations(inst, trial):
+            return False
+        if travel_buffer_violations(inst, trial):
+            return False
+        if generic_resource_violations(inst, trial):
+            return False
 
         return True
 
@@ -340,7 +377,7 @@ class LocalSearchImprover:
             if room.room_type not in ("TUTORIAL", "LECTURE"):
                 return False
 
-        if not self._room_available(new_room_id, d, s0, dur):
+        if not self._room_available(new_room_id, int(w), d, s0, dur):
             return False
 
         for ds in range(dur):
@@ -349,9 +386,39 @@ class LocalSearchImprover:
             if new_room_id in self.room_use[key] and self.room_use[key][new_room_id] != a_id:
                 return False
 
+        trial = {
+            int(other_id): dict(other_info)
+            for other_id, other_info in schedule.items()
+        }
+        trial[int(a_id)]["room_id"] = int(new_room_id)
+        if travel_buffer_violations(inst, trial):
+            return False
+
         return True
 
     # ---------- apply ----------
+
+    def _invalidate_group_week(self, g_id: int, week: int) -> None:
+        self._group_week_penalty_cache.pop((int(g_id), int(week)), None)
+        idx = self._week_index.get(int(week), -1)
+        weeks = list(self.inst.weeks)
+        if idx > 0:
+            self._group_stability_penalty_cache.pop(
+                (int(g_id), int(weeks[idx - 1]), int(week)),
+                None,
+            )
+        if idx >= 0 and idx + 1 < len(weeks):
+            self._group_stability_penalty_cache.pop(
+                (int(g_id), int(week), int(weeks[idx + 1])),
+                None,
+            )
+
+    def _invalidate_staff_week(self, staff_id: int, week: int) -> None:
+        self._staff_week_penalty_cache.pop((int(staff_id), int(week)), None)
+
+    def _invalidate_room_keys(self, a_id: int) -> None:
+        for key in self._activity_room_keys.get(int(a_id), []):
+            self._room_key_penalty_cache.pop(key, None)
 
     def _apply_time_move(self, schedule, a_id, new_day, new_slot):
         info = schedule[a_id]
@@ -359,6 +426,9 @@ class LocalSearchImprover:
         old_day = info["day"]; old_slot = info["slot"]
         dur = info["duration"]; r = info["room_id"]
         st_id = info["staff_id"]; groups = info["group_ids"]
+        self._invalidate_staff_week(int(st_id), int(w))
+        for g in groups:
+            self._invalidate_group_week(int(g), int(w))
 
         for ds in range(dur):
             s = old_slot + ds
@@ -388,6 +458,7 @@ class LocalSearchImprover:
         w = info["week"]; d = info["day"]
         s0 = info["slot"]; dur = info["duration"]
         old_room = info["room_id"]
+        self._invalidate_room_keys(int(a_id))
 
         # Update room-consistency counts for this activity.
         keys = self._activity_room_keys.get(a_id, [])
@@ -593,6 +664,10 @@ class LocalSearchImprover:
         return int(load), int(blocks), first_slot
 
     def _group_week_penalty(self, g_id: int, week: int) -> int:
+        cache_key = (int(g_id), int(week))
+        cached = self._group_week_penalty_cache.get(cache_key)
+        if cached is not None:
+            return int(cached)
         w = self._weights
         days = self.inst.days
         group = self.inst.groups[g_id]
@@ -626,9 +701,14 @@ class LocalSearchImprover:
         if active_days > 3:
             penalty += int(w["active_days"]) * int(active_days - 3)
 
+        self._group_week_penalty_cache[cache_key] = int(penalty)
         return int(penalty)
 
     def _group_stability_pair_penalty(self, g_id: int, w_prev: int, w_curr: int) -> int:
+        cache_key = (int(g_id), int(w_prev), int(w_curr))
+        cached = self._group_stability_penalty_cache.get(cache_key)
+        if cached is not None:
+            return int(cached)
         w = self._weights
         penalty = 0
         for d in self.inst.days:
@@ -636,27 +716,43 @@ class LocalSearchImprover:
             curr_active = 1 if any(g_id in self.group_use[(w_curr, d, s)] for s in range(self.inst.slots_per_day)) else 0
             if prev_active != curr_active:
                 penalty += int(w["stability"])
+        self._group_stability_penalty_cache[cache_key] = int(penalty)
         return int(penalty)
 
     def _staff_week_penalty(self, staff_id: int, week: int) -> int:
+        cache_key = (int(staff_id), int(week))
+        cached = self._staff_week_penalty_cache.get(cache_key)
+        if cached is not None:
+            return int(cached)
         free_days = 0
         for d in self.inst.days:
             active = 1 if any(staff_id in self.staff_use[(week, d, s)] for s in range(self.inst.slots_per_day)) else 0
             free_days += (1 - active)
         if free_days < 1:
-            return int(self._weights["staff_free_day"]) * int(1 - free_days)
+            penalty = int(self._weights["staff_free_day"]) * int(1 - free_days)
+            self._staff_week_penalty_cache[cache_key] = int(penalty)
+            return int(penalty)
+        self._staff_week_penalty_cache[cache_key] = 0
         return 0
 
     def _room_key_penalty(self, key: Tuple[int, int, str]) -> int:
+        cached = self._room_key_penalty_cache.get(key)
+        if cached is not None:
+            return int(cached)
         counts = self._room_key_counts.get(key, {})
         if not counts:
+            self._room_key_penalty_cache[key] = 0
             return 0
         if int(counts.get(None, 0)) > 0:
+            self._room_key_penalty_cache[key] = 0
             return 0
         distinct = sum(1 for room_id, c in counts.items() if room_id is not None and int(c) > 0)
         if distinct <= 1:
+            self._room_key_penalty_cache[key] = 0
             return 0
-        return int(self._weights["room_consistency"]) * int(distinct - 1)
+        penalty = int(self._weights["room_consistency"]) * int(distinct - 1)
+        self._room_key_penalty_cache[key] = int(penalty)
+        return int(penalty)
 
     def _refresh_entity_badness(self) -> None:
         """
@@ -1350,21 +1446,24 @@ class LocalSearchImprover:
 
         # Group-first deterministic pass:
         # week-by-week scan and best-delta relocations for high-penalty groups.
-        systematic_budget = max(8, min(320, int(iterations * 0.7)))
+        tiny_time_budget = max_seconds is not None and float(max_seconds) <= 0.10
+        systematic_budget = 0 if tiny_time_budget else max(8, min(320, int(iterations * 0.7)))
         systematic_seconds = None
         if max_seconds is not None:
             # Keep deterministic pre-pass proportional to total budget; do not
             # enforce a hard minimum so tiny max_seconds calls remain responsive.
             systematic_seconds = max(0.0, float(max_seconds) * 0.45)
-        current_pen, systematic_moves = self._systematic_group_week_sweep(
-            current,
-            int(current_pen),
-            max_moves=int(systematic_budget),
-            max_passes=3,
-            start_ts=float(start_ts),
-            max_seconds=systematic_seconds,
-            stop_hook=stop_hook,
-        )
+        systematic_moves = 0
+        if int(systematic_budget) > 0:
+            current_pen, systematic_moves = self._systematic_group_week_sweep(
+                current,
+                int(current_pen),
+                max_moves=int(systematic_budget),
+                max_passes=3,
+                start_ts=float(start_ts),
+                max_seconds=systematic_seconds,
+                stop_hook=stop_hook,
+            )
         if int(current_pen) < int(best_pen):
             best_pen = int(current_pen)
             best = {a_id: info.copy() for a_id, info in current.items()}

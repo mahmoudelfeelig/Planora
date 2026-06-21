@@ -182,7 +182,9 @@ def test_engine_cli_phased_solve_runs_feasibility_then_improves(monkeypatch, tmp
     rc = engine_cli.main()
     assert rc == 0
     assert out_path.exists()
-    assert calls == [("cp_rooms", False, 2, 7.0)]
+    assert len(calls) == 1
+    assert calls[0][:3] == ("cp_rooms", False, 2)
+    assert calls[0][3] == pytest.approx(7.0)
     assert improve_calls == [(123, 1.0), (123, 1.0)]
 
     payload = pickle.loads(out_path.read_bytes())
@@ -194,6 +196,47 @@ def test_engine_cli_phased_solve_runs_feasibility_then_improves(monkeypatch, tmp
     assert improvement.get("start_penalty") == 10
     assert improvement.get("final_penalty") == 5
     assert payload["schedule"][1]["slot"] == 1
+
+
+def test_engine_cli_quality_first_respects_explicit_total_time_limit():
+    feasibility, improve = engine_cli._profile_budget_split(
+        profile="quality_first",
+        time_limit=8.0,
+        feasibility_seconds=None,
+        improve_total_seconds=0.0,
+    )
+
+    assert feasibility == pytest.approx(5.2)
+    assert improve == pytest.approx(2.8)
+    assert feasibility + improve == pytest.approx(8.0)
+
+
+def test_engine_cli_fast_feasible_uses_full_time_limit_without_objective(monkeypatch, tmp_path: Path):
+    in_path, out_path = _write_instance(tmp_path)
+    calls: list[float | None] = []
+
+    class FakeSolver:
+        def __init__(self, inst, room_mode="cp_rooms", *, use_objective=True):
+            self.room_mode = room_mode
+            self.use_objective = use_objective
+
+        def solve(self, *, time_limit_seconds=None, workers=None, random_seed=None, log_progress=False):
+            calls.append(time_limit_seconds)
+            return object(), cp_model.FEASIBLE
+
+        def extract_solution(self, sat):
+            return {}
+
+    monkeypatch.setattr(engine_cli, "TimetableSolver", FakeSolver)
+    monkeypatch.setenv("TT_OBJECTIVE_PROFILE", "fast_feasible")
+    monkeypatch.setenv("TT_USE_OBJECTIVE", "0")
+    monkeypatch.setenv("TT_TIME_LIMIT", "60")
+    monkeypatch.setattr(engine_cli.sys, "argv", ["engine_cli.py", str(in_path), str(out_path)])
+
+    rc = engine_cli.main()
+
+    assert rc == 0
+    assert calls == [pytest.approx(60.0)]
 
 
 def test_engine_cli_rejects_post_extract_hard_conflicts(monkeypatch, tmp_path: Path):

@@ -18,8 +18,10 @@ def _base_suggestions_for_reason(reason: str) -> List[str]:
         suggestions.append("Select a larger room category/capacity.")
     if "room unavailable" in text:
         suggestions.append("Try another slot or another room with matching availability.")
-    if "wrong specialized lab" in text:
+    if "wrong specialized lab" in text or "requires lab tag" in text:
         suggestions.append("Select a specialized lab with the required tag.")
+    if "invalid room" in text or "lab in invalid room" in text:
+        suggestions.append("Choose a room that satisfies the activity type, capacity, and specialization requirements.")
     if "lecture must use a lecture room" in text:
         suggestions.append("Choose a room of type LECTURE.")
     if "tutorial must use a lecture/tutorial room" in text:

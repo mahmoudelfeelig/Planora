@@ -5,10 +5,10 @@ import pytest
 
 PyQt6 = pytest.importorskip("PyQt6.QtWidgets")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PyQt6.QtWidgets import QApplication  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QDialog, QTableWidgetSelectionRange  # noqa: E402
 
 from ui import window as ui_window  # noqa: E402
-from ui.dialogs import MoveConflictDialog  # noqa: E402
+from ui.dialogs import EditActivityDialog, MoveConflictDialog  # noqa: E402
 from utils.generator import generate_instance  # noqa: E402
 
 
@@ -258,6 +258,90 @@ def test_move_conflict_dialog_force_and_refresh(qt_app):
     finally:
         dlg.close()
         dlg.deleteLater()
+
+
+def test_edit_activity_dialog_returns_admin_note(qt_app):
+    inst = generate_instance("small_demo")
+    a_id, schedule = _single_activity_schedule(inst)
+    dlg = EditActivityDialog(
+        None,
+        inst,
+        schedule,
+        [int(a_id)],
+        int(schedule[a_id]["week"]),
+        str(schedule[a_id]["day"]),
+        int(schedule[a_id]["slot"]),
+        locked={},
+    )
+    try:
+        dlg.note_edit.setText("Move after lab inspection")
+        values = dlg.get_values()
+        assert values[-1] == "Move after lab inspection"
+    finally:
+        dlg.close()
+        dlg.deleteLater()
+
+
+def test_bulk_edit_selected_applies_note_and_locks(monkeypatch, qt_app):
+    win = ui_window.MainWindow()
+    try:
+        inst = generate_instance("small_demo")
+        win.inst = inst
+        act_ids = list(inst.activities.keys())[:2]
+        selected_week = int(inst.activities[act_ids[0]].week)
+        schedule = {}
+        for idx, a_id in enumerate(act_ids):
+            act = inst.activities[a_id]
+            schedule[int(a_id)] = {
+                "week": int(selected_week),
+                "day": "MON",
+                "slot": idx,
+                "duration": int(act.duration),
+                "room_id": _pick_valid_room_id(inst, act),
+                "staff_id": int(act.prof_id if act.kind == "LEC" else act.ta_id),
+                "course_id": int(act.course_id),
+                "group_ids": list(act.group_ids),
+                "kind": str(act.kind),
+            }
+        win.current_schedule = {k: v.copy() for k, v in schedule.items()}
+        win.base_schedule = {k: v.copy() for k, v in schedule.items()}
+        win.populate_weeks()
+        idx = win.week_combo.findData(int(selected_week))
+        if idx >= 0:
+            win.week_combo.setCurrentIndex(idx)
+        win.update_entities()
+        win.update_table()
+
+        class _FakeBulkDialog:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def exec(self):
+                return QDialog.DialogCode.Accepted
+
+            def get_values(self):
+                return {
+                    "week_mode": "keep",
+                    "target_week": 1,
+                    "week_delta": 0,
+                    "note_mode": "set",
+                    "note_text": "bulk note",
+                    "time_lock_mode": "enable",
+                    "room_lock_mode": "enable",
+                }
+
+        monkeypatch.setattr(ui_window, "BulkEditDialog", _FakeBulkDialog)
+        win.table.setRangeSelected(QTableWidgetSelectionRange(0, 0, 0, 1), True)
+        win.on_quick_bulk_edit_selected()
+
+        for a_id in act_ids:
+            assert win.current_schedule[int(a_id)]["admin_note"] == "bulk note"
+            assert "day" in win.locked_activities[int(a_id)]
+            assert "slot" in win.locked_activities[int(a_id)]
+            assert "room_id" in win.locked_activities[int(a_id)]
+    finally:
+        win.close()
+        win.deleteLater()
 
 
 def test_sandbox_discard_restores_branch_baseline(qt_app):

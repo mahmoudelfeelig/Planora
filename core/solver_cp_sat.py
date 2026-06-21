@@ -1,9 +1,16 @@
 from __future__ import annotations
+import os
 from typing import Dict, List, Tuple, Optional, Set, DefaultDict
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from ortools.sat.python import cp_model
 from utils.domain import Instance
+from utils.schedule_rules import (
+    calendar_slot_blocked,
+    generic_resources_available,
+    room_is_available,
+    room_transition_buffer,
+)
 
 
 class GreedyRoomingError(ValueError):
@@ -11,6 +18,96 @@ class GreedyRoomingError(ValueError):
         super().__init__(message)
         self.reason = reason
         self.activity_id = activity_id
+
+
+def _min_cost_room_matching(
+    activity_ids: List[int],
+    candidate_edges: Dict[int, List[Tuple[int, int]]],
+) -> Dict[int, int]:
+    """
+    Maximum-cardinality min-cost bipartite matching for a single timeslot.
+
+    Edges are activity_id -> [(room_id, cost)]. Unit capacities are enough here:
+    each non-clustered activity gets one room and each room is used once in
+    that slot. The problem sizes per slot are small, so SPFA min-cost flow is
+    simpler and deterministic enough for this post-processing phase.
+    """
+    left = [int(a_id) for a_id in activity_ids]
+    if not left:
+        return {}
+    rooms = sorted({int(r_id) for edges in candidate_edges.values() for r_id, _ in edges})
+    if not rooms:
+        return {}
+    n_left = len(left)
+    n_rooms = len(rooms)
+    source = 0
+    left_offset = 1
+    room_offset = left_offset + n_left
+    sink = room_offset + n_rooms
+    graph: List[List[List[int]]] = [[] for _ in range(sink + 1)]
+
+    def add_edge(src: int, dst: int, cap: int, cost: int) -> None:
+        graph[src].append([dst, int(cap), int(cost), len(graph[dst])])
+        graph[dst].append([src, 0, -int(cost), len(graph[src]) - 1])
+
+    left_index = {a_id: idx for idx, a_id in enumerate(left)}
+    room_index = {r_id: idx for idx, r_id in enumerate(rooms)}
+    for idx, a_id in enumerate(left):
+        add_edge(source, left_offset + idx, 1, 0)
+        for room_id, cost in sorted(
+            candidate_edges.get(int(a_id), []),
+            key=lambda item: (int(item[1]), int(item[0])),
+        ):
+            if int(room_id) in room_index:
+                add_edge(left_offset + idx, room_offset + room_index[int(room_id)], 1, int(cost))
+    for idx, _room_id in enumerate(rooms):
+        add_edge(room_offset + idx, sink, 1, 0)
+
+    flow = 0
+    while flow < min(n_left, n_rooms):
+        dist = [10**18] * (sink + 1)
+        in_q = [False] * (sink + 1)
+        prev_node = [-1] * (sink + 1)
+        prev_edge = [-1] * (sink + 1)
+        dist[source] = 0
+        q: deque[int] = deque([source])
+        in_q[source] = True
+        while q:
+            node = q.popleft()
+            in_q[node] = False
+            for edge_idx, edge in enumerate(graph[node]):
+                dst, cap, cost, _rev = edge
+                if cap <= 0:
+                    continue
+                nd = dist[node] + int(cost)
+                if nd < dist[dst]:
+                    dist[dst] = nd
+                    prev_node[dst] = node
+                    prev_edge[dst] = edge_idx
+                    if not in_q[dst]:
+                        q.append(dst)
+                        in_q[dst] = True
+        if prev_node[sink] < 0:
+            break
+        node = sink
+        while node != source:
+            p = prev_node[node]
+            edge_idx = prev_edge[node]
+            edge = graph[p][edge_idx]
+            edge[1] -= 1
+            graph[node][edge[3]][1] += 1
+            node = p
+        flow += 1
+
+    assignment: Dict[int, int] = {}
+    for a_id, idx in left_index.items():
+        node = left_offset + idx
+        for edge in graph[node]:
+            dst, cap, _cost, _rev = edge
+            if room_offset <= dst < room_offset + n_rooms and cap == 0:
+                assignment[int(a_id)] = int(rooms[dst - room_offset])
+                break
+    return assignment
 
 
 class TimetableSolver:
@@ -90,6 +187,7 @@ class TimetableSolver:
         self.allowed_rooms: Dict[int, List[int]] = {}
         self.room_sel: Dict[Tuple[int, int], cp_model.BoolVar] = {}
         self.room_iv: Dict[Tuple[int, int], cp_model.IntervalVar] = {}
+        self.room_candidate_limit: int = self._read_room_candidate_limit()
 
         # build model
         self._precompute()
@@ -100,6 +198,16 @@ class TimetableSolver:
         self._add_decision_strategy()
 
     # ---------- public API ----------
+
+    @staticmethod
+    def _read_room_candidate_limit() -> int:
+        raw = os.getenv("TT_CP_ROOM_CANDIDATE_LIMIT", "").strip()
+        if raw:
+            try:
+                return max(0, int(raw))
+            except Exception:
+                return 24
+        return 24
 
     def solve(
         self,
@@ -257,39 +365,40 @@ class TimetableSolver:
         for a in inst.activities.values():
             by_course_kind.setdefault((a.course_id, a.kind), []).append(a)
 
-        for c_id, c in inst.courses.items():
-            lecs = by_course_kind.get((c_id, "LEC"), [])
-            tuts = by_course_kind.get((c_id, "TUT"), [])
-            labs = by_course_kind.get((c_id, "LAB"), [])
+        if self._hard_flag("enforce_course_totals", True):
+            for c_id, c in inst.courses.items():
+                lecs = by_course_kind.get((c_id, "LEC"), [])
+                tuts = by_course_kind.get((c_id, "TUT"), [])
+                labs = by_course_kind.get((c_id, "LAB"), [])
 
-            lec_slots = sum(a.duration for a in lecs)
-            tut_slots_by_group: dict[int, int] = {}
-            for a in tuts:
-                for g in a.group_ids:
-                    tut_slots_by_group[g] = tut_slots_by_group.get(g, 0) + a.duration
-            lab_sessions = len(labs)
+                lec_slots = sum(a.duration for a in lecs)
+                tut_slots_by_group: dict[int, int] = {}
+                for a in tuts:
+                    for g in a.group_ids:
+                        tut_slots_by_group[g] = tut_slots_by_group.get(g, 0) + a.duration
+                lab_sessions = len(labs)
 
-            if c.structure_type == "LAB_ONLY":
-                if lecs or tuts:
-                    errs.append(f"course {c_id}: LAB_ONLY must not include LEC/TUT activities")
+                if c.structure_type == "LAB_ONLY":
+                    if lecs or tuts:
+                        errs.append(f"course {c_id}: LAB_ONLY must not include LEC/TUT activities")
 
-            if int(getattr(c, "lecture_count", 0) or 0) != lec_slots:
-                errs.append(f"course {c_id}: lecture slots {lec_slots} != lecture_count {c.lecture_count}")
+                if int(getattr(c, "lecture_count", 0) or 0) != lec_slots:
+                    errs.append(f"course {c_id}: lecture slots {lec_slots} != lecture_count {c.lecture_count}")
 
-            expected_tut = int(getattr(c, "tutorial_count", 0) or 0)
-            for g_id in course_groups.get(c_id, []):
-                got = tut_slots_by_group.get(g_id, 0)
-                if expected_tut != got:
-                    errs.append(f"course {c_id} group {g_id}: tutorial slots {got} != tutorial_count {expected_tut}")
+                expected_tut = int(getattr(c, "tutorial_count", 0) or 0)
+                for g_id in course_groups.get(c_id, []):
+                    got = tut_slots_by_group.get(g_id, 0)
+                    if expected_tut != got:
+                        errs.append(f"course {c_id} group {g_id}: tutorial slots {got} != tutorial_count {expected_tut}")
 
-            expected_lab_weeks = int(getattr(c, "lab_weeks", 0) or 0)
-            if expected_lab_weeks != lab_sessions:
-                errs.append(f"course {c_id}: lab sessions {lab_sessions} != lab_weeks {expected_lab_weeks}")
-            if labs:
-                expected_dur = int(getattr(c, "lab_duration", 0) or 0)
-                for a in labs:
-                    if a.duration != expected_dur:
-                        errs.append(f"course {c_id}: LAB a{a.id} duration {a.duration} != lab_duration {expected_dur}")
+                expected_lab_weeks = int(getattr(c, "lab_weeks", 0) or 0)
+                if expected_lab_weeks != lab_sessions:
+                    errs.append(f"course {c_id}: lab sessions {lab_sessions} != lab_weeks {expected_lab_weeks}")
+                if labs:
+                    expected_dur = int(getattr(c, "lab_duration", 0) or 0)
+                    for a in labs:
+                        if a.duration != expected_dur:
+                            errs.append(f"course {c_id}: LAB a{a.id} duration {a.duration} != lab_duration {expected_dur}")
 
         if errs:
             raise ValueError("Instance violates course totals: " + "; ".join(errs))
@@ -318,6 +427,9 @@ class TimetableSolver:
         # staff per activity: professors teach LEC, TAs teach TUT/LAB by convention
         for a_id, act in inst.activities.items():
             self.activity_staff[a_id] = act.prof_id if act.kind == "LEC" else act.ta_id
+            for resource_id in getattr(act, "resource_ids", []) or []:
+                if int(resource_id) not in getattr(inst, "generic_resources", {}) and getattr(inst, "generic_resources", {}):
+                    raise ValueError(f"Activity {a_id} references unknown generic resource {int(resource_id)}")
 
         # room pools
         for r_id, r in inst.rooms.items():
@@ -366,7 +478,17 @@ class TimetableSolver:
             for d_idx in range(self.D):
                 if d_idx not in allowed_day_idx:
                     continue
+                if calendar_slot_blocked(inst, week=int(act.week), day=str(self.days[d_idx])):
+                    continue
                 for s in range(max_start_slot + 1):
+                    if not generic_resources_available(
+                        inst,
+                        getattr(act, "resource_ids", []) or [],
+                        day=str(self.days[d_idx]),
+                        start_slot=int(s),
+                        dur=int(act.duration),
+                    ):
+                        continue
                     t = d_idx * self.S + s
                     if sunday_range and sunday_range[0] <= t <= sunday_range[1]:
                         continue
@@ -460,6 +582,51 @@ class TimetableSolver:
             gids = inst.activities[act_id].group_ids
             return sum(inst.groups[g].size for g in gids if g in inst.groups)
 
+        def trim_room_candidates(a_id: int, rooms: List[int], need: int, kind: str) -> List[int]:
+            limit = int(getattr(self, "room_candidate_limit", 0) or 0)
+            if limit <= 0 or len(rooms) <= limit:
+                return list(rooms)
+
+            locks = getattr(inst, "locked_activities", {}) or {}
+            locked_room = None
+            fixed = locks.get(a_id) if isinstance(locks, dict) else None
+            if isinstance(fixed, dict) and fixed.get("room_id") is not None:
+                try:
+                    locked_room = int(fixed["room_id"])
+                except Exception:
+                    locked_room = None
+
+            def rank(room_id: int) -> tuple[int, int, int]:
+                room = inst.rooms[int(room_id)]
+                if kind == "TUT":
+                    type_rank = 0 if room.room_type == "TUTORIAL" else 1
+                elif kind == "LAB":
+                    type_rank = 0 if room.room_type == "COMPUTER_LAB" else 1
+                else:
+                    type_rank = 0
+                return (int(type_rank), max(0, int(room.capacity) - int(need)), int(room_id))
+
+            ranked = sorted((int(r_id) for r_id in rooms), key=rank)
+            if len(ranked) <= limit:
+                return ranked
+
+            # Keep a few best-fit rooms, then rotate through the rest so large
+            # batches of similar activities do not all fight for the same rooms.
+            fixed_prefix = max(2, min(6, int(limit) // 4))
+            selected: List[int] = list(ranked[:fixed_prefix])
+            pool = [r_id for r_id in ranked if r_id not in set(selected)]
+            remaining = max(0, int(limit) - len(selected))
+            if pool and remaining > 0:
+                start = (int(a_id) * 7) % len(pool)
+                for offset in range(min(remaining, len(pool))):
+                    selected.append(pool[(start + offset) % len(pool)])
+            if locked_room is not None and locked_room in rooms and locked_room not in selected:
+                if selected:
+                    selected[-1] = int(locked_room)
+                else:
+                    selected.append(int(locked_room))
+            return list(dict.fromkeys(selected))
+
         for a_id, act in inst.activities.items():
             rooms: List[int] = []
             need = required_capacity(a_id)
@@ -482,7 +649,67 @@ class TimetableSolver:
 
             if not rooms:
                 raise ValueError(f"No eligible rooms for activity {a_id} ({act.kind})")
-            self.allowed_rooms[a_id] = rooms
+            self.allowed_rooms[a_id] = trim_room_candidates(
+                int(a_id),
+                rooms,
+                int(need),
+                str(act.kind),
+            )
+
+    def _repeat_week_pattern_key(self, a_id: int) -> Tuple[int, str, int, Tuple[int, ...], int]:
+        act = self.inst.activities[int(a_id)]
+        return (
+            int(act.course_id),
+            str(act.kind),
+            int(self.activity_staff[int(a_id)]),
+            tuple(sorted(int(g) for g in act.group_ids)),
+            int(act.duration),
+        )
+
+    def _repeat_week_pattern_pairs(self) -> List[Tuple[int, int]]:
+        """
+        Pair recurring non-first-week activities by course/kind/staff/groups.
+
+        The first week is intentionally excluded because this scheduler commonly
+        models it as a lecture-only introduction week. If a recurring key has
+        multiple sessions in a week, the sorted nth session is paired with the
+        sorted nth session in later weeks.
+        """
+        if not self.weeks:
+            return []
+        first_week = min(int(w) for w in self.weeks)
+        by_key_week: DefaultDict[
+            Tuple[int, str, int, Tuple[int, ...], int],
+            DefaultDict[int, List[int]],
+        ] = defaultdict(lambda: defaultdict(list))
+        for a_id, act in self.inst.activities.items():
+            if int(act.week) == int(first_week):
+                continue
+            if getattr(act, "cluster_key", None):
+                continue
+            key = self._repeat_week_pattern_key(int(a_id))
+            by_key_week[key][int(act.week)].append(int(a_id))
+
+        pairs: List[Tuple[int, int]] = []
+        repeat_weeks = [int(w) for w in self.weeks if int(w) != int(first_week)]
+        for by_week in by_key_week.values():
+            weeks = sorted(int(w) for w, ids in by_week.items() if ids)
+            if len(weeks) < 2:
+                continue
+            ordered = {int(w): sorted(int(a_id) for a_id in by_week[int(w)]) for w in weeks}
+            max_occurrences = max(len(ids) for ids in ordered.values())
+            for occ_idx in range(max_occurrences):
+                if any(occ_idx >= len(ordered.get(int(week), [])) for week in repeat_weeks):
+                    continue
+                leader: int | None = None
+                for week in repeat_weeks:
+                    ids = ordered[week]
+                    current = int(ids[occ_idx])
+                    if leader is None:
+                        leader = current
+                    else:
+                        pairs.append((int(leader), int(current)))
+        return pairs
 
     def _build_variables(self) -> None:
         m = self.m
@@ -531,6 +758,23 @@ class TimetableSolver:
         for (s_id, w), ivs in self.staff_intervals_by_week.items():
             if len(ivs) > 1:
                 m.AddNoOverlap(ivs)
+        if getattr(inst, "generic_resources", None):
+            for res_id, resource in inst.generic_resources.items():
+                cap = max(1, int(getattr(resource, "capacity", 1) or 1))
+                for w in self.weeks:
+                    for tau in range(self.T_week):
+                        terms: List[cp_model.BoolVar] = []
+                        for a_id, act in inst.activities.items():
+                            if int(act.week) != int(w):
+                                continue
+                            if int(res_id) not in set(int(r) for r in (getattr(act, "resource_ids", []) or [])):
+                                continue
+                            dur = int(act.duration)
+                            for t in self.allowed_starts[a_id]:
+                                if int(t) <= int(tau) < int(t) + int(dur):
+                                    terms.append(self.x[(a_id, t)])
+                        if terms:
+                            m.Add(sum(terms) <= int(cap))
 
         if self._hard_flag("enforce_block_professor_rules", True):
             # Block staff: at most two distinct days per week
@@ -657,6 +901,31 @@ class TimetableSolver:
                         if terms:
                             m.Add(sum(terms) <= int(cap))
 
+        # Precedence rules across activities.
+        if self._hard_flag("enforce_precedence_rules", True):
+            for raw_rule in getattr(inst, "precedence_rules", []) or []:
+                if not isinstance(raw_rule, dict):
+                    continue
+                try:
+                    before_id = int(raw_rule.get("before_activity_id"))
+                    after_id = int(raw_rule.get("after_activity_id"))
+                except Exception:
+                    continue
+                if before_id not in self.start or after_id not in self.start:
+                    continue
+                before_act = inst.activities[before_id]
+                after_act = inst.activities[after_id]
+                min_gap = int(raw_rule.get("min_gap_slots", 0) or 0)
+                if int(before_act.week) > int(after_act.week):
+                    raise ValueError(
+                        f"Precedence impossible: A{before_id} is in a later week than A{after_id}"
+                    )
+                if int(before_act.week) == int(after_act.week):
+                    m.Add(
+                        self.start[after_id]
+                        >= self.start[before_id] + int(before_act.duration) + int(min_gap)
+                    )
+
         # Cluster equal-start constraints
         for w in self.weeks:
             for kind in ("LEC", "TUT", "LAB"):
@@ -664,6 +933,37 @@ class TimetableSolver:
                     leader = cluster[0]
                     for a in cluster[1:]:
                         m.Add(self.start[a] == self.start[leader])
+
+        repeat_pattern_pairs = self._repeat_week_pattern_pairs()
+        if self._hard_flag("force_repeat_weekly_pattern", False):
+            for leader, follower in repeat_pattern_pairs:
+                m.Add(self.start[int(follower)] == self.start[int(leader)])
+
+        # Symmetry breaking for interchangeable sessions.  Activities with the
+        # same course/kind/week/staff/group footprint can be permuted without
+        # changing the timetable, so force a deterministic start order.
+        by_symmetry_key: DefaultDict[Tuple[int, str, int, int, Tuple[int, ...], int], List[int]] = defaultdict(list)
+        for a_id, act in inst.activities.items():
+            key = (
+                int(act.course_id),
+                str(act.kind),
+                int(act.week),
+                int(self.activity_staff[a_id]),
+                tuple(sorted(int(g) for g in act.group_ids)),
+                int(act.duration),
+            )
+            by_symmetry_key[key].append(int(a_id))
+        clustered_ids = {
+            int(a_id)
+            for week_clusters in self.clusters_by_week_kind.values()
+            for kind_clusters in week_clusters.values()
+            for cluster in kind_clusters
+            for a_id in cluster
+        }
+        for act_ids in by_symmetry_key.values():
+            ordered = [a_id for a_id in sorted(act_ids) if a_id not in clustered_ids]
+            for prev_id, next_id in zip(ordered, ordered[1:]):
+                m.Add(self.start[prev_id] <= self.start[next_id])
 
         # Room-count guards per slot with tutorial support
         num_lec = len(self.lecture_room_ids)
@@ -749,16 +1049,15 @@ class TimetableSolver:
             # use any unavailable (day, slot) pair.
             full_pairs = {(d, s) for d in self.days for s in range(self.S)}
 
-            def _room_allows(room_id: int, day: str, start_slot: int, dur: int) -> bool:
-                avail = getattr(inst.rooms[room_id], "availability", None)
-                if avail is None:
-                    return True
-                if isinstance(avail, set) and avail.issuperset(full_pairs):
-                    return True
-                for off in range(dur):
-                    if (day, start_slot + off) not in avail:
-                        return False
-                return True
+            def _room_allows(room_id: int, week: int, day: str, start_slot: int, dur: int) -> bool:
+                return room_is_available(
+                    inst,
+                    int(room_id),
+                    week=int(week),
+                    day=str(day),
+                    start_slot=int(start_slot),
+                    dur=int(dur),
+                )
 
             for w in self.weeks:
                 clustered: Set[int] = set()
@@ -824,12 +1123,87 @@ class TimetableSolver:
                         for t in allowed_starts:
                             d_idx = t // self.S
                             s0 = t % self.S
-                            if not _room_allows(r, self.days[d_idx], s0, dur):
+                            if not _room_allows(r, int(w), self.days[d_idx], s0, dur):
                                 self.m.Add(self.room_sel[(a_id, r)] + self.x[(a_id, t)] <= 1)
+                # Travel buffers between rooms for shared group/staff resources.
+                if self._hard_flag("enforce_travel_time_buffers", True) and any(
+                    int(v) > 0 for v in (getattr(inst, "travel_time_rules", {}) or {}).values()
+                ):
+                    shared_pairs: Set[Tuple[int, int]] = set()
+                    week_activity_ids = [
+                        int(a_id)
+                        for a_id, act in self.inst.activities.items()
+                        if int(act.week) == int(w)
+                    ]
+                    for idx, a_id in enumerate(week_activity_ids):
+                        act_a = self.inst.activities[a_id]
+                        staff_a = int(self.activity_staff[a_id])
+                        groups_a = set(int(g) for g in act_a.group_ids)
+                        for b_id in week_activity_ids[idx + 1 :]:
+                            act_b = self.inst.activities[b_id]
+                            if staff_a == int(self.activity_staff[b_id]) or groups_a & set(
+                                int(g) for g in act_b.group_ids
+                            ):
+                                shared_pairs.add((int(a_id), int(b_id)))
+
+                    for a_id, b_id in sorted(shared_pairs):
+                        act_a = self.inst.activities[a_id]
+                        act_b = self.inst.activities[b_id]
+                        for ra in self.allowed_rooms.get(a_id, []):
+                            for rb in self.allowed_rooms.get(b_id, []):
+                                buffer_slots = room_transition_buffer(
+                                    inst,
+                                    inst.rooms.get(int(ra)),
+                                    inst.rooms.get(int(rb)),
+                                )
+                                if int(buffer_slots) <= 0:
+                                    continue
+                                for ta in self.allowed_starts[a_id]:
+                                    day_a = int(ta // self.S)
+                                    end_a = int(ta) + int(act_a.duration)
+                                    for tb in self.allowed_starts[b_id]:
+                                        if int(tb // self.S) != int(day_a):
+                                            continue
+                                        end_b = int(tb) + int(act_b.duration)
+                                        violated = False
+                                        if int(ta) <= int(tb):
+                                            violated = int(end_a) + int(buffer_slots) > int(tb)
+                                        else:
+                                            violated = int(end_b) + int(buffer_slots) > int(ta)
+                                        if violated:
+                                            self.m.Add(
+                                                self.x[(a_id, ta)]
+                                                + self.x[(b_id, tb)]
+                                                + self.room_sel[(a_id, ra)]
+                                                + self.room_sel[(b_id, rb)]
+                                                <= 3
+                                            )
 
             for (r, w), ivs in room_intervals_by_week.items():
                 if len(ivs) > 1:
                     self.m.AddNoOverlap(ivs)
+
+            if self._hard_flag("force_repeat_weekly_pattern", False):
+                for leader, follower in repeat_pattern_pairs:
+                    leader_rooms = set(self.allowed_rooms.get(int(leader), []))
+                    follower_rooms = set(self.allowed_rooms.get(int(follower), []))
+                    common = leader_rooms & follower_rooms
+                    if not common:
+                        raise ValueError(
+                            f"Repeat weekly pattern impossible: A{leader} and A{follower} "
+                            "have no common eligible room"
+                        )
+                    for r in leader_rooms:
+                        if int(r) not in common:
+                            self.m.Add(self.room_sel[(int(leader), int(r))] == 0)
+                    for r in follower_rooms:
+                        if int(r) not in common:
+                            self.m.Add(self.room_sel[(int(follower), int(r))] == 0)
+                    for r in common:
+                        self.m.Add(
+                            self.room_sel[(int(leader), int(r))]
+                            == self.room_sel[(int(follower), int(r))]
+                        )
 
     def _add_objective(self) -> None:
         """
@@ -1175,6 +1549,11 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
     S = inst.slots_per_day
     hard_flags = getattr(inst, "hard_constraints", {}) or {}
     enforce_room_availability = bool(hard_flags.get("enforce_room_availability", True))
+    force_repeat_weekly_pattern = bool(hard_flags.get("force_repeat_weekly_pattern", False))
+    enforce_travel_time_buffers = bool(
+        hard_flags.get("enforce_travel_time_buffers", True)
+    )
+    first_week_for_repeat = min(int(w) for w in weeks) if weeks else None
 
     lecture_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE"]
     tutorial_rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "TUTORIAL"]
@@ -1187,17 +1566,17 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
             for tag in getattr(room, "specialization_tags", []) or []:
                 spec_rooms_by_tag.setdefault(tag, []).append(r_id)
 
-    def _room_available(room_id: int, day: str, start_slot: int, dur: int) -> bool:
-        if not enforce_room_availability:
+    def _room_available(room_id: int, week: int, day: str, start_slot: int, dur: int) -> bool:
+        if not enforce_room_availability and not getattr(inst, "room_closures", None):
             return True
-        avail = getattr(inst.rooms[room_id], "availability", None)
-        if avail is None:
-            return True
-        if isinstance(avail, set):
-            for off in range(dur):
-                if (day, start_slot + off) not in avail:
-                    return False
-        return True
+        return room_is_available(
+            inst,
+            int(room_id),
+            week=int(week),
+            day=str(day),
+            start_slot=int(start_slot),
+            dur=int(dur),
+        )
 
     # time occupancy
     slot_acts: Dict[Tuple[int, str, int], List[int]] = {}
@@ -1217,11 +1596,13 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
         info = schedule[a_id]
         if info.get("room_id") not in (None, room_id):
             raise ValueError(f"Locked room for activity {a_id} conflicts with pre-assigned room")
-        if not _room_available(room_id, info["day"], info["slot"], info["duration"]):
+        if not _room_available(room_id, int(info["week"]), info["day"], info["slot"], info["duration"]):
             raise ValueError(f"Locked room for activity {a_id} is unavailable at the scheduled time")
         schedule[a_id]["room_id"] = room_id
 
     clusters = _clusters_for_assignment(inst)
+    room_key_usage: DefaultDict[Tuple[int, int, str], Dict[int, int]] = defaultdict(dict)
+    repeat_room_usage: Dict[Tuple[int, str, int, Tuple[int, ...], int], int] = {}
 
     def _required_capacity_for_activity(a_id: int) -> int:
         gids = schedule[a_id].get("group_ids", []) or []
@@ -1235,28 +1616,229 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                 gids.add(int(g))
         return sum(inst.groups[g].size for g in gids if g in inst.groups)
 
-    def _pick_room(room_ids: List[int], occupied: set[int], required_capacity: int, day: str, slot: int, dur: int) -> int | None:
+    def _travel_buffer_ok(member_ids: List[int], candidate_room_id: int) -> bool:
+        if (not enforce_travel_time_buffers) or not getattr(inst, "travel_time_rules", None):
+            return True
+        member_set = {int(a_id) for a_id in member_ids}
+        for a_id in member_set:
+            info = schedule[int(a_id)]
+            week = int(info["week"])
+            day = str(info["day"])
+            slot = int(info["slot"])
+            dur = int(info["duration"])
+            staff_id = int(info["staff_id"])
+            groups = {int(g) for g in (info.get("group_ids", []) or [])}
+            for other_id, other_info in schedule.items():
+                if int(other_id) in member_set:
+                    continue
+                if other_info.get("room_id") is None:
+                    continue
+                if int(other_info.get("week", -1)) != int(week):
+                    continue
+                if str(other_info.get("day", "")) != str(day):
+                    continue
+                other_staff = int(other_info.get("staff_id", -1))
+                other_groups = {int(g) for g in (other_info.get("group_ids", []) or [])}
+                if other_staff != int(staff_id) and not (groups & other_groups):
+                    continue
+                buffer_slots = room_transition_buffer(
+                    inst,
+                    inst.rooms.get(int(candidate_room_id)),
+                    inst.rooms.get(int(other_info["room_id"])),
+                )
+                if int(buffer_slots) <= 0:
+                    continue
+                other_slot = int(other_info["slot"])
+                other_dur = int(other_info["duration"])
+                if int(slot) <= int(other_slot):
+                    gap = int(other_slot) - (int(slot) + int(dur))
+                else:
+                    gap = int(slot) - (int(other_slot) + int(other_dur))
+                if int(gap) < int(buffer_slots):
+                    return False
+        return True
+
+    def _room_consistency_keys(member_ids: List[int]) -> List[Tuple[int, int, str]]:
+        keys: List[Tuple[int, int, str]] = []
+        seen: Set[Tuple[int, int, str]] = set()
+        for a_id in member_ids:
+            info = schedule[int(a_id)]
+            c_id = int(info["course_id"])
+            kind = str(info["kind"])
+            for g_id in info.get("group_ids", []) or []:
+                key = (c_id, int(g_id), kind)
+                if key not in seen:
+                    seen.add(key)
+                    keys.append(key)
+        return keys
+
+    def _base_repeat_room_key(a_id: int) -> Tuple[int, str, int, Tuple[int, ...], int] | None:
+        if not force_repeat_weekly_pattern:
+            return None
+        info = schedule[int(a_id)]
+        if first_week_for_repeat is not None and int(info["week"]) == int(first_week_for_repeat):
+            return None
+        act = inst.activities.get(int(a_id))
+        if act is not None and getattr(act, "cluster_key", None):
+            return None
+        return (
+            int(info["course_id"]),
+            str(info["kind"]),
+            int(info["staff_id"]),
+            tuple(sorted(int(g) for g in (info.get("group_ids", []) or []))),
+            int(info["duration"]),
+        )
+
+    repeat_room_keys_by_activity: Dict[int, Tuple[int, str, int, Tuple[int, ...], int, int]] = {}
+    if force_repeat_weekly_pattern and first_week_for_repeat is not None:
+        repeat_weeks = [int(w) for w in weeks if int(w) != int(first_week_for_repeat)]
+        by_key_week: DefaultDict[
+            Tuple[int, str, int, Tuple[int, ...], int],
+            DefaultDict[int, List[int]],
+        ] = defaultdict(lambda: defaultdict(list))
+        for a_id in sorted(int(a_id) for a_id in schedule.keys()):
+            key = _base_repeat_room_key(int(a_id))
+            if key is None:
+                continue
+            by_key_week[key][int(schedule[int(a_id)]["week"])].append(int(a_id))
+        for key, by_week in by_key_week.items():
+            ordered = {
+                int(w): sorted(int(a_id) for a_id in by_week.get(int(w), []))
+                for w in repeat_weeks
+            }
+            max_occurrences = max((len(ids) for ids in ordered.values()), default=0)
+            for occ_idx in range(max_occurrences):
+                if any(occ_idx >= len(ordered.get(int(week), [])) for week in repeat_weeks):
+                    continue
+                for week in repeat_weeks:
+                    repeat_room_keys_by_activity[int(ordered[int(week)][occ_idx])] = (
+                        *key,
+                        int(occ_idx),
+                    )
+
+    def _repeat_room_key(a_id: int) -> Tuple[int, str, int, Tuple[int, ...], int, int] | None:
+        return repeat_room_keys_by_activity.get(int(a_id))
+
+    def _repeat_room_ok(member_ids: List[int], room_id: int) -> bool:
+        for a_id in member_ids:
+            key = _repeat_room_key(int(a_id))
+            if key is None:
+                continue
+            expected = repeat_room_usage.get(key)
+            if expected is not None and int(expected) != int(room_id):
+                return False
+        return True
+
+    def _register_room_assignment(member_ids: List[int], room_id: int) -> None:
+        if not _repeat_room_ok(member_ids, int(room_id)):
+            raise GreedyRoomingError(
+                f"Repeat weekly room pattern would be violated by room {room_id}",
+                reason="repeat_week_room",
+                activity_id=int(member_ids[0]) if member_ids else None,
+            )
+        for a_id in member_ids:
+            schedule[int(a_id)]["room_id"] = int(room_id)
+        for key in _room_consistency_keys(member_ids):
+            bucket = room_key_usage.setdefault(key, {})
+            bucket[int(room_id)] = int(bucket.get(int(room_id), 0)) + 1
+        for a_id in member_ids:
+            repeat_key = _repeat_room_key(int(a_id))
+            if repeat_key is not None:
+                repeat_room_usage.setdefault(repeat_key, int(room_id))
+
+    for existing_id, existing_info in schedule.items():
+        existing_room = existing_info.get("room_id")
+        if existing_room is not None:
+            for key in _room_consistency_keys([int(existing_id)]):
+                bucket = room_key_usage.setdefault(key, {})
+                bucket[int(existing_room)] = int(bucket.get(int(existing_room), 0)) + 1
+            repeat_key = _repeat_room_key(int(existing_id))
+            if repeat_key is not None:
+                expected = repeat_room_usage.get(repeat_key)
+                if expected is not None and int(expected) != int(existing_room):
+                    raise GreedyRoomingError(
+                        f"Pre-assigned room for A{existing_id} violates repeat weekly room pattern",
+                        reason="repeat_week_room",
+                        activity_id=int(existing_id),
+                    )
+                repeat_room_usage[repeat_key] = int(existing_room)
+
+    def _room_cost(room_id: int, required_capacity: int, member_ids: List[int]) -> Tuple[int, int, int]:
+        stability_penalty = 0
+        stability_bonus = 0
+        for key in _room_consistency_keys(member_ids):
+            prior = room_key_usage.get(key, {})
+            if not prior:
+                continue
+            hits = int(prior.get(int(room_id), 0))
+            if hits:
+                stability_bonus += hits
+            else:
+                stability_penalty += sum(int(v) for v in prior.values())
+        room = inst.rooms[int(room_id)]
+        capacity_waste = max(0, int(room.capacity) - int(required_capacity))
+        return (
+            int(stability_penalty) * 1000 - int(stability_bonus) * 100,
+            int(capacity_waste),
+            int(room_id),
+        )
+
+    def _pick_room(
+        room_ids: List[int],
+        occupied: set[int],
+        required_capacity: int,
+        week: int,
+        day: str,
+        slot: int,
+        dur: int,
+        *,
+        member_ids: List[int] | None = None,
+    ) -> int | None:
         candidates = [
             r_id for r_id in room_ids
             if r_id not in occupied
             and inst.rooms[r_id].capacity >= required_capacity
-            and _room_available(r_id, day, slot, dur)
+            and _room_available(r_id, week, day, slot, dur)
+            and _travel_buffer_ok(member_ids or [], int(r_id))
+            and _repeat_room_ok(member_ids or [], int(r_id))
         ]
-        candidates.sort(key=lambda r_id: inst.rooms[r_id].capacity)
+        candidates.sort(
+            key=lambda r_id: _room_cost(
+                int(r_id),
+                int(required_capacity),
+                [int(a) for a in (member_ids or [])],
+            )
+        )
         return candidates[0] if candidates else None
 
-    def _diagnose_room_failure(room_ids: List[int], occupied: set[int], required_capacity: int, day: str, slot: int, dur: int) -> str:
+    def _diagnose_room_failure(
+        room_ids: List[int],
+        occupied: set[int],
+        required_capacity: int,
+        week: int,
+        day: str,
+        slot: int,
+        dur: int,
+        *,
+        member_ids: List[int] | None = None,
+    ) -> str:
         if not room_ids:
             return "room_type_missing"
         cap_ok = [r_id for r_id in room_ids if inst.rooms[r_id].capacity >= required_capacity]
         if not cap_ok:
             return "capacity"
-        avail_ok = [r_id for r_id in cap_ok if _room_available(r_id, day, slot, dur)]
+        avail_ok = [r_id for r_id in cap_ok if _room_available(r_id, week, day, slot, dur)]
         if not avail_ok:
             return "availability"
         free_ok = [r_id for r_id in avail_ok if r_id not in occupied]
         if not free_ok:
             return "occupied"
+        travel_ok = [r_id for r_id in free_ok if _travel_buffer_ok(member_ids or [], int(r_id))]
+        if not travel_ok:
+            return "travel_buffer"
+        repeat_ok = [r_id for r_id in travel_ok if _repeat_room_ok(member_ids or [], int(r_id))]
+        if not repeat_ok:
+            return "repeat_week_room"
         return "unknown"
 
     def _reserved_specialized_rooms(
@@ -1289,17 +1871,144 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
         dur: int,
         occupied: set[int],
         required_capacity: int,
+        member_ids: List[int] | None = None,
     ) -> int | None:
         # Prefer computer labs, then specialized labs not needed by overlapping tagged labs.
-        room_id = _pick_room(computer_lab_rooms, occupied, required_capacity, day, start_slot, dur)
+        room_id = _pick_room(
+            computer_lab_rooms,
+            occupied,
+            required_capacity,
+            week,
+            day,
+            start_slot,
+            dur,
+            member_ids=member_ids,
+        )
         if room_id is not None:
             return room_id
         reserved = _reserved_specialized_rooms(week=week, day=day, start_slot=start_slot, dur=dur)
         non_reserved_spec = [r for r in specialized_lab_rooms if r not in reserved]
-        room_id = _pick_room(non_reserved_spec, occupied, required_capacity, day, start_slot, dur)
+        room_id = _pick_room(
+            non_reserved_spec,
+            occupied,
+            required_capacity,
+            week,
+            day,
+            start_slot,
+            dur,
+            member_ids=member_ids,
+        )
         if room_id is not None:
             return room_id
-        return _pick_room(specialized_lab_rooms, occupied, required_capacity, day, start_slot, dur)
+        return _pick_room(
+            specialized_lab_rooms,
+            occupied,
+            required_capacity,
+            week,
+            day,
+            start_slot,
+            dur,
+            member_ids=member_ids,
+        )
+
+    def _matching_cost_scalar(
+        room_id: int,
+        required_capacity: int,
+        member_ids: List[int],
+        *,
+        type_rank: int = 0,
+    ) -> int:
+        stability, waste, rid = _room_cost(int(room_id), int(required_capacity), member_ids)
+        return int(type_rank) * 1_000_000 + int(stability) * 1_000 + int(waste) * 10 + int(rid)
+
+    def _candidate_edges_for_activity(
+        a_id: int,
+        room_ids_with_rank: List[Tuple[int, int]],
+        occupied: set[int],
+        week: int,
+        day: str,
+        slot: int,
+    ) -> List[Tuple[int, int]]:
+        req = _required_capacity_for_activity(int(a_id))
+        dur = int(schedule[int(a_id)]["duration"])
+        edges: List[Tuple[int, int]] = []
+        seen_rooms: Set[int] = set()
+        for room_id, type_rank in room_ids_with_rank:
+            room_id = int(room_id)
+            if room_id in seen_rooms:
+                continue
+            seen_rooms.add(room_id)
+            if room_id in occupied:
+                continue
+            if inst.rooms[room_id].capacity < req:
+                continue
+            if not _room_available(room_id, week, day, slot, dur):
+                continue
+            if not _travel_buffer_ok([int(a_id)], room_id):
+                continue
+            if not _repeat_room_ok([int(a_id)], room_id):
+                continue
+            edges.append(
+                (
+                    room_id,
+                    _matching_cost_scalar(
+                        room_id,
+                        req,
+                        [int(a_id)],
+                        type_rank=int(type_rank),
+                    ),
+                )
+            )
+        return edges
+
+    def _assign_singles_by_matching(
+        activity_ids: List[int],
+        room_ids_with_rank: List[Tuple[int, int]],
+        occupied: set[int],
+        week: int,
+        day: str,
+        slot: int,
+        *,
+        label: str,
+        failure_rooms: List[int],
+    ) -> None:
+        if not activity_ids:
+            return
+        edges = {
+            int(a_id): _candidate_edges_for_activity(
+                int(a_id),
+                room_ids_with_rank,
+                occupied,
+                week,
+                day,
+                slot,
+            )
+            for a_id in activity_ids
+        }
+        assignment = _min_cost_room_matching([int(a) for a in activity_ids], edges)
+        missing = [int(a_id) for a_id in activity_ids if int(a_id) not in assignment]
+        if missing:
+            sample = int(missing[0])
+            reason = _diagnose_room_failure(
+                failure_rooms,
+                occupied,
+                _required_capacity_for_activity(sample),
+                week,
+                day,
+                slot,
+                int(schedule[sample]["duration"]),
+                member_ids=[sample],
+            )
+            raise GreedyRoomingError(
+                f"No {label} room matching covers all activities at {week}-{day}-{slot} "
+                f"(unmatched a{sample}, reason={reason})",
+                reason=reason,
+                activity_id=sample,
+            )
+        for a_id in sorted(assignment):
+            room_id = int(assignment[int(a_id)])
+            _register_room_assignment([int(a_id)], room_id)
+            occupied.add(room_id)
 
     for w in weeks:
         for d in days:
@@ -1329,16 +2038,33 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         clusters_here_lec.append(members)
                 for members in clusters_here_lec:
                     req = _required_capacity_for_members(members)
-                    room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                    room_id = _pick_room(
+                        lecture_rooms,
+                        occupied,
+                        req,
+                        w,
+                        d,
+                        s,
+                        schedule[members[0]]["duration"],
+                        member_ids=members,
+                    )
                     if room_id is None:
-                        reason = _diagnose_room_failure(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                        reason = _diagnose_room_failure(
+                            lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[members[0]]["duration"],
+                            member_ids=members,
+                        )
                         raise GreedyRoomingError(
                             f"No lecture room fits LEC cluster at {w}-{d}-{s} (need cap {req}, reason={reason})",
                             reason=reason,
                             activity_id=members[0],
                         )
-                    for a_id in members:
-                        schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment(members, int(room_id))
                     occupied.add(room_id)
                     unassigned = [a for a in unassigned if schedule[a]["room_id"] is None]
 
@@ -1350,18 +2076,44 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         clusters_here_tut.append(members)
                 for members in clusters_here_tut:
                     req = _required_capacity_for_members(members)
-                    room_id = _pick_room(tutorial_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                    room_id = _pick_room(
+                        tutorial_rooms,
+                        occupied,
+                        req,
+                        w,
+                        d,
+                        s,
+                        schedule[members[0]]["duration"],
+                        member_ids=members,
+                    )
                     if room_id is None:
-                        room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                        room_id = _pick_room(
+                            lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[members[0]]["duration"],
+                            member_ids=members,
+                        )
                     if room_id is None:
-                        reason = _diagnose_room_failure(tutorial_rooms + lecture_rooms, occupied, req, d, s, schedule[members[0]]["duration"])
+                        reason = _diagnose_room_failure(
+                            tutorial_rooms + lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[members[0]]["duration"],
+                            member_ids=members,
+                        )
                         raise GreedyRoomingError(
                             f"No room fits TUT cluster at {w}-{d}-{s} (need cap {req}, reason={reason})",
                             reason=reason,
                             activity_id=members[0],
                         )
-                    for a_id in members:
-                        schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment(members, int(room_id))
                     occupied.add(room_id)
                     unassigned = [a for a in unassigned if schedule[a]["room_id"] is None]
 
@@ -1388,7 +2140,16 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     if req_tags:
                         tag = next(iter(req_tags))
                         candidates = spec_rooms_by_tag.get(str(tag), [])
-                        room_id = _pick_room(candidates, occupied, req, d, s, dur)
+                        room_id = _pick_room(
+                            candidates,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            dur,
+                            member_ids=members,
+                        )
                     else:
                         room_id = _pick_generic_lab_room(
                             week=w,
@@ -1397,21 +2158,43 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                             dur=dur,
                             occupied=occupied,
                             required_capacity=req,
+                            member_ids=members,
                         )
                     if room_id is None:
                         if req_tags:
                             tag = next(iter(req_tags))
                             candidates = spec_rooms_by_tag.get(str(tag), [])
-                            reason = "tag_mismatch" if not candidates else _diagnose_room_failure(candidates, occupied, req, d, s, dur)
+                            reason = (
+                                "tag_mismatch"
+                                if not candidates
+                                else _diagnose_room_failure(
+                                    candidates,
+                                    occupied,
+                                    req,
+                                    w,
+                                    d,
+                                    s,
+                                    dur,
+                                    member_ids=members,
+                                )
+                            )
                         else:
-                            reason = _diagnose_room_failure(lab_rooms, occupied, req, d, s, dur)
+                            reason = _diagnose_room_failure(
+                                lab_rooms,
+                                occupied,
+                                req,
+                                w,
+                                d,
+                                s,
+                                dur,
+                                member_ids=members,
+                            )
                         raise GreedyRoomingError(
                             f"No lab room fits LAB cluster at {w}-{d}-{s} (need cap {req}, reason={reason})",
                             reason=reason,
                             activity_id=members[0],
                         )
-                    for a_id in members:
-                        schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment(members, int(room_id))
                     occupied.add(room_id)
                     unassigned = [a for a in unassigned if schedule[a]["room_id"] is None]
 
@@ -1434,22 +2217,100 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     else:
                         tuts.append(a_id)
 
+                for tag, acts_tag in sorted(labs_spec_by_tag.items(), key=lambda item: str(item[0])):
+                    tag_rooms = spec_rooms_by_tag.get(tag, [])
+                    if not tag_rooms and acts_tag:
+                        raise GreedyRoomingError(
+                            f"No specialised lab rooms exist for tag {tag} at {w}-{d}-{s}",
+                            reason="tag_mismatch",
+                            activity_id=int(acts_tag[0]),
+                        )
+                    _assign_singles_by_matching(
+                        [int(a) for a in acts_tag],
+                        [(int(r), 0) for r in tag_rooms],
+                        occupied,
+                        w,
+                        d,
+                        s,
+                        label=f"specialised lab tag {tag}",
+                        failure_rooms=tag_rooms,
+                    )
+
+                reserved = _reserved_specialized_rooms(week=w, day=d, start_slot=s, dur=1)
+                generic_lab_ranked = (
+                    [(int(r), 0) for r in computer_lab_rooms]
+                    + [(int(r), 1) for r in specialized_lab_rooms if int(r) not in reserved]
+                    + [(int(r), 2) for r in specialized_lab_rooms]
+                )
+                _assign_singles_by_matching(
+                    [int(a) for a in labs_generic],
+                    generic_lab_ranked,
+                    occupied,
+                    w,
+                    d,
+                    s,
+                    label="generic lab",
+                    failure_rooms=lab_rooms,
+                )
+
+                _assign_singles_by_matching(
+                    [int(a) for a in lecs],
+                    [(int(r), 0) for r in lecture_rooms],
+                    occupied,
+                    w,
+                    d,
+                    s,
+                    label="lecture",
+                    failure_rooms=lecture_rooms,
+                )
+
+                _assign_singles_by_matching(
+                    [int(a) for a in tuts],
+                    [(int(r), 0) for r in tutorial_rooms]
+                    + [(int(r), 1) for r in lecture_rooms],
+                    occupied,
+                    w,
+                    d,
+                    s,
+                    label="tutorial/lecture",
+                    failure_rooms=tutorial_rooms + lecture_rooms,
+                )
+                continue
+
                 for tag, acts_tag in labs_spec_by_tag.items():
                     for a_id in acts_tag:
                         req = _required_capacity_for_activity(a_id)
                         tag_rooms = spec_rooms_by_tag.get(tag, [])
-                        room_id = _pick_room(tag_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        room_id = _pick_room(
+                            tag_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[a_id]["duration"],
+                            member_ids=[a_id],
+                        )
                         if room_id is None:
                             if not tag_rooms:
                                 reason = "tag_mismatch"
                             else:
-                                reason = _diagnose_room_failure(tag_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                                reason = _diagnose_room_failure(
+                                    tag_rooms,
+                                    occupied,
+                                    req,
+                                    w,
+                                    d,
+                                    s,
+                                    schedule[a_id]["duration"],
+                                    member_ids=[a_id],
+                                )
                             raise GreedyRoomingError(
                                 f"No lab room fits specialised lab a{a_id} (need cap {req}, tag={tag}, reason={reason})",
                                 reason=reason,
                                 activity_id=a_id,
                             )
-                        schedule[a_id]["room_id"] = room_id
+                        _register_room_assignment([int(a_id)], int(room_id))
                         occupied.add(room_id)
 
                 for a_id in labs_generic:
@@ -1461,43 +2322,98 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                         dur=schedule[a_id]["duration"],
                         occupied=occupied,
                         required_capacity=req,
+                        member_ids=[a_id],
                     )
                     if room_id is None:
-                        reason = _diagnose_room_failure(lab_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        reason = _diagnose_room_failure(
+                            lab_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[a_id]["duration"],
+                            member_ids=[a_id],
+                        )
                         raise GreedyRoomingError(
                             f"No lab room fits lab a{a_id} (need cap {req}, reason={reason})",
                             reason=reason,
                             activity_id=a_id,
                         )
-                    schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment([int(a_id)], int(room_id))
                     occupied.add(room_id)
 
                 # lectures
                 for a_id in lecs:
                     req = _required_capacity_for_activity(a_id)
-                    room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                    room_id = _pick_room(
+                        lecture_rooms,
+                        occupied,
+                        req,
+                        w,
+                        d,
+                        s,
+                        schedule[a_id]["duration"],
+                        member_ids=[a_id],
+                    )
                     if room_id is None:
-                        reason = _diagnose_room_failure(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        reason = _diagnose_room_failure(
+                            lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[a_id]["duration"],
+                            member_ids=[a_id],
+                        )
                         raise GreedyRoomingError(
                             f"No lecture room fits a{a_id} (need cap {req}, reason={reason})",
                             reason=reason,
                             activity_id=a_id,
                         )
-                    schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment([int(a_id)], int(room_id))
                     occupied.add(room_id)
 
                 # tutorials (prefer TUTORIAL then LECTURE)
                 for a_id in tuts:
                     req = _required_capacity_for_activity(a_id)
-                    room_id = _pick_room(tutorial_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                    room_id = _pick_room(
+                        tutorial_rooms,
+                        occupied,
+                        req,
+                        w,
+                        d,
+                        s,
+                        schedule[a_id]["duration"],
+                        member_ids=[a_id],
+                    )
                     if room_id is None:
-                        room_id = _pick_room(lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        room_id = _pick_room(
+                            lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[a_id]["duration"],
+                            member_ids=[a_id],
+                        )
                     if room_id is None:
-                        reason = _diagnose_room_failure(tutorial_rooms + lecture_rooms, occupied, req, d, s, schedule[a_id]["duration"])
+                        reason = _diagnose_room_failure(
+                            tutorial_rooms + lecture_rooms,
+                            occupied,
+                            req,
+                            w,
+                            d,
+                            s,
+                            schedule[a_id]["duration"],
+                            member_ids=[a_id],
+                        )
                         raise GreedyRoomingError(
                             f"No tutorial/lecture room fits a{a_id} (need cap {req}, reason={reason})",
                             reason=reason,
                             activity_id=a_id,
                         )
-                    schedule[a_id]["room_id"] = room_id
+                    _register_room_assignment([int(a_id)], int(room_id))
                     occupied.add(room_id)

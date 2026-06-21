@@ -29,6 +29,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*/node_modules/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -141,6 +142,8 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+deploy/secrets/*.txt
+!deploy/secrets/.gitkeep
 .venv
 .packaging-venv/
 env/
@@ -218,6 +221,9 @@ docs/PROJECT_TECHNICAL_EXPLAINER.local.md
 
 # Generated timetable artifacts
 timetable_*.docx
+
+# Local/imported schedule data and generated extracts
+/data/
 schedule_*.csv
 groups_*.pdf
 ics_*/

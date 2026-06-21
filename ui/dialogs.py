@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, Any, List, Tuple
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -15,8 +16,12 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QLineEdit,
+    QTableView,
+    QListWidget,
+    QListWidgetItem,
 )
 
+from ui.models import SimpleTableModel
 from utils.domain import Instance
 
 
@@ -92,6 +97,11 @@ class EditActivityDialog(QDialog):
         self._populate_staff_combo(int(cur_a_id))
         layout.addRow("Staff:", self.staff_combo)
 
+        self.note_edit = QLineEdit()
+        self.note_edit.setPlaceholderText("Optional admin note / comment")
+        self.note_edit.setText(str(cur_info.get("admin_note", "") or ""))
+        layout.addRow("Admin note:", self.note_edit)
+
         self.lock_time_cb = QCheckBox("Lock time (day/slot)")
         self.lock_room_cb = QCheckBox("Lock room")
         fixed = self.locked.get(int(cur_a_id), {})
@@ -152,6 +162,7 @@ class EditActivityDialog(QDialog):
             self.room_combo.setCurrentIndex(idx)
 
         self._populate_staff_combo(a_id)
+        self.note_edit.setText(str(info.get("admin_note", "") or ""))
 
         fixed = self.locked.get(a_id, {})
         if isinstance(fixed, dict):
@@ -161,7 +172,7 @@ class EditActivityDialog(QDialog):
             self.lock_time_cb.setChecked(False)
             self.lock_room_cb.setChecked(False)
 
-    def get_values(self) -> Tuple[int, int, str, int, int, int, bool, bool]:
+    def get_values(self) -> Tuple[int, int, str, int, int, int, bool, bool, str]:
         a_id = self.activity_combo.currentData()
         week = self.week_combo.currentData()
         day = self.day_combo.currentData()
@@ -177,6 +188,7 @@ class EditActivityDialog(QDialog):
             staff_id,
             bool(self.lock_time_cb.isChecked()),
             bool(self.lock_room_cb.isChecked()),
+            str(self.note_edit.text()).strip(),
         )
 
 
@@ -365,12 +377,16 @@ class ImportScheduleWizardDialog(QDialog):
         parent,
         headers: List[str],
         preview_rows: List[Dict[str, Any]],
+        *,
+        default_mapping: Dict[str, str] | None = None,
+        default_group_separator: str = ";",
     ):
         super().__init__(parent)
         self.setWindowTitle("Import Schedule Wizard")
         self._headers = [str(h) for h in headers]
         self._preview_rows = list(preview_rows)
         self._field_combos: Dict[str, QComboBox] = {}
+        self._default_mapping = dict(default_mapping or {})
 
         root = QVBoxLayout(self)
         intro = QLabel(
@@ -387,13 +403,15 @@ class ImportScheduleWizardDialog(QDialog):
             for h in self._headers:
                 combo.addItem(str(h), str(h))
             preferred = self._pick_preferred_header(key)
+            if str(key) in self._default_mapping:
+                preferred = str(self._default_mapping[str(key)] or preferred or "")
             if preferred:
                 idx = combo.findData(str(preferred))
                 if idx >= 0:
                     combo.setCurrentIndex(idx)
             self._field_combos[str(key)] = combo
             form.addRow(f"{label}:", combo)
-        self.group_separator_edit = QLineEdit(";")
+        self.group_separator_edit = QLineEdit(str(default_group_separator or ";"))
         self.group_separator_edit.setMaxLength(4)
         form.addRow("Group separator:", self.group_separator_edit)
         root.addLayout(form)
@@ -485,6 +503,135 @@ class ImportScheduleWizardDialog(QDialog):
     def group_separator(self) -> str:
         sep = str(self.group_separator_edit.text() or ";").strip()
         return sep or ";"
+
+
+class TimetableCsvImportWizardDialog(QDialog):
+    REQUIRED_FIELDS: Tuple[Tuple[str, str], ...] = (
+        ("week", "Week"),
+        ("day", "Day"),
+        ("slot", "Slot / period"),
+        ("course", "Course / subject"),
+    )
+    OPTIONAL_FIELDS: Tuple[Tuple[str, str], ...] = (
+        ("time", "Time label"),
+        ("group", "Group / major"),
+        ("group_row", "Group row"),
+        ("room", "Room"),
+        ("status", "Status"),
+        ("source_page", "Source page"),
+        ("duration", "Duration"),
+        ("kind", "Kind"),
+    )
+
+    def __init__(
+        self,
+        parent,
+        headers: List[str],
+        preview_rows: List[Dict[str, Any]],
+        *,
+        default_mapping: Dict[str, str] | None = None,
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Import Timetable CSV")
+        self._headers = [str(h) for h in headers]
+        self._preview_rows = list(preview_rows)
+        self._default_mapping = dict(default_mapping or {})
+        self._field_combos: Dict[str, QComboBox] = {}
+
+        root = QVBoxLayout(self)
+        intro = QLabel(
+            "Map raw timetable columns. The app will create courses, groups, rooms, "
+            "activities, and the imported placement schedule from these fields."
+        )
+        intro.setWordWrap(True)
+        root.addWidget(intro)
+
+        form = QFormLayout()
+        for key, label in list(self.REQUIRED_FIELDS) + list(self.OPTIONAL_FIELDS):
+            combo = QComboBox()
+            if key in dict(self.OPTIONAL_FIELDS):
+                combo.addItem("<skip>", "")
+            for h in self._headers:
+                combo.addItem(str(h), str(h))
+            preferred = str(self._default_mapping.get(str(key), "") or "")
+            if preferred:
+                idx = combo.findData(preferred)
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+            self._field_combos[str(key)] = combo
+            form.addRow(f"{label}:", combo)
+        self.group_separator_edit = QLineEdit("")
+        self.group_separator_edit.setPlaceholderText("Optional, e.g. ; or /")
+        self.group_separator_edit.setMaxLength(4)
+        form.addRow("Split groups by:", self.group_separator_edit)
+        root.addLayout(form)
+
+        self.preview_table = QTableWidget(0, len(self._headers))
+        self.preview_table.setHorizontalHeaderLabels(self._headers)
+        self.preview_table.verticalHeader().setVisible(False)
+        root.addWidget(self.preview_table)
+        self._populate_preview()
+
+        self.validation_label = QLabel("")
+        self.validation_label.setWordWrap(True)
+        root.addWidget(self.validation_label)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+        for combo in self._field_combos.values():
+            combo.currentIndexChanged.connect(self._refresh_validation)
+        self._refresh_validation()
+
+    def _populate_preview(self) -> None:
+        rows = self._preview_rows[:12]
+        self.preview_table.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            for c, h in enumerate(self._headers):
+                self.preview_table.setItem(r, c, QTableWidgetItem(str(row.get(h, ""))))
+        self.preview_table.resizeColumnsToContents()
+
+    def _mapping(self) -> Dict[str, str]:
+        out: Dict[str, str] = {}
+        for key, combo in self._field_combos.items():
+            out[str(key)] = str(combo.currentData() or "")
+        return out
+
+    def _refresh_validation(self) -> None:
+        mapping = self._mapping()
+        missing = [
+            key
+            for key, _label in self.REQUIRED_FIELDS
+            if not str(mapping.get(str(key), "")).strip()
+        ]
+        if missing:
+            self.validation_label.setText(
+                "Missing required mappings: " + ", ".join(missing)
+            )
+            return
+        self.validation_label.setText("Mapping looks valid.")
+
+    def _on_accept(self) -> None:
+        self._refresh_validation()
+        mapping = self._mapping()
+        if any(
+            not str(mapping.get(str(key), "")).strip()
+            for key, _label in self.REQUIRED_FIELDS
+        ):
+            return
+        self.accept()
+
+    def selected_mapping(self) -> Dict[str, str]:
+        return self._mapping()
+
+    def transform_config(self) -> Dict[str, Any]:
+        sep = str(self.group_separator_edit.text() or "").strip()
+        return {"group_separator": sep} if sep else {}
 
 
 class ConflictInspectorDialog(QDialog):
@@ -591,3 +738,234 @@ class ConflictInspectorDialog(QDialog):
 
     def solve_conflicts_requested(self) -> bool:
         return bool(self._solve_conflicts_requested)
+
+
+class BulkEditDialog(QDialog):
+    def __init__(self, parent, *, weeks: List[int], count: int):
+        super().__init__(parent)
+        self.setWindowTitle("Bulk edit selected activities")
+        layout = QFormLayout(self)
+
+        summary = QLabel(f"Selected activities: {int(count)}")
+        layout.addRow(summary)
+
+        self.week_mode_combo = QComboBox()
+        self.week_mode_combo.addItem("Keep current week", "keep")
+        self.week_mode_combo.addItem("Set week", "set")
+        self.week_mode_combo.addItem("Shift week", "shift")
+        layout.addRow("Week action:", self.week_mode_combo)
+
+        self.week_value_combo = QComboBox()
+        for week in weeks:
+            self.week_value_combo.addItem(f"W{int(week)}", int(week))
+        layout.addRow("Target week:", self.week_value_combo)
+
+        self.week_delta_combo = QComboBox()
+        for delta in range(-8, 9):
+            self.week_delta_combo.addItem(f"{delta:+d}", int(delta))
+        delta_idx = self.week_delta_combo.findData(1)
+        if delta_idx >= 0:
+            self.week_delta_combo.setCurrentIndex(delta_idx)
+        layout.addRow("Week shift:", self.week_delta_combo)
+
+        self.note_mode_combo = QComboBox()
+        self.note_mode_combo.addItem("Keep notes", "keep")
+        self.note_mode_combo.addItem("Set note", "set")
+        self.note_mode_combo.addItem("Clear notes", "clear")
+        layout.addRow("Admin note:", self.note_mode_combo)
+
+        self.note_edit = QLineEdit()
+        self.note_edit.setPlaceholderText("Optional note for selected activities")
+        layout.addRow("Note text:", self.note_edit)
+
+        self.time_lock_combo = QComboBox()
+        self.time_lock_combo.addItem("Keep time-lock state", "keep")
+        self.time_lock_combo.addItem("Enable time lock", "enable")
+        self.time_lock_combo.addItem("Disable time lock", "disable")
+        layout.addRow("Time lock:", self.time_lock_combo)
+
+        self.room_lock_combo = QComboBox()
+        self.room_lock_combo.addItem("Keep room-lock state", "keep")
+        self.room_lock_combo.addItem("Enable room lock", "enable")
+        self.room_lock_combo.addItem("Disable room lock", "disable")
+        layout.addRow("Room lock:", self.room_lock_combo)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def get_values(self) -> Dict[str, Any]:
+        return {
+            "week_mode": str(self.week_mode_combo.currentData()),
+            "target_week": self.week_value_combo.currentData(),
+            "week_delta": int(self.week_delta_combo.currentData()),
+            "note_mode": str(self.note_mode_combo.currentData()),
+            "note_text": str(self.note_edit.text()).strip(),
+            "time_lock_mode": str(self.time_lock_combo.currentData()),
+            "room_lock_mode": str(self.room_lock_combo.currentData()),
+        }
+
+
+class SearchResultsDialog(QDialog):
+    def __init__(self, parent, headers: List[str], rows: List[List[Any]]):
+        super().__init__(parent)
+        self._selected_payload: Dict[str, Any] | None = None
+        self.setWindowTitle("Search Results")
+        root = QVBoxLayout(self)
+        root.addWidget(QLabel(f"{len(rows)} result(s)"))
+        self.table = QTableView(self)
+        self.model = SimpleTableModel(headers, rows, self.table)
+        self.table.setModel(self.model)
+        self.table.setSortingEnabled(True)
+        self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+        if headers and headers[-1] == "__payload__":
+            self.table.setColumnHidden(max(0, len(headers) - 1), True)
+        self.table.doubleClicked.connect(self._accept_current)
+        root.addWidget(self.table)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._accept_current)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+    def _accept_current(self) -> None:
+        index = self.table.currentIndex()
+        if not index.isValid():
+            self.reject()
+            return
+        last_col = max(0, self.model.columnCount() - 1)
+        payload = self.model.data(
+            self.model.index(int(index.row()), int(last_col)),
+            Qt.ItemDataRole.UserRole,
+        )
+        if isinstance(payload, dict):
+            self._selected_payload = dict(payload)
+        self.accept()
+
+    def selected_payload(self) -> Dict[str, Any] | None:
+        if self._selected_payload is None:
+            return None
+        return dict(self._selected_payload)
+
+
+class CommandPaletteDialog(QDialog):
+    def __init__(self, parent, commands: List[Dict[str, Any]]):
+        super().__init__(parent)
+        self._commands = list(commands)
+        self._selected_command: Dict[str, Any] | None = None
+        self.setWindowTitle("Command Palette")
+        root = QVBoxLayout(self)
+        self.search_edit = QLineEdit(self)
+        self.search_edit.setPlaceholderText("Type a command...")
+        root.addWidget(self.search_edit)
+        self.list_widget = QListWidget(self)
+        root.addWidget(self.list_widget)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+        self.search_edit.textChanged.connect(self._refresh_list)
+        self.list_widget.itemActivated.connect(self._on_item_activated)
+        self._refresh_list("")
+
+    def _refresh_list(self, text: str) -> None:
+        needle = str(text or "").strip().lower()
+        self.list_widget.clear()
+        for command in self._commands:
+            label = str(command.get("label", ""))
+            keywords = str(command.get("keywords", "")).lower()
+            haystack = f"{label.lower()} {keywords}"
+            if needle and needle not in haystack:
+                continue
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, dict(command))
+            self.list_widget.addItem(item)
+        if self.list_widget.count() > 0:
+            self.list_widget.setCurrentRow(0)
+
+    def _on_item_activated(self, item: QListWidgetItem) -> None:
+        payload = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(payload, dict):
+            self._selected_command = dict(payload)
+        self.accept()
+
+    def selected_command(self) -> Dict[str, Any] | None:
+        if self._selected_command is None:
+            return None
+        return dict(self._selected_command)
+
+
+class ApprovalDialog(QDialog):
+    def __init__(self, parent, *, action: str, actor: str = "", reason_label: str = "Reason"):
+        super().__init__(parent)
+        self.setWindowTitle("Approval Required")
+        layout = QFormLayout(self)
+        layout.addRow(QLabel(f"Approval required for: {str(action)}"))
+        self.actor_edit = QLineEdit(str(actor or ""))
+        self.reason_edit = QLineEdit("")
+        self.reason_edit.setPlaceholderText("Why is this override necessary?")
+        layout.addRow("Actor:", self.actor_edit)
+        layout.addRow(f"{reason_label}:", self.reason_edit)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def values(self) -> Tuple[str, str]:
+        return str(self.actor_edit.text()).strip(), str(self.reason_edit.text()).strip()
+
+
+class BranchMetadataDialog(QDialog):
+    def __init__(self, parent, *, title: str, default_name: str = "", default_description: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle(str(title))
+        layout = QFormLayout(self)
+        self.name_edit = QLineEdit(str(default_name or ""))
+        self.desc_edit = QLineEdit(str(default_description or ""))
+        layout.addRow("Name:", self.name_edit)
+        layout.addRow("Description:", self.desc_edit)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def values(self) -> Tuple[str, str]:
+        return str(self.name_edit.text()).strip(), str(self.desc_edit.text()).strip()
+
+
+class ChangeHistoryDialog(QDialog):
+    def __init__(self, parent, rows: List[Dict[str, Any]]):
+        super().__init__(parent)
+        self.setWindowTitle("Workspace Change History")
+        root = QVBoxLayout(self)
+        root.addWidget(QLabel(f"{len(rows)} recorded change(s)"))
+        headers = ["Time (UTC)", "Actor", "Event", "Details"]
+        table_rows = [
+            [
+                str(row.get("timestamp_utc", "")),
+                str(row.get("user", "")),
+                str(row.get("event", "")),
+                str(row.get("details_summary", "")),
+            ]
+            for row in rows
+        ]
+        self.table = QTableView(self)
+        self.model = SimpleTableModel(headers, table_rows, self.table)
+        self.table.setModel(self.model)
+        self.table.setSortingEnabled(True)
+        root.addWidget(self.table)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        buttons.button(QDialogButtonBox.StandardButton.Close).clicked.connect(self.accept)
+        root.addWidget(buttons)
