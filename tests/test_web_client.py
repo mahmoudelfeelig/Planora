@@ -142,6 +142,6 @@ def test_deployment_scaffold_exists():
 
 
 def test_web_client_uses_root_application_logo():
-    root_logo = (ROOT / "app_icon.png.png").read_bytes()
+    root_logo = (ROOT / "app_icon.png").read_bytes()
     web_logo = (ROOT / "web" / "public" / "app-icon.png").read_bytes()
     assert hashlib.sha256(root_logo).digest() == hashlib.sha256(web_logo).digest()
