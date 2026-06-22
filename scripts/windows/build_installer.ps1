@@ -149,6 +149,16 @@ function Resolve-Iscc {
     return $null
 }
 
+function Resolve-AppIconData {
+    $candidates = @("app_icon.png", "Logo.ico")
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return "$candidate;."
+        }
+    }
+    throw "No application icon asset found. Expected one of: $($candidates -join ', ')"
+}
+
 $pythonCmd = ""
 $pythonPrefixArgs = @()
 
@@ -205,7 +215,7 @@ $pyinstallerArgs = @(
     "--windowed",
     "--onedir",
     "--name", "Scheduler",
-    "--add-data", "app_icon.png;.",
+    "--add-data", (Resolve-AppIconData),
     "--add-data", "README.md;.",
     "--add-data", "LICENSE;.",
     "--collect-binaries", "ortools",

@@ -75,12 +75,14 @@ def test_react_hardening_workflows_are_wired():
     assert "colSpan={span}" in board and "duration > 1" in board
 
 
-def test_quality_and_offsite_backup_gates_are_configured():
+def test_quality_and_local_backup_gates_are_configured():
     package = (ROOT / "web" / "package.json").read_text(encoding="utf-8")
     compose = (ROOT / "deploy" / "docker-compose.prod.yml").read_text(encoding="utf-8")
     retention = (ROOT / "scripts" / "retention_planora.py").read_text(encoding="utf-8")
     assert '"lint": "eslint' in package
-    assert 'profiles: ["offsite-backup"]' in compose
+    assert "planora-backup:" in compose
+    assert "offsite-backup" not in compose
+    assert "rclone" not in compose
     assert "PLANORA_MAX_ACTIVE_JOBS_PER_TENANT" in compose
     assert "'complete', 'done', 'failed', 'cancelled'" in retention
     assert '("sessions", "updated_at", "workspace sessions")' in retention
