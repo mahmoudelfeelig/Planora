@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+import math
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -73,20 +74,55 @@ _RATE_LOCK = threading.Lock()
 _RATE_BUCKETS: dict[str, list[float]] = {}
 
 
+class RateLimitExceeded(PermissionError):
+    def __init__(self, retry_after: int) -> None:
+        super().__init__("Rate limit exceeded. Please retry shortly.")
+        self.retry_after = max(1, int(retry_after))
+
+
+def _rate_limit_identity(handler: BaseHTTPRequestHandler) -> tuple[str, bool]:
+    try:
+        principal = principal_from_headers(handler.headers)
+        return f"user:{principal.tenant_id}:{principal.user_id}", True
+    except Exception:
+        forwarded = str(handler.headers.get("X-Forwarded-For", "") or "").split(",", 1)[0].strip()
+        client = forwarded or str(handler.client_address[0])
+        return f"ip:{client}", False
+
+
 def _check_rate_limit(handler: BaseHTTPRequestHandler) -> None:
     path = urlparse(handler.path).path
-    default_limit = "1200" if path == "/analytics/event" else "600"
-    limit = int(os.environ.get("PLANORA_RATE_LIMIT_PER_MINUTE", default_limit))
+    if path in {"/health", "/ready"}:
+        return
+    identity, authenticated = _rate_limit_identity(handler)
+    sensitive_auth_paths = {
+        "/auth/login", "/auth/register", "/auth/forgot-password",
+        "/auth/reset-password", "/auth/verify-email",
+    }
+    if path in sensitive_auth_paths:
+        category = "auth-sensitive"
+        limit = int(os.environ.get("PLANORA_RATE_LIMIT_AUTH_PER_MINUTE", "20"))
+    elif path in {"/analytics/event", "/events/collect"}:
+        category = "telemetry"
+        limit = int(os.environ.get("PLANORA_RATE_LIMIT_TELEMETRY_PER_MINUTE", "600"))
+    elif authenticated:
+        category = "authenticated"
+        limit = int(os.environ.get("PLANORA_RATE_LIMIT_AUTHENTICATED_PER_MINUTE", "1200"))
+    else:
+        category = "anonymous"
+        limit = int(os.environ.get(
+            "PLANORA_RATE_LIMIT_ANONYMOUS_PER_MINUTE",
+            os.environ.get("PLANORA_RATE_LIMIT_PER_MINUTE", "120"),
+        ))
     if limit <= 0:
         return
-    forwarded = str(handler.headers.get("X-Forwarded-For", "") or "").split(",", 1)[0].strip()
-    client = forwarded or str(handler.client_address[0])
     now = time.monotonic()
     with _RATE_LOCK:
-        bucket_key = f"{client}:{path}"
+        bucket_key = f"{identity}:{category}"
         recent = [stamp for stamp in _RATE_BUCKETS.get(bucket_key, []) if now - stamp < 60.0]
         if len(recent) >= limit:
-            raise PermissionError("Rate limit exceeded.")
+            retry_after = math.ceil(60.0 - (now - recent[0])) if recent else 1
+            raise RateLimitExceeded(retry_after)
         recent.append(now)
         _RATE_BUCKETS[bucket_key] = recent
 
@@ -118,11 +154,19 @@ def _common_headers(handler: BaseHTTPRequestHandler) -> None:
         handler.send_header("X-Request-ID", request_id)
 
 
-def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: Dict[str, Any]) -> None:
+def _json_response(
+    handler: BaseHTTPRequestHandler,
+    status: int,
+    payload: Dict[str, Any],
+    *,
+    headers: Dict[str, str] | None = None,
+) -> None:
     body = json.dumps(payload).encode("utf-8")
     handler.send_response(int(status))
     handler.send_header("Content-Type", "application/json")
     handler.send_header("Content-Length", str(len(body)))
+    for name, value in dict(headers or {}).items():
+        handler.send_header(str(name), str(value))
     _common_headers(handler)
     handler.end_headers()
     handler.wfile.write(body)
@@ -273,6 +317,14 @@ def _project_workspace_payload(principal: Principal, payload: Dict[str, Any]) ->
 
 
 def _error_response(handler: BaseHTTPRequestHandler, exc: Exception) -> None:
+    if isinstance(exc, RateLimitExceeded):
+        _json_response(
+            handler,
+            429,
+            {"error": str(exc), "retry_after": exc.retry_after},
+            headers={"Retry-After": str(exc.retry_after)},
+        )
+        return
     if "Rate limit exceeded" in str(exc):
         status = 429
     elif "Request body exceeds" in str(exc):
@@ -373,6 +425,7 @@ def _openapi_schema() -> Dict[str, Any]:
             "/access/switch-organization": {"post": {"summary": "Switch the current account's active organization"}},
             "/audit": {"get": {"summary": "List tenant-scoped audit events"}},
             "/analytics/event": {"post": {"summary": "Record a consented first-party analytics event"}},
+            "/events/collect": {"post": {"summary": "Record a consented first-party telemetry event"}},
             "/analytics/summary": {"get": {"summary": "Read first-party analytics summary"}},
             "/analytics/export.csv": {"get": {"summary": "Export first-party analytics summary as CSV"}},
             "/system": {"get": {"summary": "Return API and persistence health"}},
@@ -693,7 +746,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
         self._request_id = self.headers.get("X-Request-ID") or secrets.token_hex(8)
         try:
             _check_rate_limit(self)
-            if _segments(self.path) != ["analytics", "event"]:
+            if _segments(self.path) not in (["analytics", "event"], ["events", "collect"]):
                 validate_csrf(self.headers)
             self._do_POST()
         except Exception as exc:
@@ -708,7 +761,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            if parts == ["analytics", "event"]:
+            if parts in (["analytics", "event"], ["events", "collect"]):
                 client_id = str(payload.get("client_id") or "")
                 PERSISTENCE.record_analytics_event(
                     {

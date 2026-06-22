@@ -12,8 +12,48 @@ from pathlib import Path
 
 import pytest
 
+from api import server as api_server
+from services.auth_service import Principal
+
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+class _RateHandler:
+    def __init__(self, path: str = "/auth/config") -> None:
+        self.path = path
+        self.headers: dict[str, str] = {}
+        self.client_address = ("203.0.113.10", 12345)
+
+
+def test_rate_limits_separate_anonymous_and_authenticated_users(monkeypatch):
+    api_server._RATE_BUCKETS.clear()
+    monkeypatch.setenv("PLANORA_RATE_LIMIT_ANONYMOUS_PER_MINUTE", "1")
+    monkeypatch.setenv("PLANORA_RATE_LIMIT_AUTHENTICATED_PER_MINUTE", "2")
+    handler = _RateHandler()
+
+    monkeypatch.setattr(api_server, "principal_from_headers", lambda _headers: (_ for _ in ()).throw(PermissionError()))
+    api_server._check_rate_limit(handler)
+    with pytest.raises(api_server.RateLimitExceeded) as anonymous_error:
+        api_server._check_rate_limit(handler)
+    assert anonymous_error.value.retry_after > 0
+
+    api_server._RATE_BUCKETS.clear()
+    principal = Principal(user_id="email:admin@example.com", role="admin", tenant_id="default")
+    monkeypatch.setattr(api_server, "principal_from_headers", lambda _headers: principal)
+    api_server._check_rate_limit(handler)
+    api_server._check_rate_limit(handler)
+    with pytest.raises(api_server.RateLimitExceeded):
+        api_server._check_rate_limit(handler)
+
+
+def test_health_and_readiness_are_not_rate_limited(monkeypatch):
+    monkeypatch.setenv("PLANORA_RATE_LIMIT_ANONYMOUS_PER_MINUTE", "1")
+    monkeypatch.setattr(api_server, "principal_from_headers", lambda _headers: (_ for _ in ()).throw(PermissionError()))
+    for path in ("/health", "/ready"):
+        handler = _RateHandler(path)
+        for _ in range(5):
+            api_server._check_rate_limit(handler)
 
 
 def _free_port() -> int:

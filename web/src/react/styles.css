@@ -2873,3 +2873,185 @@ button:hover:enabled {
     min-height: auto;
   }
 }
+
+/* Unified application color system */
+:root {
+  --text-main: #172033;
+  --control-bg: #ffffff;
+  --control-hover: #f1f3f8;
+  --control-border: #cfd5df;
+  --nav-hover: #f0edf9;
+  --nav-active: #e7e0f7;
+  --nav-active-text: #512b94;
+  --accent: #6d45b8;
+  --accent-2: #553291;
+  --focus-ring: 0 0 0 3px rgba(109, 69, 184, 0.24);
+}
+
+:root[data-theme="dark"] {
+  --text-main: #f1edf5;
+  --control-bg: #17161d;
+  --control-hover: #22202a;
+  --control-border: #3b3747;
+  --nav-hover: #211a29;
+  --nav-active: #30203a;
+  --nav-active-text: #f2cde3;
+  --accent: #b9407e;
+  --accent-2: #973362;
+  --focus-ring: 0 0 0 3px rgba(211, 78, 144, 0.3);
+}
+
+button,
+:root[data-theme="dark"] button {
+  border-color: var(--accent-2);
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+button:hover:enabled,
+:root[data-theme="dark"] button:hover:enabled {
+  border-color: var(--accent-2);
+  background: var(--accent-2);
+}
+
+.secondary-button,
+:root[data-theme="dark"] .secondary-button,
+.session-pill button,
+:root[data-theme="dark"] .session-pill button {
+  border-color: var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-main);
+}
+
+.secondary-button:hover:enabled,
+:root[data-theme="dark"] .secondary-button:hover:enabled,
+.session-pill button:hover:enabled,
+:root[data-theme="dark"] .session-pill button:hover:enabled {
+  border-color: var(--control-border);
+  background: var(--control-hover);
+}
+
+.top-links button,
+.nav-actions > button,
+:root[data-theme="dark"] .top-links button,
+:root[data-theme="dark"] .nav-actions > button {
+  border-color: transparent;
+  background: transparent !important;
+  color: var(--text-soft);
+}
+
+.top-links button:hover:enabled,
+.nav-actions > button:hover:enabled,
+.top-links button.active,
+.nav-actions > button.active,
+:root[data-theme="dark"] .top-links button:hover:enabled,
+:root[data-theme="dark"] .nav-actions > button:hover:enabled,
+:root[data-theme="dark"] .top-links button.active,
+:root[data-theme="dark"] .nav-actions > button.active {
+  background: var(--nav-hover) !important;
+  color: var(--nav-active-text);
+}
+
+.top-links button.active,
+.nav-actions > button.active,
+:root[data-theme="dark"] .top-links button.active,
+:root[data-theme="dark"] .nav-actions > button.active {
+  background: var(--nav-active) !important;
+}
+
+.theme-toggle.icon-button,
+:root[data-theme="dark"] .theme-toggle.icon-button {
+  border-color: var(--control-border);
+  background: var(--control-bg) !important;
+  color: var(--text-main);
+}
+
+.session-pill {
+  gap: 8px;
+}
+
+.session-pill span,
+:root[data-theme="dark"] .session-pill span {
+  border-color: var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-main);
+  line-height: 1;
+}
+
+.hero-chip,
+.stat-strip span,
+:root[data-theme="dark"] .hero-chip,
+:root[data-theme="dark"] .stat-strip span {
+  border-color: var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-main);
+}
+
+.hero-chip span,
+:root[data-theme="dark"] .hero-chip span {
+  color: var(--muted);
+}
+
+.metric-grid > div,
+:root[data-theme="dark"] .metric-grid > div {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--text-main);
+}
+
+@media (max-width: 980px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .site-nav {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .top-links,
+  .nav-actions {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .top-links {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .nav-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    overflow: visible;
+  }
+
+  .session-pill {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .site-nav {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .page-content {
+    width: calc(100vw - 24px);
+    margin-inline: 12px;
+  }
+
+  .top-links button,
+  .nav-actions > button,
+  .session-pill button {
+    min-height: 40px;
+  }
+}

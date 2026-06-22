@@ -8,6 +8,18 @@ export type ApiClient = {
   post<T = Dict>(path: string, payload?: Dict): Promise<T>;
 };
 
+export class ApiError extends Error {
+  status: number;
+  retryAfter: number | null;
+
+  constructor(message: string, status: number, retryAfter: number | null = null) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
+
 function authHeaders(principal: Principal, token = ""): HeadersInit {
   if (token) {
     return { Authorization: `Bearer ${token}` };
@@ -58,7 +70,12 @@ async function requestJson<T>(
     payload = { error: response.statusText || `HTTP ${response.status}` };
   }
   if (!response.ok || payload.error) {
-    throw new Error(String(payload.error || response.statusText));
+    const retryHeader = Number(response.headers.get("Retry-After"));
+    const retryPayload = Number(payload.retry_after);
+    const retryAfter = Number.isFinite(retryHeader) && retryHeader > 0
+      ? retryHeader
+      : Number.isFinite(retryPayload) && retryPayload > 0 ? retryPayload : null;
+    throw new ApiError(String(payload.error || response.statusText), response.status, retryAfter);
   }
   return payload as T;
 }

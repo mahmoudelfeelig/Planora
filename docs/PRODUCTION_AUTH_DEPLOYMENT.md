@@ -41,6 +41,10 @@ PLANORA_AUTH_AUDIENCE=planora-web
 PLANORA_SESSION_TTL_SECONDS=28800
 PLANORA_MAX_REQUEST_BYTES=20971520
 PLANORA_RATE_LIMIT_PER_MINUTE=120
+PLANORA_RATE_LIMIT_ANONYMOUS_PER_MINUTE=120
+PLANORA_RATE_LIMIT_AUTHENTICATED_PER_MINUTE=1200
+PLANORA_RATE_LIMIT_AUTH_PER_MINUTE=20
+PLANORA_RATE_LIMIT_TELEMETRY_PER_MINUTE=600
 PLANORA_REGISTRATION_ENABLED=1
 PLANORA_EMAIL_VERIFICATION_REQUIRED=1
 PLANORA_DOMAIN=scheduler.example.edu
@@ -70,13 +74,13 @@ The API is not published directly. Caddy terminates HTTPS, strips `/api`, and ap
 Create a one-use bootstrap invite from the deployment host:
 
 ```powershell
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml exec planora-api python scripts/bootstrap_invite.py --database /app/data/planora.sqlite3 --tenant default --group "Initial admins" --role uni_admin --max-uses 1
+docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml exec planora-api python -m scripts.bootstrap_invite --database /app/data/planora.sqlite3 --tenant default --group "Initial admins" --role uni_admin --max-uses 1
 ```
 
 The script prints the invite code once. Register with that code in the UI, confirm the email, then promote that account to global admin if needed:
 
 ```powershell
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml exec planora-api python scripts/bootstrap_access.py --database /app/data/planora.sqlite3 --user "email:admin@example.edu" --tenant "default" --role admin
+docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml exec planora-api python -m scripts.bootstrap_access --database /app/data/planora.sqlite3 --user "email:admin@example.edu" --tenant "default" --role admin
 ```
 
 Then sign in as that user, create the real university groups, create invite codes, and rotate/disable the bootstrap invite.

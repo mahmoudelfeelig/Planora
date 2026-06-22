@@ -215,6 +215,7 @@ marimo/_lsp/
 __marimo__/
 
 # Local presentation drafts
+/notes.txt
 paper/presentation_project_overview.md
 paper/presentation_professor.local.md
 docs/PROJECT_TECHNICAL_EXPLAINER.local.md
@@ -247,7 +248,3 @@ paper/*.lot
 paper/*.nav
 paper/*.snm
 paper/main.pdf
-
-
-# notes
-/notes.txt

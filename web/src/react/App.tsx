@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { createApiClient, DEFAULT_PRINCIPAL } from "./api";
+import { ApiError, createApiClient, DEFAULT_PRINCIPAL } from "./api";
 import { AccountPanel } from "./components/AccountPanel";
 import { AdminPanel } from "./components/AdminPanel";
 import { AccessPanel } from "./components/AccessPanel";
@@ -146,8 +146,12 @@ export function App() {
   const [verificationSuccess, setVerificationSuccess] = useState(false);
   const [redirectSeconds, setRedirectSeconds] = useState(5);
   const [loginInitialMode, setLoginInitialMode] = useState<LoginInitialMode>("login");
+  const bootstrapStarted = useRef(false);
 
-  const api = useMemo(() => createApiClient(API_DEFAULT, principal, token), [principal, token]);
+  const api = useMemo(
+    () => createApiClient(API_DEFAULT, principal, token),
+    [principal.user_id, principal.role, principal.tenant_id, token],
+  );
 
   const trackAnalytics = useCallback((eventName: string, details: Dict = {}) => {
     if (analyticsConsent !== "granted") return;
@@ -163,7 +167,7 @@ export function App() {
       user_role: authenticated ? principal.role : "anonymous",
       details,
     };
-    const target = `${API_DEFAULT.replace(/\/$/, "")}/analytics/event`;
+    const target = `${API_DEFAULT.replace(/\/$/, "")}/events/collect`;
     const body = JSON.stringify(payload);
     if (navigator.sendBeacon) {
       const sent = navigator.sendBeacon(target, new Blob([body], { type: "application/json" }));
@@ -247,14 +251,23 @@ export function App() {
   }, [api]);
 
   useEffect(() => {
+    if (bootstrapStarted.current) return;
+    bootstrapStarted.current = true;
     refreshBootstrap().catch((error: unknown) => {
-      setAuthenticated(false);
-      notify(String(error).includes("Authentication required") ? "Sign in or create an account to continue." : String(error), "info");
-      if (!["/", "/login", "/faq"].includes(window.location.pathname)) {
-        window.history.replaceState(null, "", "/login");
-        setView("login");
+      const authenticationFailure = error instanceof ApiError && [401, 403].includes(error.status);
+      if (authenticationFailure) {
+        setAuthenticated(false);
+        notify("Sign in or create an account to continue.", "info");
+        if (!["/", "/login", "/faq", "/privacy"].includes(window.location.pathname)) {
+          window.history.replaceState(null, "", "/login");
+          setView("login");
+        }
+      } else if (error instanceof ApiError && error.status === 429) {
+        const wait = error.retryAfter ? ` Try again in ${error.retryAfter} seconds.` : " Try again shortly.";
+        notify(`The server is temporarily busy.${wait}`, "error");
+      } else {
+        notify(String(error), "error");
       }
-      api.get<Dict>("/auth/config").then(setAuthConfig).catch(() => undefined);
     });
   }, [refreshBootstrap]);
 
