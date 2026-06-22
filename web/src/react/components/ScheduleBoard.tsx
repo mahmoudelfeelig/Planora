@@ -8,6 +8,7 @@ type Props = {
   targets: Dict[];
   heldActivityId: string;
   selectedActivityId: string;
+  canEdit: boolean;
   onWeekChange(week: number): void;
   onSelectActivity(id: string): void;
   onHold(): void;
@@ -27,6 +28,7 @@ export function ScheduleBoard({
   targets,
   heldActivityId,
   selectedActivityId,
+  canEdit,
   onWeekChange,
   onSelectActivity,
   onHold,
@@ -61,7 +63,9 @@ export function ScheduleBoard({
         <div>
           <h2>Manual Repair Board</h2>
           <p className="section-copy">
-            Select an activity, hold it, then move it to a highlighted target. Green cells are viable. The badge shows the soft-penalty delta for that move.
+            {canEdit
+              ? "Select an activity, hold it, then move it to a highlighted target. Green cells are viable. The badge shows the soft-penalty delta for that move."
+              : "This is a permission-filtered read-only schedule view for your current organization and role."}
           </p>
         </div>
       </div>
@@ -79,7 +83,7 @@ export function ScheduleBoard({
         </label>
         <label>
           Activity
-          <select value={selectedActivityId} onChange={changeActivity}>
+          <select value={selectedActivityId} onChange={changeActivity} disabled={!canEdit}>
             <option value="">Select activity</option>
             {activityOptions.map((option) => (
               <option key={option.id} value={option.id}>
@@ -88,10 +92,10 @@ export function ScheduleBoard({
             ))}
           </select>
         </label>
-        <button type="button" disabled={!selectedActivityId} onClick={onHold}>
+        <button type="button" disabled={!canEdit || !selectedActivityId} onClick={onHold}>
           Hold selected
         </button>
-        <button type="button" disabled={!heldActivityId} onClick={onRelease}>
+        <button type="button" disabled={!canEdit || !heldActivityId} onClick={onRelease}>
           Release hold
         </button>
       </div>
@@ -99,7 +103,9 @@ export function ScheduleBoard({
       <div className="hold-status">
         {heldActivityId
           ? `Holding A${heldActivityId}. Click a green target cell to execute the move.`
-          : "Nothing is currently held. Select an activity and hold it to preview move deltas."}
+          : canEdit
+            ? "Nothing is currently held. Select an activity and hold it to preview move deltas."
+            : "Read-only mode. Ask a university admin for repair permissions if you need to edit this schedule."}
       </div>
 
       <div className="schedule-scroll">
@@ -126,7 +132,7 @@ export function ScheduleBoard({
                     <td
                       key={`${day}-${slot}`}
                       className={target ? `move-target ${target.ok ? "viable" : "blocked"}` : ""}
-                      onClick={() => heldActivityId && target?.ok && onMoveTarget(String(day), slot)}
+                      onClick={() => canEdit && heldActivityId && target?.ok && onMoveTarget(String(day), slot)}
                     >
                       {target ? (
                         <span className={`delta-badge ${Number(target.delta || 0) <= 0 ? "better" : "worse"}`}>

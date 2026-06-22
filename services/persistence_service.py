@@ -14,6 +14,7 @@ from services.password_auth_service import (
     hash_password,
     hash_token,
     new_plain_token,
+    new_verification_code,
     normalize_email,
     should_rehash_password,
     verify_password,
@@ -488,6 +489,86 @@ class PersistenceStore:
                 (time.time(), principal.session_id, principal.user_id),
             )
 
+    def list_auth_sessions(self, principal: Principal) -> Dict[str, Any]:
+        now = time.time()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT session_id, tenant_id, expires_at, revoked_at, created_at, last_seen_at
+                FROM auth_sessions
+                WHERE user_id=?
+                ORDER BY last_seen_at DESC
+                LIMIT 50
+                """,
+                (principal.user_id,),
+            ).fetchall()
+        return {
+            "sessions": [
+                {
+                    "session_id": str(row["session_id"]),
+                    "tenant_id": str(row["tenant_id"]),
+                    "current": str(row["session_id"]) == str(principal.session_id or ""),
+                    "active": row["revoked_at"] is None and float(row["expires_at"]) > now,
+                    "expires_at": float(row["expires_at"]),
+                    "revoked_at": float(row["revoked_at"]) if row["revoked_at"] is not None else None,
+                    "created_at": float(row["created_at"]),
+                    "last_seen_at": float(row["last_seen_at"]),
+                }
+                for row in rows
+            ]
+        }
+
+    def revoke_other_auth_sessions(self, principal: Principal) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE auth_sessions SET revoked_at=?
+                WHERE user_id=? AND session_id<>? AND revoked_at IS NULL
+                """,
+                (time.time(), principal.user_id, principal.session_id or ""),
+            )
+
+    def change_password(self, principal: Principal, *, current_password: str, new_password: str) -> None:
+        if not principal.user_id.startswith("email:"):
+            raise PermissionError("Only email/password accounts can change password.")
+        with self._connect() as conn:
+            row = conn.execute("SELECT password_hash FROM users WHERE user_id=? AND provider='email'", (principal.user_id,)).fetchone()
+            if row is None or not row["password_hash"] or not verify_password(str(row["password_hash"]), current_password):
+                raise PermissionError("Current password is incorrect.")
+            conn.execute(
+                "UPDATE users SET password_hash=?, updated_at=? WHERE user_id=?",
+                (hash_password(new_password), time.time(), principal.user_id),
+            )
+
+    def create_email_verification_for_user(self, principal: Principal, *, verification_ttl_seconds: int = 86400) -> Dict[str, str]:
+        if not principal.user_id.startswith("email:"):
+            raise PermissionError("Only email accounts can request verification.")
+        token = new_plain_token("verify_")
+        code = new_verification_code()
+        now = time.time()
+        with self._connect() as conn:
+            user = conn.execute(
+                "SELECT tenant_id, email, email_verified_at FROM users WHERE user_id=? AND provider='email'",
+                (principal.user_id,),
+            ).fetchone()
+            if user is None:
+                raise PermissionError("Email account was not found.")
+            if user["email_verified_at"] is not None:
+                raise ValueError("Email is already verified.")
+            conn.execute(
+                "UPDATE email_verification_tokens SET consumed_at=? WHERE user_id=? AND consumed_at IS NULL",
+                (now, principal.user_id),
+            )
+            for plain in (token, code):
+                conn.execute(
+                    """
+                    INSERT INTO email_verification_tokens(token_hash, user_id, tenant_id, expires_at, consumed_at, created_at)
+                    VALUES(?, ?, ?, ?, NULL, ?)
+                    """,
+                    (hash_token(plain), principal.user_id, str(user["tenant_id"]), expires_at(verification_ttl_seconds), now),
+                )
+        return {"email": str(user["email"] or principal.user_id.removeprefix("email:")), "verification_token": token, "verification_code": code}
+
     def _invite_by_code_hash(self, conn: sqlite3.Connection, code_hash: str) -> sqlite3.Row:
         row = conn.execute("SELECT * FROM invite_codes WHERE code_hash=?", (code_hash,)).fetchone()
         now = time.time()
@@ -511,6 +592,7 @@ class PersistenceStore:
         normalized_email = normalize_email(email)
         user_id = f"email:{normalized_email}"
         verification_token = new_plain_token("verify_")
+        verification_code = new_verification_code()
         now = time.time()
         with self._connect() as conn:
             invite = self._invite_by_code_hash(conn, hash_token(invite_code)) if invite_code else None
@@ -559,8 +641,15 @@ class PersistenceStore:
                 """,
                 (hash_token(verification_token), user_id, tenant_id, expires_at(verification_ttl_seconds), now),
             )
+            conn.execute(
+                """
+                INSERT INTO email_verification_tokens(token_hash, user_id, tenant_id, expires_at, consumed_at, created_at)
+                VALUES(?, ?, ?, ?, NULL, ?)
+                """,
+                (hash_token(verification_code), user_id, tenant_id, expires_at(verification_ttl_seconds), now),
+            )
         principal = self.resolve_principal(Principal(user_id=user_id, role=role, tenant_id=tenant_id, provider="email"))
-        return {"principal": principal, "verification_token": verification_token}
+        return {"principal": principal, "verification_token": verification_token, "verification_code": verification_code}
 
     def redeem_invite_for_user(self, principal: Principal, invite_code: str) -> Principal:
         invite_hash = hash_token(invite_code)
@@ -674,14 +763,25 @@ class PersistenceStore:
             )
         )
 
-    def verify_email_token(self, token: str) -> Principal:
-        token_hash = hash_token(token)
+    def verify_email_token(self, token: str, *, email: str = "") -> Principal:
+        raw_token = str(token or "").strip()
+        token_hash = hash_token(raw_token)
+        user_id = f"email:{normalize_email(email)}" if email and not raw_token.startswith("verify_") else ""
         now = time.time()
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM email_verification_tokens WHERE token_hash=?", (token_hash,)).fetchone()
+            if user_id:
+                row = conn.execute(
+                    "SELECT * FROM email_verification_tokens WHERE token_hash=? AND user_id=?",
+                    (token_hash, user_id),
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT * FROM email_verification_tokens WHERE token_hash=?", (token_hash,)).fetchone()
             if row is None or row["consumed_at"] is not None or float(row["expires_at"]) <= now:
                 raise PermissionError("Verification token is invalid, expired, or already used.")
-            conn.execute("UPDATE email_verification_tokens SET consumed_at=? WHERE token_hash=?", (now, token_hash))
+            conn.execute(
+                "UPDATE email_verification_tokens SET consumed_at=? WHERE user_id=? AND tenant_id=? AND consumed_at IS NULL",
+                (now, str(row["user_id"]), str(row["tenant_id"])),
+            )
             conn.execute(
                 "UPDATE users SET email_verified_at=?, updated_at=? WHERE user_id=? AND tenant_id=?",
                 (now, now, str(row["user_id"]), str(row["tenant_id"])),
@@ -692,6 +792,65 @@ class PersistenceStore:
             ).fetchone()
         if user is None:
             raise PermissionError("Verification account no longer exists.")
+        return self.resolve_principal(Principal(user_id=str(user["user_id"]), role=str(user["role"]), tenant_id=str(user["tenant_id"]), provider="email"))
+
+    def create_password_reset(self, email: str, *, reset_ttl_seconds: int = 3600) -> Dict[str, Any] | None:
+        normalized_email = normalize_email(email)
+        user_id = f"email:{normalized_email}"
+        reset_token = new_plain_token("reset_")
+        reset_code = new_verification_code()
+        now = time.time()
+        with self._connect() as conn:
+            user = conn.execute(
+                "SELECT user_id, tenant_id FROM users WHERE user_id=? AND provider='email' AND disabled=0",
+                (user_id,),
+            ).fetchone()
+            if user is None:
+                return None
+            conn.execute(
+                "UPDATE password_reset_tokens SET consumed_at=? WHERE user_id=? AND consumed_at IS NULL",
+                (now, user_id),
+            )
+            for plain in (reset_token, reset_code):
+                conn.execute(
+                    """
+                    INSERT INTO password_reset_tokens(token_hash, user_id, tenant_id, expires_at, consumed_at, created_at)
+                    VALUES(?, ?, ?, ?, NULL, ?)
+                    """,
+                    (hash_token(plain), user_id, str(user["tenant_id"]), expires_at(reset_ttl_seconds), now),
+                )
+        return {"reset_token": reset_token, "reset_code": reset_code}
+
+    def reset_password(self, *, token: str, email: str = "", new_password: str) -> Principal:
+        raw_token = str(token or "").strip()
+        token_hash = hash_token(raw_token)
+        user_id = f"email:{normalize_email(email)}" if email and not raw_token.startswith("reset_") else ""
+        now = time.time()
+        with self._connect() as conn:
+            if user_id:
+                row = conn.execute(
+                    "SELECT * FROM password_reset_tokens WHERE token_hash=? AND user_id=?",
+                    (token_hash, user_id),
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT * FROM password_reset_tokens WHERE token_hash=?", (token_hash,)).fetchone()
+            if row is None or row["consumed_at"] is not None or float(row["expires_at"]) <= now:
+                raise PermissionError("Password reset token is invalid, expired, or already used.")
+            password_hash = hash_password(new_password)
+            conn.execute(
+                "UPDATE users SET password_hash=?, updated_at=? WHERE user_id=? AND tenant_id=?",
+                (password_hash, now, str(row["user_id"]), str(row["tenant_id"])),
+            )
+            conn.execute(
+                "UPDATE password_reset_tokens SET consumed_at=? WHERE user_id=? AND tenant_id=? AND consumed_at IS NULL",
+                (now, str(row["user_id"]), str(row["tenant_id"])),
+            )
+            user = conn.execute(
+                "SELECT * FROM users WHERE user_id=? AND tenant_id=?",
+                (str(row["user_id"]), str(row["tenant_id"])),
+            ).fetchone()
+        if user is None:
+            raise PermissionError("Password reset account no longer exists.")
         return self.resolve_principal(Principal(user_id=str(user["user_id"]), role=str(user["role"]), tenant_id=str(user["tenant_id"]), provider="email"))
 
     def authenticate_email_user(self, *, email: str, password: str, require_verified: bool = True) -> Principal:
@@ -1129,19 +1288,42 @@ class PersistenceStore:
                 ),
             )
 
-    def analytics_summary(self, principal: Principal, *, days: int = 30) -> Dict[str, Any]:
+    def analytics_summary(
+        self,
+        principal: Principal,
+        *,
+        days: int = 30,
+        tenant_id: str = "",
+        event_name: str = "",
+        path: str = "",
+    ) -> Dict[str, Any]:
         from services.auth_service import require_permission
 
         require_permission(principal, "audit:read")
         cutoff = time.time() - max(1, int(days)) * 86400
-        tenant_clause = "" if principal.is_global_admin else " AND tenant_id=?"
-        args: tuple[Any, ...] = (cutoff,) if principal.is_global_admin else (cutoff, principal.tenant_id)
+        filters = ["created_at>=?"]
+        args_list: list[Any] = [cutoff]
+        requested_tenant = str(tenant_id or "").strip()
+        if principal.is_global_admin and requested_tenant:
+            filters.append("tenant_id=?")
+            args_list.append(requested_tenant)
+        elif not principal.is_global_admin:
+            filters.append("tenant_id=?")
+            args_list.append(principal.tenant_id)
+        if event_name:
+            filters.append("event_name=?")
+            args_list.append(str(event_name))
+        if path:
+            filters.append("path LIKE ?")
+            args_list.append(f"%{path}%")
+        where = " AND ".join(filters)
+        args: tuple[Any, ...] = tuple(args_list)
         with self._connect() as conn:
             totals = conn.execute(
                 f"""
                 SELECT COUNT(*) AS events, COUNT(DISTINCT client_id_hash) AS visitors
                 FROM analytics_events
-                WHERE created_at>=?{tenant_clause}
+                WHERE {where}
                 """,
                 args,
             ).fetchone()
@@ -1151,7 +1333,7 @@ class PersistenceStore:
                     f"""
                     SELECT path, COUNT(*) AS events, COUNT(DISTINCT client_id_hash) AS visitors
                     FROM analytics_events
-                    WHERE created_at>=?{tenant_clause}
+                    WHERE {where}
                     GROUP BY path
                     ORDER BY events DESC, path
                     LIMIT 10
@@ -1165,7 +1347,7 @@ class PersistenceStore:
                     f"""
                     SELECT event_name, COUNT(*) AS events
                     FROM analytics_events
-                    WHERE created_at>=?{tenant_clause}
+                    WHERE {where}
                     GROUP BY event_name
                     ORDER BY events DESC, event_name
                     LIMIT 10
@@ -1180,7 +1362,7 @@ class PersistenceStore:
                     SELECT date(created_at, 'unixepoch') AS day, COUNT(*) AS events,
                         COUNT(DISTINCT client_id_hash) AS visitors
                     FROM analytics_events
-                    WHERE created_at>=?{tenant_clause}
+                    WHERE {where}
                     GROUP BY day
                     ORDER BY day
                     """,
@@ -1196,13 +1378,34 @@ class PersistenceStore:
             "by_day": by_day,
         }
 
-    def list_audit(self, principal: Principal, *, limit: int = 100) -> List[Dict[str, Any]]:
+    def list_audit(
+        self,
+        principal: Principal,
+        *,
+        limit: int = 100,
+        action: str = "",
+        user_id: str = "",
+        tenant_id: str = "",
+    ) -> List[Dict[str, Any]]:
+        filters: list[str] = []
+        args_list: list[Any] = []
         if principal.is_global_admin:
-            sql = "SELECT * FROM audit_events ORDER BY id DESC LIMIT ?"
-            args: Iterable[Any] = (int(limit),)
+            requested_tenant = str(tenant_id or "").strip()
+            if requested_tenant:
+                filters.append("tenant_id=?")
+                args_list.append(requested_tenant)
         else:
-            sql = "SELECT * FROM audit_events WHERE tenant_id=? ORDER BY id DESC LIMIT ?"
-            args = (principal.tenant_id, int(limit))
+            filters.append("tenant_id=?")
+            args_list.append(principal.tenant_id)
+        if action:
+            filters.append("action LIKE ?")
+            args_list.append(f"%{action}%")
+        if user_id:
+            filters.append("user_id LIKE ?")
+            args_list.append(f"%{user_id}%")
+        where = f" WHERE {' AND '.join(filters)}" if filters else ""
+        sql = f"SELECT * FROM audit_events{where} ORDER BY id DESC LIMIT ?"
+        args: Iterable[Any] = (*args_list, int(limit))
         with self._connect() as conn:
             rows = conn.execute(sql, tuple(args)).fetchall()
         return [

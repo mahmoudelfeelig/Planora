@@ -42,6 +42,12 @@ export function AccessPanel({ principal, snapshot, onChange }: Props) {
             </p>
           </div>
         </div>
+        <div className="metric-grid role-matrix" aria-label="Role permission summary">
+          <div><span>Student</span><strong>View group schedules</strong></div>
+          <div><span>TA / Professor</span><strong>View assigned teaching</strong></div>
+          <div><span>University admin</span><strong>Solve, repair, import</strong></div>
+          <div><span>Global admin</span><strong>All tenants and audit</strong></div>
+        </div>
         <div className="identity-grid access-controls">
           <label>
             New group
@@ -67,6 +73,16 @@ export function AccessPanel({ principal, snapshot, onChange }: Props) {
           </label>
           <button type="button" disabled={!selectedUser} onClick={() => void onChange({ action: "set_role", user_id: selectedUser, role: selectedRole, tenant_id: principal.tenant_id })}>
             Assign role
+          </button>
+          <button type="button" className="danger-button" disabled={!selectedUser || selectedUser === principal.user_id} onClick={() => {
+            if (window.confirm("Disable this account? The user will lose access, but audit history and existing records stay intact.")) {
+              void onChange({ action: "set_disabled", user_id: selectedUser, disabled: true, tenant_id: principal.tenant_id });
+            }
+          }}>
+            Disable account
+          </button>
+          <button type="button" className="secondary-button" disabled={!selectedUser} onClick={() => void onChange({ action: "set_disabled", user_id: selectedUser, disabled: false, tenant_id: principal.tenant_id })}>
+            Re-enable account
           </button>
           <label>
             Planora group
@@ -113,10 +129,13 @@ export function AccessPanel({ principal, snapshot, onChange }: Props) {
       <section className="panel">
         <h2>Directory</h2>
         <div className="table-like access-table">
-          <div className="table-row header"><span>User</span><span>Role</span><span>Tenant</span></div>
+          <div className="table-row header"><span>User</span><span>Role</span><span>Tenant</span><span>Status</span></div>
           {tenantUsers.map((user) => (
             <div className="table-row" key={String(user.user_id)}>
-              <span>{String(user.display_name || user.user_id)}</span><span>{String(user.role)}</span><span>{String(user.tenant_id)}</span>
+              <span>{String(user.display_name || user.user_id)}</span>
+              <span>{String(user.role)}</span>
+              <span>{String(user.tenant_id)}</span>
+              <span>{Number(user.disabled || 0) ? "disabled" : "active"}</span>
             </div>
           ))}
         </div>

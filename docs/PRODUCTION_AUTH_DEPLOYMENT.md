@@ -51,6 +51,9 @@ PLANORA_SMTP_USERNAME=planora@example.edu
 PLANORA_SMTP_PASSWORD=<smtp-password-or-app-password>
 PLANORA_SMTP_FROM=Planora <planora@example.edu>
 PLANORA_SMTP_STARTTLS=1
+PLANORA_RETENTION_DAYS=183
+PLANORA_BACKUP_KEEP_DAYS=183
+PLANORA_BACKUP_KEEP_COUNT=800
 ```
 
 ## Deployment
@@ -80,7 +83,7 @@ Then sign in as that user, create the real university groups, create invite code
 
 ## Backup and restore
 
-The backup container creates an integrity-checked SQLite snapshot every six hours and retains 28 snapshots in `planora-backups`. Copy backups to separate encrypted storage according to institutional retention policy.
+The backup container creates an integrity-checked SQLite snapshot every six hours. The production default keeps snapshots for 183 days with a count cap of 800 files in `planora-backups`. Copy backups to separate encrypted storage according to institutional retention policy.
 
 Test restoration before launch and quarterly afterward:
 

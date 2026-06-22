@@ -1,4 +1,5 @@
 import type { ChangeEvent } from "react";
+import { useMemo, useState } from "react";
 import type { Dict, Instance } from "../types";
 
 type SolverSettings = {
@@ -23,6 +24,8 @@ type Props = {
   onImprove(): void;
   onScore(): void;
   onStartImproveJob(): void;
+  onImportCsv(filename: string, content: string, fieldMap: Dict<string>): Promise<void>;
+  jobStatus: Dict | null;
 };
 
 function statValue(instance: Instance | null, key: keyof Instance): number {
@@ -43,11 +46,24 @@ export function OperationsPanel({
   onImprove,
   onScore,
   onStartImproveJob,
+  onImportCsv,
+  jobStatus,
 }: Props) {
+  const [csvFilename, setCsvFilename] = useState("schedule.csv");
+  const [csvContent, setCsvContent] = useState("");
+  const [fieldMapText, setFieldMapText] = useState("week=week, day=day, slot=slot, course=course, group=group, room=room, kind=kind, lecturer=lecturer, ta=ta");
   const loaded = Boolean(instance);
   const loadPreset = (event: ChangeEvent<HTMLSelectElement>) => {
     if (event.target.value) onLoadPreset(event.target.value);
   };
+  const fieldMap = useMemo(() => {
+    const out: Dict<string> = {};
+    fieldMapText.split(",").forEach((part) => {
+      const [logical, column] = part.split("=").map((value) => value.trim());
+      if (logical && column) out[logical] = column;
+    });
+    return out;
+  }, [fieldMapText]);
 
   return (
     <section className="panel operations-panel">
@@ -83,6 +99,27 @@ export function OperationsPanel({
             <span>Rooms: {statValue(instance, "rooms")}</span>
             <span>Staff: {statValue(instance, "staff")}</span>
           </div>
+          <details className="import-wizard">
+            <summary>Import CSV with mapping</summary>
+            <p className="action-copy">
+              Paste any timetable CSV and map its headers to Planora fields. Required fields are week, day, slot, and course.
+            </p>
+            <label>
+              Filename
+              <input value={csvFilename} onChange={(event) => setCsvFilename(event.target.value)} />
+            </label>
+            <label>
+              Header mapping
+              <input value={fieldMapText} onChange={(event) => setFieldMapText(event.target.value)} />
+            </label>
+            <label>
+              CSV content
+              <textarea rows={8} value={csvContent} onChange={(event) => setCsvContent(event.target.value)} placeholder="week,day,slot,course,group,room&#10;1,MON,1,Algorithms,P1-G1,R101" />
+            </label>
+            <button type="button" disabled={busy || !csvContent.trim()} onClick={() => void onImportCsv(csvFilename, csvContent, fieldMap)}>
+              Import CSV
+            </button>
+          </details>
         </div>
 
         <div className="action-card" id="solve">
@@ -121,6 +158,16 @@ export function OperationsPanel({
               Improve as background job
             </button>
           </div>
+          {jobStatus ? (
+            <div className="job-progress" aria-live="polite">
+              <div>
+                <strong>{String(jobStatus.status || "queued")}</strong>
+                <span>{String(jobStatus.job_id || "")}</span>
+              </div>
+              <progress value={Number(jobStatus.progress || 0)} max={100} />
+              <p>{String(jobStatus.message || jobStatus.error || "Waiting for scheduler updates.")}</p>
+            </div>
+          ) : null}
         </div>
 
         <div className="action-card" id="score">

@@ -91,9 +91,13 @@ def test_persistence_sessions_and_audit_events(tmp_path):
     store.upsert_user(principal)
     store.save_session(session)
     store.audit(principal, action="session.solve", resource_type="session", resource_id="s1")
+    store.audit(principal, action="auth.login", resource_type="user", resource_id=principal.user_id)
     events = store.list_audit(principal)
-    assert events[0]["action"] == "session.solve"
+    assert events[0]["action"] == "auth.login"
     assert events[0]["tenant_id"] == "uni-a"
+    filtered = store.list_audit(principal, action="session", user_id="admin")
+    assert len(filtered) == 1
+    assert filtered[0]["action"] == "session.solve"
 
 
 def test_persistence_records_and_summarizes_first_party_analytics(tmp_path):
@@ -144,6 +148,9 @@ def test_persistence_records_and_summarizes_first_party_analytics(tmp_path):
     global_summary = store.analytics_summary(admin)
     assert global_summary["events"] == 3
     assert global_summary["visitors"] == 2
+    filtered = store.analytics_summary(admin, tenant_id="uni-a", event_name="page_view", path="/workspace")
+    assert filtered["events"] == 1
+    assert filtered["visitors"] == 1
     with pytest.raises(PermissionError):
         store.analytics_summary(student)
 
@@ -158,6 +165,34 @@ def test_auth_sessions_are_revocable(tmp_path):
     store.revoke_auth_session(principal)
     with pytest.raises(PermissionError, match="expired or revoked"):
         store.require_active_session(principal)
+
+
+def test_auth_session_listing_password_change_and_revoke_others(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    registered = store.register_email_user(
+        email="secure@example.edu",
+        password="correct horse battery",
+        display_name="Secure User",
+    )
+    store.verify_email_token(registered["verification_token"])
+    principal = store.authenticate_email_user(email="secure@example.edu", password="correct horse battery")
+    first = Principal(user_id=principal.user_id, role=principal.role, tenant_id=principal.tenant_id, session_id="sid-1")
+    second = Principal(user_id=principal.user_id, role=principal.role, tenant_id=principal.tenant_id, session_id="sid-2")
+    store.create_auth_session(first, "sid-1", ttl_seconds=60)
+    store.create_auth_session(second, "sid-2", ttl_seconds=60)
+    listed = store.list_auth_sessions(first)["sessions"]
+    assert {row["session_id"] for row in listed} == {"sid-1", "sid-2"}
+    assert any(row["current"] for row in listed)
+
+    store.change_password(first, current_password="correct horse battery", new_password="new correct horse battery")
+    with pytest.raises(PermissionError):
+        store.authenticate_email_user(email="secure@example.edu", password="correct horse battery")
+    assert store.authenticate_email_user(email="secure@example.edu", password="new correct horse battery").user_id == first.user_id
+
+    store.revoke_other_auth_sessions(first)
+    store.require_active_session(first)
+    with pytest.raises(PermissionError):
+        store.require_active_session(second)
 
 
 def test_group_roles_are_tenant_scoped_and_database_owned(tmp_path):
@@ -178,6 +213,22 @@ def test_group_roles_are_tenant_scoped_and_database_owned(tmp_path):
         store.apply_access_change(other_admin, {"action": "set_membership", "tenant_id": "uni-a", "group_id": group_id, "user_id": user.user_id})
 
 
+def test_admin_can_disable_and_reenable_account(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    admin = Principal(user_id="admin-a", role="uni_admin", tenant_id="default")
+    user = store.register_email_user(
+        email="delete-me@example.edu",
+        password="correct horse battery",
+        display_name="Delete Me",
+    )["principal"]
+    store.upsert_user(admin)
+    store.apply_access_change(admin, {"action": "set_disabled", "user_id": user.user_id, "disabled": True, "tenant_id": "default"})
+    with pytest.raises(PermissionError, match="disabled"):
+        store.resolve_principal(user)
+    store.apply_access_change(admin, {"action": "set_disabled", "user_id": user.user_id, "disabled": False, "tenant_id": "default"})
+    assert store.resolve_principal(user).user_id == user.user_id
+
+
 def test_invite_registration_verification_and_password_login(tmp_path):
     store = PersistenceStore(tmp_path / "planora.sqlite3")
     admin = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a")
@@ -195,16 +246,41 @@ def test_invite_registration_verification_and_password_login(tmp_path):
         display_name="Student One",
         invite_code="manual-student-code",
     )
+    assert registered["verification_code"].isdigit()
+    assert len(registered["verification_code"]) == 6
     principal = registered["principal"]
     assert principal.user_id == "email:student@example.edu"
     assert principal.role == "student"
     with pytest.raises(PermissionError, match="not verified"):
         store.authenticate_email_user(email="student@example.edu", password="correct horse battery", require_verified=True)
-    verified = store.verify_email_token(registered["verification_token"])
+    verified = store.verify_email_token(registered["verification_code"], email="student@example.edu")
     assert verified.user_id == principal.user_id
     logged_in = store.authenticate_email_user(email="student@example.edu", password="correct horse battery", require_verified=True)
     assert logged_in.user_id == principal.user_id
     assert group_id in logged_in.groups
+
+
+def test_password_reset_code_changes_password(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    registered = store.register_email_user(
+        email="reset-user@example.edu",
+        password="correct horse battery",
+        display_name="Reset User",
+    )
+    store.verify_email_token(registered["verification_token"])
+    reset = store.create_password_reset("reset-user@example.edu")
+    assert reset is not None
+    assert reset["reset_code"].isdigit()
+    principal = store.reset_password(
+        email="reset-user@example.edu",
+        token=reset["reset_code"],
+        new_password="new correct horse battery",
+    )
+    assert principal.user_id == "email:reset-user@example.edu"
+    with pytest.raises(PermissionError):
+        store.authenticate_email_user(email="reset-user@example.edu", password="correct horse battery")
+    logged_in = store.authenticate_email_user(email="reset-user@example.edu", password="new correct horse battery")
+    assert logged_in.user_id == principal.user_id
 
 
 def test_email_account_can_join_group_after_registration(tmp_path):

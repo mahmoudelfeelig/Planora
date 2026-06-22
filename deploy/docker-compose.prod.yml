@@ -26,6 +26,7 @@ services:
       PLANORA_SMTP_PASSWORD: ${PLANORA_SMTP_PASSWORD}
       PLANORA_SMTP_FROM: ${PLANORA_SMTP_FROM}
       PLANORA_SMTP_STARTTLS: ${PLANORA_SMTP_STARTTLS:-1}
+      PLANORA_RETENTION_DAYS: ${PLANORA_RETENTION_DAYS:-183}
     volumes:
       - planora-data:/app/data
     healthcheck:
@@ -67,13 +68,29 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     restart: unless-stopped
-    command: ["python", "scripts/backup_planora.py", "--source", "/app/data/planora.sqlite3", "--destination-dir", "/backups", "--watch-seconds", "21600", "--keep", "28"]
+    command: ["python", "scripts/backup_planora.py", "--source", "/app/data/planora.sqlite3", "--destination-dir", "/backups", "--watch-seconds", "21600", "--keep", "${PLANORA_BACKUP_KEEP_COUNT:-800}", "--keep-days", "${PLANORA_BACKUP_KEEP_DAYS:-183}"]
     depends_on:
       planora-api:
         condition: service_healthy
     volumes:
       - planora-data:/app/data:ro
       - planora-backups:/backups
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  planora-retention:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    command: ["python", "scripts/retention_planora.py", "--database", "/app/data/planora.sqlite3", "--keep-days", "${PLANORA_RETENTION_DAYS:-183}", "--watch-seconds", "86400"]
+    depends_on:
+      planora-api:
+        condition: service_healthy
+    volumes:
+      - planora-data:/app/data
     security_opt:
       - no-new-privileges:true
     cap_drop:

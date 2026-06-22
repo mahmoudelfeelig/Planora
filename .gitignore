@@ -247,3 +247,7 @@ paper/*.lot
 paper/*.nav
 paper/*.snm
 paper/main.pdf
+
+
+# notes
+/notes.txt

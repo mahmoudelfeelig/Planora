@@ -30,10 +30,14 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "ProjectsPanel" in app
     assert "AdminPanel" in app
     assert "LoginPanel" in app
+    assert "privacyContent" in app
+    assert "/privacy" in app
+    assert "/system/email-test" in app
+    assert "/analytics/summary" in app
     assert "ParityPanel" in app
     assert "move-target" in board
     assert "delta-badge" in board
-    assert "Invite code" in login
+    assert "Confirmation code" in login
     assert "Register" in login
     assert "Desktop / Backend / Web Parity" in parity
     assert "/auth/whoami" in app
@@ -67,6 +71,9 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "renderReadableDiagnostics" in result_module
     assert "WORKSPACE_VIEWS" in view_module
     assert "Recalculate score" in (ROOT / "web" / "src" / "react" / "components" / "OperationsPanel.tsx").read_text(encoding="utf-8")
+    assert "Import CSV with mapping" in (ROOT / "web" / "src" / "react" / "components" / "OperationsPanel.tsx").read_text(encoding="utf-8")
+    assert "Repair Workflow" in (ROOT / "web" / "src" / "react" / "components" / "ReviewPanel.tsx").read_text(encoding="utf-8")
+    assert "Role permission summary" in (ROOT / "web" / "src" / "react" / "components" / "AccessPanel.tsx").read_text(encoding="utf-8")
     assert ".workspace > * { min-height: 0; }" in styles
     assert ".main-pane {" in styles
     assert ".schedule-shell {" in styles
@@ -88,7 +95,11 @@ def test_web_client_assets_and_typescript_contract_exist():
 def test_web_has_typescript_build_scaffold():
     package_json = (ROOT / "web" / "package.json").read_text(encoding="utf-8")
     vite_config = (ROOT / "web" / "vite.config.ts").read_text(encoding="utf-8")
+    playwright_config = (ROOT / "web" / "playwright.config.ts").read_text(encoding="utf-8")
+    e2e_spec = (ROOT / "web" / "tests" / "e2e" / "public-flow.spec.ts").read_text(encoding="utf-8")
     assert '"typecheck": "tsc --noEmit"' in package_json
+    assert '"e2e": "playwright test"' in package_json
+    assert '"@playwright/test"' in package_json
     assert '"vite"' in package_json
     assert '"react"' in package_json
     assert '"@vitejs/plugin-react"' in package_json
@@ -98,6 +109,8 @@ def test_web_has_typescript_build_scaffold():
     assert '"src/**/*.tsx"' in tsconfig
     assert '"jsx": "react-jsx"' in tsconfig
     assert "vite/client" in (ROOT / "web" / "src" / "vite-env.d.ts").read_text(encoding="utf-8")
+    assert "Pixel 7" in playwright_config
+    assert "public pages are navigable" in e2e_spec
 
 
 def test_deployment_scaffold_exists():

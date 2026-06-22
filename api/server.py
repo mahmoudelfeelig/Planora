@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import io
 import json
 import os
 import secrets
@@ -37,6 +39,7 @@ from services.auth_service import (
 )
 from services.contracts import ImproveOptions, SolveOptions
 from services.password_auth_service import (
+    build_password_reset_email,
     build_verification_email,
     email_auth_public_config,
     email_verification_required,
@@ -71,18 +74,21 @@ _RATE_BUCKETS: dict[str, list[float]] = {}
 
 
 def _check_rate_limit(handler: BaseHTTPRequestHandler) -> None:
-    limit = int(os.environ.get("PLANORA_RATE_LIMIT_PER_MINUTE", "120"))
+    path = urlparse(handler.path).path
+    default_limit = "1200" if path == "/analytics/event" else "600"
+    limit = int(os.environ.get("PLANORA_RATE_LIMIT_PER_MINUTE", default_limit))
     if limit <= 0:
         return
     forwarded = str(handler.headers.get("X-Forwarded-For", "") or "").split(",", 1)[0].strip()
     client = forwarded or str(handler.client_address[0])
     now = time.monotonic()
     with _RATE_LOCK:
-        recent = [stamp for stamp in _RATE_BUCKETS.get(client, []) if now - stamp < 60.0]
+        bucket_key = f"{client}:{path}"
+        recent = [stamp for stamp in _RATE_BUCKETS.get(bucket_key, []) if now - stamp < 60.0]
         if len(recent) >= limit:
             raise PermissionError("Rate limit exceeded.")
         recent.append(now)
-        _RATE_BUCKETS[client] = recent
+        _RATE_BUCKETS[bucket_key] = recent
 
 
 def _allowed_origin(handler: BaseHTTPRequestHandler) -> str:
@@ -107,6 +113,9 @@ def _common_headers(handler: BaseHTTPRequestHandler) -> None:
     handler.send_header("Referrer-Policy", "same-origin")
     handler.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     handler.send_header("Cache-Control", "no-store")
+    request_id = str(getattr(handler, "_request_id", "") or "")
+    if request_id:
+        handler.send_header("X-Request-ID", request_id)
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: Dict[str, Any]) -> None:
@@ -133,6 +142,23 @@ def _text_response(
     _common_headers(handler)
     handler.end_headers()
     handler.wfile.write(encoded)
+
+
+def _csv_response(handler: BaseHTTPRequestHandler, filename: str, rows: list[Dict[str, Any]]) -> None:
+    output = io.StringIO()
+    fieldnames = sorted({key for row in rows for key in row.keys()}) if rows else ["empty"]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: row.get(key, "") for key in fieldnames})
+    body = output.getvalue().encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/csv; charset=utf-8")
+    handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+    handler.send_header("Content-Length", str(len(body)))
+    _common_headers(handler)
+    handler.end_headers()
+    handler.wfile.write(body)
 
 
 def _parse_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any]:
@@ -303,6 +329,25 @@ def _auth_json_response(
     handler.wfile.write(body)
 
 
+def _session_for_principal(principal: Principal) -> tuple[str, str, int, Principal]:
+    session_id = secrets.token_urlsafe(24)
+    ttl = int(os.environ.get("PLANORA_SESSION_TTL_SECONDS", "28800"))
+    csrf = PERSISTENCE.create_auth_session(principal, session_id, ttl_seconds=ttl)
+    session_principal = Principal(
+        user_id=principal.user_id,
+        role=principal.role,
+        tenant_id=principal.tenant_id,
+        groups=principal.groups,
+        session_id=session_id,
+        provider=principal.provider,
+        staff_id=principal.staff_id,
+        student_group_id=principal.student_group_id,
+        scopes=principal.scopes,
+    )
+    token = create_auth_token(session_principal, ttl_seconds=ttl, session_id=session_id)
+    return token, csrf, ttl, session_principal
+
+
 def _openapi_schema() -> Dict[str, Any]:
     return {
         "openapi": "3.0.3",
@@ -314,6 +359,11 @@ def _openapi_schema() -> Dict[str, Any]:
             "/auth/config": {"get": {"summary": "Read email/password authentication configuration"}},
             "/auth/register": {"post": {"summary": "Register using email, password, and an invite code"}},
             "/auth/verify": {"get": {"summary": "Verify an email confirmation token"}, "post": {"summary": "Verify an email confirmation token"}},
+            "/auth/forgot-password": {"post": {"summary": "Request a password reset email"}},
+            "/auth/reset-password": {"post": {"summary": "Reset password using a link token or emailed code"}},
+            "/auth/change-password": {"post": {"summary": "Change password for the current account"}},
+            "/auth/sessions": {"get": {"summary": "List current account sessions"}, "post": {"summary": "Revoke other account sessions"}},
+            "/auth/resend-verification": {"post": {"summary": "Resend email verification"}},
             "/auth/login": {"post": {"summary": "Sign in with email and password"}},
             "/auth/refresh": {"post": {"summary": "Rotate the authenticated session"}},
             "/auth/logout": {"post": {"summary": "Revoke and clear the authenticated session"}},
@@ -324,7 +374,9 @@ def _openapi_schema() -> Dict[str, Any]:
             "/audit": {"get": {"summary": "List tenant-scoped audit events"}},
             "/analytics/event": {"post": {"summary": "Record a consented first-party analytics event"}},
             "/analytics/summary": {"get": {"summary": "Read first-party analytics summary"}},
+            "/analytics/export.csv": {"get": {"summary": "Export first-party analytics summary as CSV"}},
             "/system": {"get": {"summary": "Return API and persistence health"}},
+            "/system/email-test": {"post": {"summary": "Send a test email to validate SMTP delivery"}},
             "/parity": {"get": {"summary": "Return desktop/backend/web parity manifest"}},
             "/sessions": {"post": {"summary": "Create a backend workspace session"}},
             "/sessions/{session_id}": {"get": {"summary": "Read session workspace"}},
@@ -369,11 +421,13 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             "client": str(self.client_address[0]),
             "method": self.command,
             "path": urlparse(self.path).path,
+            "request_id": str(getattr(self, "_request_id", "")),
             "message": format % args,
         }
         print(json.dumps(record, separators=(",", ":")), file=sys.stderr, flush=True)
 
     def do_GET(self) -> None:  # noqa: N802
+        self._request_id = self.headers.get("X-Request-ID") or secrets.token_hex(8)
         try:
             _check_rate_limit(self)
             self._do_GET()
@@ -387,8 +441,17 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             _json_response(self, 200, {"ok": True})
             return
         if parsed_path == "/ready":
-            PERSISTENCE.schema_info()
-            _json_response(self, 200, {"ok": True, "ready": True})
+            schema = PERSISTENCE.schema_info()
+            PERSISTENCE.record_analytics_event(
+                {
+                    "client_id_hash": "system-ready",
+                    "tenant_id": "system",
+                    "user_role": "system",
+                    "event_name": "ready_check",
+                    "path": "/ready",
+                }
+            )
+            _json_response(self, 200, {"ok": True, "ready": True, "database": schema})
             return
         if parsed_path == "/openapi.json":
             _json_response(self, 200, _openapi_schema())
@@ -401,7 +464,14 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             token = str((query.get("token") or [""])[0])
             principal = PERSISTENCE.verify_email_token(token)
             PERSISTENCE.audit(principal, action="auth.verify_email", resource_type="user", resource_id=principal.user_id)
-            _text_response(self, 200, "Email verified. You can return to Planora and sign in.")
+            auth_token, csrf, ttl, session_principal = _session_for_principal(principal)
+            _redirect_with_session(
+                self,
+                "/login?verified=1",
+                auth_token,
+                csrf,
+                max_age=ttl,
+            )
             return
         if parsed_path == "/presets":
             _authenticated(self, "schedule:read")
@@ -480,13 +550,57 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             _authenticated(self, "schedule:read")
             _json_response(self, 200, parity_manifest())
             return
-        if parts and parts[0] == "audit" and len(parts) == 1:
+        if parsed_path in {"/audit", "/audit.csv"}:
             principal = _authenticated(self, "audit:read")
-            _json_response(self, 200, {"events": PERSISTENCE.list_audit(principal)})
+            query = parse_qs(urlparse(self.path).query)
+            events = PERSISTENCE.list_audit(
+                principal,
+                limit=int((query.get("limit") or ["100"])[0] or 100),
+                action=str((query.get("action") or [""])[0]),
+                user_id=str((query.get("user_id") or [""])[0]),
+                tenant_id=str((query.get("tenant_id") or [""])[0]),
+            )
+            if parsed_path == "/audit.csv":
+                _csv_response(self, "planora-audit.csv", events)
+            else:
+                _json_response(self, 200, {"events": events})
             return
         if parts == ["analytics", "summary"]:
             principal = _authenticated(self, "audit:read")
-            _json_response(self, 200, PERSISTENCE.analytics_summary(principal))
+            query = parse_qs(urlparse(self.path).query)
+            _json_response(
+                self,
+                200,
+                PERSISTENCE.analytics_summary(
+                    principal,
+                    days=int((query.get("days") or ["30"])[0] or 30),
+                    tenant_id=str((query.get("tenant_id") or [""])[0]),
+                    event_name=str((query.get("event_name") or [""])[0]),
+                    path=str((query.get("path") or [""])[0]),
+                ),
+            )
+            return
+        if parts == ["analytics", "export.csv"]:
+            principal = _authenticated(self, "audit:read")
+            query = parse_qs(urlparse(self.path).query)
+            summary = PERSISTENCE.analytics_summary(
+                principal,
+                days=int((query.get("days") or ["30"])[0] or 30),
+                tenant_id=str((query.get("tenant_id") or [""])[0]),
+                event_name=str((query.get("event_name") or [""])[0]),
+                path=str((query.get("path") or [""])[0]),
+            )
+            rows = [
+                {"kind": "total", "name": "events", "events": summary["events"], "visitors": summary["visitors"]},
+                *({"kind": "path", "name": row["path"], "events": row["events"], "visitors": row["visitors"]} for row in summary["top_paths"]),
+                *({"kind": "event", "name": row["event_name"], "events": row["events"], "visitors": ""} for row in summary["top_events"]),
+                *({"kind": "day", "name": row["day"], "events": row["events"], "visitors": row["visitors"]} for row in summary["by_day"]),
+            ]
+            _csv_response(self, "planora-analytics.csv", rows)
+            return
+        if parts == ["auth", "sessions"]:
+            principal = _authenticated(self)
+            _json_response(self, 200, PERSISTENCE.list_auth_sessions(principal))
             return
         if parts == ["access"]:
             principal = _authenticated(self, "access:manage")
@@ -576,6 +690,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:  # noqa: N802
+        self._request_id = self.headers.get("X-Request-ID") or secrets.token_hex(8)
         try:
             _check_rate_limit(self)
             if _segments(self.path) != ["analytics", "event"]:
@@ -625,6 +740,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 )
                 principal = result["principal"]
                 verification_token = str(result["verification_token"])
+                verification_code = str(result["verification_code"])
                 response: Dict[str, Any] = {
                     "ok": True,
                     "principal": principal_payload(principal),
@@ -636,11 +752,13 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                         verification_base_url(_request_base_url(self)),
                         str(payload.get("email", "")),
                         verification_token,
+                        verification_code,
                     )
                     if smtp_configured():
                         send_email(message)
                     else:
                         response["verification_token"] = verification_token
+                        response["verification_code"] = verification_code
                         response["verification_url"] = f"/auth/verify?token={verification_token}"
                 else:
                     PERSISTENCE.verify_email_token(verification_token)
@@ -648,9 +766,88 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 _json_response(self, 200, response)
                 return
             if parts == ["auth", "verify"]:
-                principal = PERSISTENCE.verify_email_token(str(payload.get("token", "")))
+                principal = PERSISTENCE.verify_email_token(
+                    str(payload.get("token") or payload.get("code") or ""),
+                    email=str(payload.get("email") or ""),
+                )
                 PERSISTENCE.audit(principal, action="auth.verify_email", resource_type="user", resource_id=principal.user_id)
-                _json_response(self, 200, {"ok": True, "principal": principal_payload(principal)})
+                auth_token, csrf, ttl, session_principal = _session_for_principal(principal)
+                _auth_json_response(
+                    self,
+                    200,
+                    {"ok": True, "token": auth_token, "csrf_token": csrf, "principal": principal_payload(session_principal)},
+                    token=auth_token,
+                    csrf_token=csrf,
+                    max_age=ttl,
+                )
+                return
+            if parts == ["auth", "forgot-password"]:
+                reset = PERSISTENCE.create_password_reset(str(payload.get("email", "")))
+                response: Dict[str, Any] = {"ok": True}
+                if reset is not None:
+                    message = build_password_reset_email(
+                        verification_base_url(_request_base_url(self)),
+                        str(payload.get("email", "")),
+                        str(reset["reset_token"]),
+                        str(reset["reset_code"]),
+                    )
+                    if smtp_configured():
+                        send_email(message)
+                    else:
+                        response["reset_token"] = reset["reset_token"]
+                        response["reset_code"] = reset["reset_code"]
+                _json_response(self, 200, response)
+                return
+            if parts == ["auth", "reset-password"]:
+                principal = PERSISTENCE.reset_password(
+                    token=str(payload.get("token") or payload.get("code") or ""),
+                    email=str(payload.get("email") or ""),
+                    new_password=str(payload.get("new_password") or payload.get("password") or ""),
+                )
+                PERSISTENCE.audit(principal, action="auth.reset_password", resource_type="user", resource_id=principal.user_id)
+                auth_token, csrf, ttl, session_principal = _session_for_principal(principal)
+                _auth_json_response(
+                    self,
+                    200,
+                    {"ok": True, "token": auth_token, "csrf_token": csrf, "principal": principal_payload(session_principal)},
+                    token=auth_token,
+                    csrf_token=csrf,
+                    max_age=ttl,
+                )
+                return
+            if parts == ["auth", "change-password"]:
+                principal = _authenticated(self)
+                PERSISTENCE.change_password(
+                    principal,
+                    current_password=str(payload.get("current_password") or ""),
+                    new_password=str(payload.get("new_password") or ""),
+                )
+                PERSISTENCE.revoke_other_auth_sessions(principal)
+                PERSISTENCE.audit(principal, action="auth.change_password", resource_type="user", resource_id=principal.user_id)
+                _json_response(self, 200, {"ok": True})
+                return
+            if parts == ["auth", "sessions"]:
+                principal = _authenticated(self)
+                PERSISTENCE.revoke_other_auth_sessions(principal)
+                PERSISTENCE.audit(principal, action="auth.revoke_other_sessions", resource_type="user", resource_id=principal.user_id)
+                _json_response(self, 200, PERSISTENCE.list_auth_sessions(principal))
+                return
+            if parts == ["auth", "resend-verification"]:
+                principal = _authenticated(self)
+                verification = PERSISTENCE.create_email_verification_for_user(principal)
+                message = build_verification_email(
+                    verification_base_url(_request_base_url(self)),
+                    verification["email"],
+                    verification["verification_token"],
+                    verification["verification_code"],
+                )
+                response: Dict[str, Any] = {"ok": True}
+                if smtp_configured():
+                    send_email(message)
+                else:
+                    response.update(verification)
+                PERSISTENCE.audit(principal, action="auth.resend_verification", resource_type="user", resource_id=principal.user_id)
+                _json_response(self, 200, response)
                 return
             if parts == ["auth", "login"]:
                 principal = PERSISTENCE.authenticate_email_user(
@@ -658,10 +855,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                     password=str(payload.get("password", "")),
                     require_verified=email_verification_required(),
                 )
-                session_id = secrets.token_urlsafe(24)
-                ttl = int(os.environ.get("PLANORA_SESSION_TTL_SECONDS", "28800"))
-                csrf = PERSISTENCE.create_auth_session(principal, session_id, ttl_seconds=ttl)
-                token = create_auth_token(principal, ttl_seconds=ttl, session_id=session_id)
+                token, csrf, ttl, session_principal = _session_for_principal(principal)
                 PERSISTENCE.audit(
                     principal,
                     action="auth.login",
@@ -670,7 +864,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                     details={"role": principal.role, "provider": "email"},
                 )
                 _auth_json_response(
-                    self, 200, {"token": token, "csrf_token": csrf, "principal": principal_payload(principal)},
+                    self, 200, {"token": token, "csrf_token": csrf, "principal": principal_payload(session_principal)},
                     token=token, csrf_token=csrf, max_age=ttl,
                 )
                 return
@@ -781,6 +975,24 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 result = PERSISTENCE.apply_access_change(principal, payload)
                 PERSISTENCE.audit(principal, action="access.change", resource_type="tenant", resource_id=str(payload.get("tenant_id") or principal.tenant_id), details={"action": payload.get("action")})
                 _json_response(self, 200, result)
+                return
+            if parts == ["system", "email-test"]:
+                principal = _authenticated(self, "audit:read")
+                to_email = str(payload.get("email") or "").strip()
+                if not to_email:
+                    raise ValueError("Email is required.")
+                message = build_verification_email(
+                    verification_base_url(_request_base_url(self)),
+                    to_email,
+                    "verify_test_link_token",
+                    "000000",
+                )
+                if smtp_configured():
+                    send_email(message)
+                else:
+                    raise RuntimeError("SMTP is not configured.")
+                PERSISTENCE.audit(principal, action="system.email_test", resource_type="email", resource_id=to_email)
+                _json_response(self, 200, {"ok": True})
                 return
             if parts == ["projects"]:
                 principal = _authenticated(self, "projects:write")

@@ -45,6 +45,7 @@ export type WorkspaceState = {
 export type ViewKey =
   | "home"
   | "faq"
+  | "privacy"
   | "login"
   | "account"
   | "workspace"

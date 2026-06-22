@@ -75,6 +75,7 @@ export function AppShell({
               </svg>
             )}
           </button>
+          <button type="button" className={activeView === "privacy" ? "active" : ""} onClick={() => onViewChange("privacy")}>Privacy</button>
           <button type="button" className={activeView === "faq" ? "active" : ""} onClick={() => onViewChange("faq")}>FAQ</button>
           {authenticated ? (
             <>
@@ -103,6 +104,9 @@ export function AppShell({
           onClick={() => onAnalyticsConsentChange(analyticsConsent === "granted" ? "denied" : "granted")}
         >
           Analytics: {analyticsConsent === "granted" ? "On" : "Off"}
+        </button>
+        <button type="button" className="footer-link-button" onClick={() => onViewChange("privacy")}>
+          Privacy
         </button>
         <span>© Mahmoud Elfeel</span>
       </footer>

@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS: SolverSettings = {
 const VIEW_PATHS: Record<ViewKey, string> = {
   home: "/",
   faq: "/faq",
+  privacy: "/privacy",
   login: "/login",
   account: "/account",
   workspace: "/workspace",
@@ -72,6 +73,7 @@ type Toast = {
 
 type ThemeMode = "light" | "dark";
 type AnalyticsConsent = "pending" | "granted" | "denied";
+type LoginInitialMode = "login" | "register" | "verify" | "forgot" | "reset";
 
 function readStoredTheme(): ThemeMode {
   const stored = localStorage.getItem("planora_theme");
@@ -108,9 +110,19 @@ export function App() {
   const [view, setView] = useState<ViewKey>(viewFromLocation);
   const [presets, setPresets] = useState<string[]>([]);
   const [authConfig, setAuthConfig] = useState<Dict>({});
-  const [credentials, setCredentials] = useState({ email: "", password: "", displayName: "", inviteCode: "", verificationCode: "" });
+  const [credentials, setCredentials] = useState({
+    email: "",
+    password: "",
+    newPassword: "",
+    displayName: "",
+    inviteCode: "",
+    verificationCode: "",
+    resetCode: "",
+    resetToken: "",
+  });
   const [accessSnapshot, setAccessSnapshot] = useState<Dict>({});
   const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
+  const [authSessions, setAuthSessions] = useState<Dict[]>([]);
   const [instance, setInstance] = useState<Instance | null>(null);
   const [schedule, setSchedule] = useState<Schedule>({});
   const [sessionId, setSessionId] = useState("");
@@ -121,6 +133,7 @@ export function App() {
   const [parity, setParity] = useState<Dict>({});
   const [system, setSystem] = useState<Dict>({});
   const [analyticsSummary, setAnalyticsSummary] = useState<Dict>({});
+  const [jobStatus, setJobStatus] = useState<Dict | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState("");
   const [heldActivityId, setHeldActivityId] = useState("");
   const [moveTargets, setMoveTargets] = useState<Dict[]>([]);
@@ -130,6 +143,9 @@ export function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [theme, setTheme] = useState<ThemeMode>(readStoredTheme);
   const [analyticsConsent, setAnalyticsConsent] = useState<AnalyticsConsent>(readAnalyticsConsent);
+  const [verificationSuccess, setVerificationSuccess] = useState(false);
+  const [redirectSeconds, setRedirectSeconds] = useState(5);
+  const [loginInitialMode, setLoginInitialMode] = useState<LoginInitialMode>("login");
 
   const api = useMemo(() => createApiClient(API_DEFAULT, principal, token), [principal, token]);
 
@@ -200,12 +216,14 @@ export function App() {
       api.get<Dict>("/parity"),
     ]);
     const organizationPayload = await api.get<{ organizations: OrganizationMembership[] }>("/access/my-organizations");
+    const sessionPayload = await api.get<{ sessions: Dict[] }>("/auth/sessions");
     setPrincipal(whoami);
     setAuthenticated(true);
     setPresets(presetPayload.presets || []);
     setProjects(projectPayload.projects || []);
     setParity(parityPayload);
     setOrganizations(organizationPayload.organizations || []);
+    setAuthSessions(sessionPayload.sessions || []);
     if (whoami.permissions.includes("audit:read")) {
       const requests: [Promise<{ events: Dict[] }>, Promise<Dict>, Promise<Dict>] = [
         api.get<{ events: Dict[] }>("/audit"),
@@ -246,12 +264,51 @@ export function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("verified") === "1") {
+      setVerificationSuccess(true);
+      setRedirectSeconds(5);
+      setLoginInitialMode("login");
+      setView("login");
+      return;
+    }
+    const resetToken = params.get("reset_token");
+    if (resetToken) {
+      setCredentials((current) => ({ ...current, resetToken }));
+      setLoginInitialMode("reset");
+      setView("login");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!verificationSuccess) return undefined;
+    setRedirectSeconds(5);
+    const interval = window.setInterval(() => {
+      setRedirectSeconds((current) => {
+        if (current <= 1) {
+          window.clearInterval(interval);
+          navigate("home");
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [verificationSuccess]);
+
   function navigate(nextView: ViewKey) {
     setView(nextView);
     const path = VIEW_PATHS[nextView] || "/workspace";
     if (window.location.pathname !== path) {
       window.history.pushState(null, "", path);
     }
+  }
+
+  function acceptAuthPayload(payload: { token: string; principal: Principal }) {
+    setToken(payload.token);
+    setPrincipal(payload.principal);
+    setAuthenticated(true);
   }
 
   function signOut() {
@@ -263,6 +320,7 @@ export function App() {
     setSchedule({});
     setSessionId("");
     setOrganizations([]);
+    setAuthSessions([]);
     notify("Signed out", "info");
     window.history.pushState(null, "", "/login");
     setView("login");
@@ -308,9 +366,7 @@ export function App() {
       email: credentials.email,
       password: credentials.password,
     });
-    setToken(payload.token);
-    setPrincipal(payload.principal);
-    setAuthenticated(true);
+    acceptAuthPayload(payload);
     trackAnalytics("login_success", { role: payload.principal.role, tenant_id: payload.principal.tenant_id });
     notify("Signed in", "success");
     navigate("workspace");
@@ -323,12 +379,42 @@ export function App() {
       display_name: credentials.displayName,
     });
     const verificationUrl = payload.verification_url ? ` Dev verification link: ${String(payload.verification_url)}` : "";
-    notify(`Registration created. Check your email to confirm the account.${verificationUrl}`, "success");
+    const verificationCode = payload.verification_code ? ` Dev code: ${String(payload.verification_code)}` : "";
+    notify(`Registration created. Check your email for the confirmation link or code.${verificationUrl}${verificationCode}`, "success");
   }
 
   async function verifyEmail() {
-    await api.post<Dict>("/auth/verify", { token: credentials.verificationCode });
-    notify("Email confirmed. You can sign in now.", "success");
+    const payload = await api.post<{ token: string; principal: Principal }>("/auth/verify", {
+      email: credentials.email,
+      code: credentials.verificationCode,
+      token: credentials.verificationCode,
+    });
+    acceptAuthPayload(payload);
+    setVerificationSuccess(true);
+    setRedirectSeconds(5);
+    window.history.replaceState(null, "", "/login?verified=1");
+    notify("Email confirmed. You are signed in.", "success");
+  }
+
+  async function forgotPassword() {
+    const payload = await api.post<Dict>("/auth/forgot-password", { email: credentials.email });
+    const resetCode = payload.reset_code ? ` Dev code: ${String(payload.reset_code)}` : "";
+    const resetToken = payload.reset_token ? ` Dev token: ${String(payload.reset_token)}` : "";
+    notify(`If that email exists, Planora sent a password reset link and code.${resetCode}${resetToken}`, "success");
+  }
+
+  async function resetPassword() {
+    const payload = await api.post<{ token: string; principal: Principal }>("/auth/reset-password", {
+      email: credentials.email,
+      code: credentials.resetCode,
+      token: credentials.resetToken || credentials.resetCode,
+      new_password: credentials.newPassword,
+    });
+    acceptAuthPayload(payload);
+    setVerificationSuccess(true);
+    setRedirectSeconds(5);
+    window.history.replaceState(null, "", "/login?verified=1");
+    notify("Password reset. You are signed in.", "success");
   }
 
   async function applyAccessChange(change: Dict) {
@@ -356,6 +442,78 @@ export function App() {
     setConflicts([]);
     trackAnalytics("organization_switched", { tenant_id: payload.principal.tenant_id });
     notify(`Switched to ${payload.principal.tenant_id}`, "success");
+  }
+
+  async function changePassword(currentPassword: string, newPassword: string) {
+    await api.post<Dict>("/auth/change-password", {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    notify("Password changed. Other sessions were revoked.", "success");
+    const payload = await api.get<{ sessions: Dict[] }>("/auth/sessions");
+    setAuthSessions(payload.sessions || []);
+  }
+
+  async function revokeOtherSessions() {
+    const payload = await api.post<{ sessions: Dict[] }>("/auth/sessions", {});
+    setAuthSessions(payload.sessions || []);
+    notify("Other sessions revoked.", "success");
+  }
+
+  async function resendVerification() {
+    const payload = await api.post<Dict>("/auth/resend-verification", {});
+    const code = payload.verification_code ? ` Dev code: ${String(payload.verification_code)}` : "";
+    notify(`Verification email sent.${code}`, "success");
+  }
+
+  async function refreshAdmin(filters: Dict = {}) {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (String(value ?? "").trim()) query.set(key, String(value));
+    });
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    const [audit, analyticsPayload] = await Promise.all([
+      api.get<{ events: Dict[] }>(`/audit${suffix}`),
+      api.get<Dict>(`/analytics/summary${suffix}`),
+    ]);
+    setAuditEvents(audit.events || []);
+    setAnalyticsSummary(analyticsPayload);
+    notify("Admin data refreshed", "success");
+  }
+
+  async function sendEmailTest(email: string) {
+    await api.post<Dict>("/system/email-test", { email });
+    notify("Test email sent. Check the destination inbox and spam folder.", "success");
+  }
+
+  async function importCsv(filename: string, content: string, fieldMap: Dict<string>) {
+    setBusy(true);
+    try {
+      const payload = await api.post<Dict>("/import/csv", {
+        filename,
+        content,
+        field_map: fieldMap,
+        lock_imported: false,
+      });
+      setInstance(payload.instance as Instance);
+      setSchedule((payload.schedule || {}) as Schedule);
+      setScore((payload.score || {}) as Dict);
+      const importMeta = (payload.meta || {}) as Dict;
+      const validationErrors = Array.isArray(importMeta.validation_errors) ? importMeta.validation_errors as string[] : [];
+      setConflicts(validationErrors);
+      setSessionId("");
+      setSelectedActivityId("");
+      setHeldActivityId("");
+      setMoveTargets([]);
+      setSelectedWeek(Number((payload.instance as Instance)?.weeks?.[0] || 1));
+      trackAnalytics("csv_imported", { filename, validation_errors: validationErrors.length });
+      notify(`Imported ${filename}`, validationErrors.length ? "info" : "success");
+      navigate("workspace");
+    } catch (error) {
+      notify(String(error), "error");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function solve() {
@@ -439,9 +597,31 @@ export function App() {
         progress_every: settings.progressEvery,
       },
     });
+    setJobStatus(payload);
     trackAnalytics("improve_job_started", { job_id: payload.job_id, iterations: settings.improveIterations });
     notify(`Background improve job ${String(payload.job_id || "")} started`, "success");
   }
+
+  useEffect(() => {
+    const jobId = String(jobStatus?.job_id || "");
+    const status = String(jobStatus?.status || "");
+    if (!jobId || ["done", "failed", "cancelled"].includes(status)) return undefined;
+    const interval = window.setInterval(() => {
+      api.get<Dict>(`/jobs/${encodeURIComponent(jobId)}`).then((payload) => {
+        setJobStatus(payload);
+        if (payload.status === "done") {
+          const result = (payload.result || {}) as Dict;
+          if (result.schedule) setSchedule(result.schedule as Schedule);
+          if (result.global_after || result.after) setScore((result.global_after || result.after) as Dict);
+          notify("Background improve job finished", "success");
+        }
+        if (payload.status === "failed") {
+          notify(String(payload.error || "Background job failed"), "error");
+        }
+      }).catch((error: unknown) => notify(String(error), "error"));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [api, jobStatus?.job_id, jobStatus?.status]);
 
   async function holdSelected() {
     if (!selectedActivityId) return;
@@ -632,7 +812,13 @@ export function App() {
         onLogin={() => login().catch((error: unknown) => notify(String(error), "error"))}
         onRegister={() => register().catch((error: unknown) => notify(String(error), "error"))}
         onVerify={() => verifyEmail().catch((error: unknown) => notify(String(error), "error"))}
+        onForgotPassword={() => forgotPassword().catch((error: unknown) => notify(String(error), "error"))}
+        onResetPassword={() => resetPassword().catch((error: unknown) => notify(String(error), "error"))}
         onCredentialsChange={setCredentials}
+        verificationSuccess={verificationSuccess}
+        redirectSeconds={redirectSeconds}
+        initialMode={loginInitialMode}
+        onRedirectNow={() => navigate("home")}
       />
     </div>
   );
@@ -651,6 +837,30 @@ export function App() {
           ["Can one user join multiple organizations?", "Yes. Use My Groups after login to redeem invite codes for different universities, then switch the active organization from the account page."],
           ["Do you use analytics cookies?", "Analytics is optional. Essential cookies support login, CSRF protection, and consent. First-party analytics cookies are only set if you opt in."],
           ["Where is the data stored?", "The production Docker deployment stores SQLite data in the planora-data volume.."],
+        ].map(([question, answer]) => (
+          <article className="faq-card" key={question}>
+            <h2>{question}</h2>
+            <p>{answer}</p>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+
+  const privacyContent = (
+    <div className="faq-page">
+      <section className="panel faq-hero">
+        <h1>Privacy</h1>
+        <p>Planora keeps operational scheduling data tenant-scoped and uses only essential cookies unless analytics is explicitly enabled.</p>
+      </section>
+      <section className="faq-grid">
+        {[
+          ["Essential cookies", "Login sessions, CSRF protection, and cookie consent are required for the app to work securely."],
+          ["Analytics cookies", "Optional first-party analytics records page views and product events with a pseudonymous client ID. You can opt out from the footer at any time."],
+          ["University separation", "Each organization has its own tenant scope. Students, TAs, professors, and university admins only see data permitted by their role and active organization."],
+          ["Admin visibility", "Global admins can review audit events, analytics totals, and operational health across tenants for support and abuse prevention."],
+          ["Data exports", "Admins can export audit and analytics CSVs from the Admin page. Schedule CSV imports and exports stay inside the authenticated organization workflow."],
+          ["Email", "Planora sends verification, password reset, and deliverability-test emails through the configured SMTP provider."],
         ].map(([question, answer]) => (
           <article className="faq-card" key={question}>
             <h2>{question}</h2>
@@ -699,6 +909,7 @@ export function App() {
         targets={moveTargets}
         heldActivityId={heldActivityId}
         selectedActivityId={selectedActivityId}
+        canEdit={principal.permissions.includes("schedule:write") || principal.permissions.includes("solver:run")}
         onWeekChange={setSelectedWeek}
         onSelectActivity={setSelectedActivityId}
         onHold={() => holdSelected().catch((error: unknown) => notify(String(error), "error"))}
@@ -715,13 +926,18 @@ export function App() {
   const content = {
     home: homeContent,
     faq: faqContent,
+    privacy: privacyContent,
     login: loginContent,
     account: (
       <AccountPanel
         principal={principal}
         organizations={organizations}
+        sessions={authSessions}
         onJoinInvite={joinInvite}
         onSwitchOrganization={switchOrganization}
+        onChangePassword={changePassword}
+        onRevokeOtherSessions={revokeOtherSessions}
+        onResendVerification={resendVerification}
       />
     ),
     workspace: workspaceContent,
@@ -747,6 +963,8 @@ export function App() {
             onImprove={improve}
             onScore={scoreCurrent}
             onStartImproveJob={() => startImproveJob().catch((error: unknown) => notify(String(error), "error"))}
+            onImportCsv={importCsv}
+            jobStatus={jobStatus}
           />
           <RunSummary score={score} conflicts={conflicts} />
         </div>
@@ -768,7 +986,17 @@ export function App() {
     projects: <ProjectsPanel projects={projects} onRefresh={() => refreshBootstrap().catch((error: unknown) => notify(String(error), "error"))} />,
     parity: <ParityPanel manifest={parity} />,
     access: <AccessPanel principal={principal} snapshot={accessSnapshot} onChange={applyAccessChange} />,
-    admin: <AdminPanel principal={principal} auditEvents={auditEvents} system={system} analytics={analyticsSummary} />,
+    admin: (
+      <AdminPanel
+        principal={principal}
+        auditEvents={auditEvents}
+        system={system}
+        analytics={analyticsSummary}
+        onRefresh={refreshAdmin}
+        onEmailTest={sendEmailTest}
+        apiBaseUrl={api.baseUrl.replace(/\/$/, "")}
+      />
+    ),
   } as Record<ViewKey, ReactNode>;
 
   return (
