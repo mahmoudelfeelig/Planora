@@ -13,6 +13,7 @@ fi
 
 # Compile only project sources (avoid traversing virtualenv and caches).
 "${PYTHON_BIN}" -m compileall -q api core product services ui utils tests main.py scripts
+"${PYTHON_BIN}" -m ruff check api core product services ui utils tests main.py scripts
 
 # Phase 1: quick feedback tests.
 timeout 20m "${PYTHON_BIN}" -m pytest -q -m "not slow"

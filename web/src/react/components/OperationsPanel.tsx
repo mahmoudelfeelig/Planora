@@ -26,6 +26,7 @@ type Props = {
   onStartImproveJob(): void;
   onImportCsv(filename: string, content: string, fieldMap: Dict<string>): Promise<void>;
   jobStatus: Dict | null;
+  scheduleActivities: number;
 };
 
 function statValue(instance: Instance | null, key: keyof Instance): number {
@@ -34,6 +35,18 @@ function statValue(instance: Instance | null, key: keyof Instance): number {
   if (Array.isArray(value)) return value.length;
   if (typeof value === "object" && value) return Object.keys(value).length;
   return 0;
+}
+
+function jobPercent(job: Dict): number {
+  const progress = (job.progress && typeof job.progress === "object" ? job.progress : {}) as Dict;
+  const direct = Number(progress.percent ?? progress.percentage);
+  if (Number.isFinite(direct)) return Math.max(0, Math.min(100, direct));
+  const current = Number(progress.iteration ?? progress.current ?? 0);
+  const total = Number(progress.iterations ?? progress.total ?? 0);
+  if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
+    return Math.max(0, Math.min(100, (current / total) * 100));
+  }
+  return ["complete", "done"].includes(String(job.status || "")) ? 100 : 0;
 }
 
 export function OperationsPanel({
@@ -48,6 +61,7 @@ export function OperationsPanel({
   onStartImproveJob,
   onImportCsv,
   jobStatus,
+  scheduleActivities,
 }: Props) {
   const [csvFilename, setCsvFilename] = useState("schedule.csv");
   const [csvContent, setCsvContent] = useState("");
@@ -151,10 +165,10 @@ export function OperationsPanel({
             <strong>Improve as background job</strong> starts the same search on the server and lets you keep navigating while it runs.
           </p>
           <div className="button-pair">
-            <button type="button" disabled={!loaded || busy} onClick={onImprove}>
+            <button type="button" disabled={!loaded || !scheduleActivities || busy} onClick={onImprove}>
               Improve now
             </button>
-            <button type="button" disabled={!loaded || busy} onClick={onStartImproveJob}>
+            <button type="button" disabled={!loaded || !scheduleActivities || busy} onClick={onStartImproveJob}>
               Improve as background job
             </button>
           </div>
@@ -164,8 +178,8 @@ export function OperationsPanel({
                 <strong>{String(jobStatus.status || "queued")}</strong>
                 <span>{String(jobStatus.job_id || "")}</span>
               </div>
-              <progress value={Number(jobStatus.progress || 0)} max={100} />
-              <p>{String(jobStatus.message || jobStatus.error || "Waiting for scheduler updates.")}</p>
+              <progress value={jobPercent(jobStatus)} max={100} />
+              <p>{String(((jobStatus.progress || {}) as Dict).message || jobStatus.message || jobStatus.error || "Waiting for scheduler updates.")}</p>
             </div>
           ) : null}
         </div>

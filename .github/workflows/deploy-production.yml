@@ -1,0 +1,41 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.PLANORA_DEPLOY_HOST }}
+          username: ${{ secrets.PLANORA_DEPLOY_USER }}
+          key: ${{ secrets.PLANORA_DEPLOY_SSH_KEY }}
+          port: ${{ secrets.PLANORA_DEPLOY_PORT || 22 }}
+          script_stop: true
+          script: |
+            export PLANORA_APP_DIR="${PLANORA_APP_DIR:-/opt/planora}"
+            export PLANORA_DEPLOY_BRANCH="${PLANORA_DEPLOY_BRANCH:-main}"
+            export PLANORA_HEALTH_URL="${PLANORA_HEALTH_URL:-https://planora.elfeel.me/api/ready}"
+            if [ ! -f "$PLANORA_APP_DIR/scripts/deploy_prod.sh" ]; then
+              cd "$PLANORA_APP_DIR"
+              git fetch --prune origin "$PLANORA_DEPLOY_BRANCH"
+              git checkout -B "$PLANORA_DEPLOY_BRANCH" "origin/$PLANORA_DEPLOY_BRANCH"
+            fi
+            bash "$PLANORA_APP_DIR/scripts/deploy_prod.sh"

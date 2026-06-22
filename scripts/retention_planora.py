@@ -10,6 +10,7 @@ RETENTION_TABLES: tuple[tuple[str, str, str], ...] = (
     ("audit_events", "created_at", "audit events"),
     ("analytics_events", "created_at", "analytics events"),
     ("projects", "updated_at", "old projects"),
+    ("sessions", "updated_at", "workspace sessions"),
 )
 
 
@@ -39,7 +40,7 @@ def cleanup_database(database: Path, *, keep_days: int = 183, dry_run: bool = Fa
                 conn.execute(f"DELETE FROM {table} WHERE {column} < ?", (cutoff,))
 
         if _table_exists(conn, "jobs"):
-            predicate = "updated_at < ? AND status IN ('done', 'failed', 'cancelled')"
+            predicate = "updated_at < ? AND status IN ('complete', 'done', 'failed', 'cancelled')"
             count = _count_where(conn, "jobs", predicate, (cutoff,))
             deleted["finished jobs"] = count
             if count and not dry_run:

@@ -48,6 +48,8 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "/system" in app
     assert "/parity" in app
     assert "/jobs/improve" in app
+    assert "hard_constraints:" in app
+    assert "force_repeat_weekly_pattern: settings.forceRepeatWeeklyPattern" in app
     assert "VITE_PLANORA_API_URL" in app
     assert 'fetchJson("/sessions"' in typescript
     assert 'fetchJson("/jobs/solve"' in typescript

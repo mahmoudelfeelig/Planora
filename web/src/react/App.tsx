@@ -12,6 +12,7 @@ import { ProjectsPanel } from "./components/ProjectsPanel";
 import { ReviewPanel } from "./components/ReviewPanel";
 import { ScheduleBoard } from "./components/ScheduleBoard";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { InsightsPanel } from "./components/InsightsPanel";
 import type { Dict, Instance, OrganizationMembership, Principal, Schedule, ViewKey } from "./types";
 
 const API_DEFAULT = import.meta.env.VITE_PLANORA_API_URL || "http://127.0.0.1:8787";
@@ -132,6 +133,7 @@ export function App() {
   const [auditEvents, setAuditEvents] = useState<Dict[]>([]);
   const [parity, setParity] = useState<Dict>({});
   const [system, setSystem] = useState<Dict>({});
+  const [systemStatus, setSystemStatus] = useState<Dict>({});
   const [analyticsSummary, setAnalyticsSummary] = useState<Dict>({});
   const [jobStatus, setJobStatus] = useState<Dict | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState("");
@@ -150,7 +152,7 @@ export function App() {
 
   const api = useMemo(
     () => createApiClient(API_DEFAULT, principal, token),
-    [principal.user_id, principal.role, principal.tenant_id, token],
+    [principal, token],
   );
 
   const trackAnalytics = useCallback((eventName: string, details: Dict = {}) => {
@@ -169,18 +171,21 @@ export function App() {
     };
     const target = `${API_DEFAULT.replace(/\/$/, "")}/events/collect`;
     const body = JSON.stringify(payload);
-    if (navigator.sendBeacon) {
+    if (!authenticated && navigator.sendBeacon) {
       const sent = navigator.sendBeacon(target, new Blob([body], { type: "application/json" }));
       if (sent) return;
     }
     fetch(target, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body,
       keepalive: true,
       credentials: "include",
     }).catch(() => undefined);
-  }, [analyticsConsent, authenticated, principal.role, principal.tenant_id, view]);
+  }, [analyticsConsent, authenticated, principal.role, principal.tenant_id, token, view]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -210,17 +215,19 @@ export function App() {
     }, 5200);
   }
 
-  const refreshBootstrap = useCallback(async () => {
-    const authPayload = await api.get<Dict>("/auth/config");
+  const refreshBootstrap = useCallback(async (client = api) => {
+    const authPayload = await client.get<Dict>("/auth/config");
     setAuthConfig(authPayload);
-    const whoami = await api.get<Principal>("/auth/whoami");
+    const whoami = await client.get<Principal>("/auth/whoami");
     const [presetPayload, projectPayload, parityPayload] = await Promise.all([
-      api.get<{ presets: string[] }>("/presets"),
-      api.get<{ projects: Dict[] }>("/projects"),
-      api.get<Dict>("/parity"),
+      client.get<{ presets: string[] }>("/presets"),
+      client.get<{ projects: Dict[] }>("/projects"),
+      client.get<Dict>("/parity"),
     ]);
-    const organizationPayload = await api.get<{ organizations: OrganizationMembership[] }>("/access/my-organizations");
-    const sessionPayload = await api.get<{ sessions: Dict[] }>("/auth/sessions");
+    const [organizationPayload, sessionPayload] = await Promise.all([
+      client.get<{ organizations: OrganizationMembership[] }>("/access/my-organizations"),
+      client.get<{ sessions: Dict[] }>("/auth/sessions"),
+    ]);
     setPrincipal(whoami);
     setAuthenticated(true);
     setPresets(presetPayload.presets || []);
@@ -229,22 +236,25 @@ export function App() {
     setOrganizations(organizationPayload.organizations || []);
     setAuthSessions(sessionPayload.sessions || []);
     if (whoami.permissions.includes("audit:read")) {
-      const requests: [Promise<{ events: Dict[] }>, Promise<Dict>, Promise<Dict>] = [
-        api.get<{ events: Dict[] }>("/audit"),
-        api.get<Dict>("/system"),
-        api.get<Dict>("/analytics/summary"),
+      const requests: [Promise<{ events: Dict[] }>, Promise<Dict>, Promise<Dict>, Promise<Dict>] = [
+        client.get<{ events: Dict[] }>("/audit"),
+        client.get<Dict>("/system"),
+        client.get<Dict>("/system/status"),
+        client.get<Dict>("/analytics/summary"),
       ];
-      const [audit, systemPayload, analyticsPayload] = await Promise.all(requests);
+      const [audit, systemPayload, statusPayload, analyticsPayload] = await Promise.all(requests);
       setAuditEvents(audit.events || []);
       setSystem(systemPayload);
+      setSystemStatus(statusPayload);
       setAnalyticsSummary(analyticsPayload);
     } else {
       setAuditEvents([]);
       setSystem({});
+      setSystemStatus({});
       setAnalyticsSummary({});
     }
     if (whoami.permissions.includes("access:manage")) {
-      setAccessSnapshot(await api.get<Dict>("/access"));
+      setAccessSnapshot(await client.get<Dict>("/access"));
     } else {
       setAccessSnapshot({});
     }
@@ -257,8 +267,9 @@ export function App() {
       const authenticationFailure = error instanceof ApiError && [401, 403].includes(error.status);
       if (authenticationFailure) {
         setAuthenticated(false);
-        notify("Sign in or create an account to continue.", "info");
-        if (!["/", "/login", "/faq", "/privacy"].includes(window.location.pathname)) {
+        const publicPath = ["/", "/login", "/faq", "/privacy"].includes(window.location.pathname);
+        if (!publicPath) {
+          notify("Sign in or create an account to continue.", "info");
           window.history.replaceState(null, "", "/login");
           setView("login");
         }
@@ -322,10 +333,17 @@ export function App() {
     setToken(payload.token);
     setPrincipal(payload.principal);
     setAuthenticated(true);
+    return createApiClient(API_DEFAULT, payload.principal, payload.token);
   }
 
-  function signOut() {
+  async function signOut() {
     trackAnalytics("logout");
+    try {
+      await api.post<Dict>("/auth/logout", {});
+    } catch (error) {
+      notify(`Could not securely sign out: ${String(error)}`, "error");
+      return;
+    }
     setToken("");
     setAuthenticated(false);
     setPrincipal(DEFAULT_PRINCIPAL);
@@ -379,7 +397,8 @@ export function App() {
       email: credentials.email,
       password: credentials.password,
     });
-    acceptAuthPayload(payload);
+    const authenticatedApi = acceptAuthPayload(payload);
+    await refreshBootstrap(authenticatedApi);
     trackAnalytics("login_success", { role: payload.principal.role, tenant_id: payload.principal.tenant_id });
     notify("Signed in", "success");
     navigate("workspace");
@@ -402,7 +421,8 @@ export function App() {
       code: credentials.verificationCode,
       token: credentials.verificationCode,
     });
-    acceptAuthPayload(payload);
+    const authenticatedApi = acceptAuthPayload(payload);
+    await refreshBootstrap(authenticatedApi);
     setVerificationSuccess(true);
     setRedirectSeconds(5);
     window.history.replaceState(null, "", "/login?verified=1");
@@ -423,7 +443,8 @@ export function App() {
       token: credentials.resetToken || credentials.resetCode,
       new_password: credentials.newPassword,
     });
-    acceptAuthPayload(payload);
+    const authenticatedApi = acceptAuthPayload(payload);
+    await refreshBootstrap(authenticatedApi);
     setVerificationSuccess(true);
     setRedirectSeconds(5);
     window.history.replaceState(null, "", "/login?verified=1");
@@ -432,22 +453,23 @@ export function App() {
 
   async function applyAccessChange(change: Dict) {
     const next = await api.post<Dict>("/access", change);
+    await refreshBootstrap();
     setAccessSnapshot(next);
     notify("Access settings updated", "success");
   }
 
   async function joinInvite(code: string) {
-    const payload = await api.post<{ principal: Principal; organizations: OrganizationMembership[] }>("/access/join-invite", { invite_code: code });
-    setPrincipal(payload.principal);
-    setOrganizations(payload.organizations || []);
+    const payload = await api.post<{ token: string; principal: Principal; organizations: OrganizationMembership[] }>("/access/join-invite", { invite_code: code });
+    const authenticatedApi = acceptAuthPayload(payload);
+    await refreshBootstrap(authenticatedApi);
     trackAnalytics("invite_joined", { tenant_id: payload.principal.tenant_id, role: payload.principal.role });
     notify("Group joined. Your active organization and permissions have been refreshed.", "success");
   }
 
   async function switchOrganization(tenantId: string) {
-    const payload = await api.post<{ principal: Principal; organizations: OrganizationMembership[] }>("/access/switch-organization", { tenant_id: tenantId });
-    setPrincipal(payload.principal);
-    setOrganizations(payload.organizations || []);
+    const payload = await api.post<{ token: string; principal: Principal; organizations: OrganizationMembership[] }>("/access/switch-organization", { tenant_id: tenantId });
+    const authenticatedApi = acceptAuthPayload(payload);
+    await refreshBootstrap(authenticatedApi);
     setInstance(null);
     setSchedule({});
     setSessionId("");
@@ -473,25 +495,65 @@ export function App() {
     notify("Other sessions revoked.", "success");
   }
 
-  async function resendVerification() {
-    const payload = await api.post<Dict>("/auth/resend-verification", {});
-    const code = payload.verification_code ? ` Dev code: ${String(payload.verification_code)}` : "";
-    notify(`Verification email sent.${code}`, "success");
-  }
-
   async function refreshAdmin(filters: Dict = {}) {
     const query = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
       if (String(value ?? "").trim()) query.set(key, String(value));
     });
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    const [audit, analyticsPayload] = await Promise.all([
+    const [audit, statusPayload, analyticsPayload] = await Promise.all([
       api.get<{ events: Dict[] }>(`/audit${suffix}`),
+      api.get<Dict>("/system/status"),
       api.get<Dict>(`/analytics/summary${suffix}`),
     ]);
     setAuditEvents(audit.events || []);
+    setSystemStatus(statusPayload);
     setAnalyticsSummary(analyticsPayload);
     notify("Admin data refreshed", "success");
+  }
+
+  async function saveCurrentProject(name: string) {
+    if (!instance) throw new Error("Load a scenario before saving a project.");
+    await api.post<Dict>("/projects", { name, instance, schedule, meta: { source: "react-web" } });
+    await refreshBootstrap();
+    notify(`Saved project ${name}`, "success");
+  }
+
+  async function openProject(project: Dict) {
+    const tenant = String(project.tenant_id || principal.tenant_id);
+    const payload = await api.get<Dict>(`/projects/${encodeURIComponent(String(project.name))}?tenant_id=${encodeURIComponent(tenant)}`);
+    setInstance(payload.instance as Instance);
+    setSchedule((payload.schedule || {}) as Schedule);
+    setScore((((payload.meta || {}) as Dict).quality || {}) as Dict);
+    setSessionId("");
+    setSelectedActivityId("");
+    setHeldActivityId("");
+    setMoveTargets([]);
+    setSelectedWeek(Number((payload.instance as Instance)?.weeks?.[0] || 1));
+    notify(`Opened project ${String(project.name)}`, "success");
+    navigate("workspace");
+  }
+
+  async function deleteProject(project: Dict) {
+    const tenant = String(project.tenant_id || principal.tenant_id);
+    await api.delete(`/projects/${encodeURIComponent(String(project.name))}?tenant_id=${encodeURIComponent(tenant)}`);
+    await refreshBootstrap();
+    notify(`Deleted project ${String(project.name)}`, "success");
+  }
+
+  async function renameProject(project: Dict, nextName: string) {
+    const tenant = String(project.tenant_id || principal.tenant_id);
+    const payload = await api.get<Dict>(`/projects/${encodeURIComponent(String(project.name))}?tenant_id=${encodeURIComponent(tenant)}`);
+    await api.post<Dict>("/projects", {
+      name: nextName,
+      tenant_id: tenant,
+      instance: payload.instance,
+      schedule: payload.schedule,
+      meta: payload.meta,
+    });
+    await api.delete(`/projects/${encodeURIComponent(String(project.name))}?tenant_id=${encodeURIComponent(tenant)}`);
+    await refreshBootstrap();
+    notify(`Renamed project to ${nextName}`, "success");
   }
 
   async function sendEmailTest(email: string) {
@@ -513,14 +575,18 @@ export function App() {
       setScore((payload.score || {}) as Dict);
       const importMeta = (payload.meta || {}) as Dict;
       const validationErrors = Array.isArray(importMeta.validation_errors) ? importMeta.validation_errors as string[] : [];
-      setConflicts(validationErrors);
+      const scoredConflicts = Array.isArray((payload.score as Dict | undefined)?.hard_conflicts)
+        ? ((payload.score as Dict).hard_conflicts as string[])
+        : [];
+      const importedConflicts = Array.from(new Set([...validationErrors, ...scoredConflicts].map(String)));
+      setConflicts(importedConflicts);
       setSessionId("");
       setSelectedActivityId("");
       setHeldActivityId("");
       setMoveTargets([]);
       setSelectedWeek(Number((payload.instance as Instance)?.weeks?.[0] || 1));
-      trackAnalytics("csv_imported", { filename, validation_errors: validationErrors.length });
-      notify(`Imported ${filename}`, validationErrors.length ? "info" : "success");
+      trackAnalytics("csv_imported", { filename, validation_errors: validationErrors.length, hard_conflicts: importedConflicts.length });
+      notify(`Imported ${filename}${importedConflicts.length ? ` with ${importedConflicts.length} issue(s)` : ""}`, importedConflicts.length ? "info" : "success");
       navigate("workspace");
     } catch (error) {
       notify(String(error), "error");
@@ -535,6 +601,9 @@ export function App() {
     try {
       const sid = await ensureSession(instance, schedule);
       const payload = await api.post<Dict>(`/sessions/${sid}/solve`, {
+        hard_constraints: {
+          force_repeat_weekly_pattern: settings.forceRepeatWeeklyPattern,
+        },
         options: {
           room_mode: settings.roomMode,
           use_objective: settings.useObjective,
@@ -542,16 +611,19 @@ export function App() {
           objective_profile: settings.profile,
           time_limit_seconds: settings.timeLimitSeconds,
           workers: settings.workers,
-          force_repeat_weekly_pattern: settings.forceRepeatWeeklyPattern,
         },
       });
       const result = payload.result as Dict;
-      setSchedule((result.schedule || {}) as Schedule);
       const hardConflicts = Array.isArray(result.hard_conflicts) ? result.hard_conflicts : [];
       setConflicts(hardConflicts as string[]);
-      setScore(((result.meta as Dict)?.quality || {}) as Dict);
+      const rawStatus = Number(result.raw_status);
+      const feasible = [2, 4].includes(rawStatus) && Boolean(result.schedule) && Object.keys((result.schedule || {}) as Dict).length > 0;
+      if (feasible) {
+        setSchedule(result.schedule as Schedule);
+        setScore(((result.meta as Dict)?.quality || {}) as Dict);
+      }
       trackAnalytics("solve_complete", { status: result.status, hard_conflicts: hardConflicts.length });
-      notify("Solve complete", "success");
+      notify(feasible ? "Solve complete" : `No feasible schedule was produced (status ${String(result.status ?? rawStatus)}). The current timetable was preserved.`, feasible ? "success" : "error");
     } catch (error) {
       notify(String(error), "error");
     } finally {
@@ -589,8 +661,12 @@ export function App() {
         },
       });
       const result = payload.result as Dict;
-      setSchedule((result.schedule || {}) as Schedule);
-      setScore((result.global_after || result.after || {}) as Dict);
+      const nextSchedule = result.schedule as Schedule | undefined;
+      if (!nextSchedule || !Object.keys(nextSchedule).length) {
+        throw new Error("Improve finished without a valid schedule; the current timetable was preserved.");
+      }
+      setSchedule(nextSchedule);
+      setScore((result.global_after || result.after || score) as Dict);
       trackAnalytics("improve_complete", { iterations: settings.improveIterations, seconds: settings.improveSeconds });
       notify("Improve complete", "success");
     } catch (error) {
@@ -618,11 +694,15 @@ export function App() {
   useEffect(() => {
     const jobId = String(jobStatus?.job_id || "");
     const status = String(jobStatus?.status || "");
-    if (!jobId || ["done", "failed", "cancelled"].includes(status)) return undefined;
-    const interval = window.setInterval(() => {
-      api.get<Dict>(`/jobs/${encodeURIComponent(jobId)}`).then((payload) => {
+    if (!jobId || ["complete", "done", "failed", "cancelled"].includes(status)) return undefined;
+    let cancelled = false;
+    let timeout = 0;
+    const poll = async () => {
+      try {
+        const payload = await api.get<Dict>(`/jobs/${encodeURIComponent(jobId)}`);
+        if (cancelled) return;
         setJobStatus(payload);
-        if (payload.status === "done") {
+        if (["complete", "done"].includes(String(payload.status))) {
           const result = (payload.result || {}) as Dict;
           if (result.schedule) setSchedule(result.schedule as Schedule);
           if (result.global_after || result.after) setScore((result.global_after || result.after) as Dict);
@@ -631,9 +711,21 @@ export function App() {
         if (payload.status === "failed") {
           notify(String(payload.error || "Background job failed"), "error");
         }
-      }).catch((error: unknown) => notify(String(error), "error"));
-    }, 1000);
-    return () => window.clearInterval(interval);
+        if (!["complete", "done", "failed", "cancelled"].includes(String(payload.status))) {
+          timeout = window.setTimeout(poll, 1000);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          notify(String(error), "error");
+          timeout = window.setTimeout(poll, 2000);
+        }
+      }
+    };
+    timeout = window.setTimeout(poll, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
   }, [api, jobStatus?.job_id, jobStatus?.status]);
 
   async function holdSelected() {
@@ -819,7 +911,7 @@ export function App() {
   const loginContent = (
     <div className="auth-page">
       <LoginPanel
-        principal={principal}
+        key={loginInitialMode}
         authConfig={authConfig}
         credentials={credentials}
         onLogin={() => login().catch((error: unknown) => notify(String(error), "error"))}
@@ -950,7 +1042,6 @@ export function App() {
         onSwitchOrganization={switchOrganization}
         onChangePassword={changePassword}
         onRevokeOtherSessions={revokeOtherSessions}
-        onResendVerification={resendVerification}
       />
     ),
     workspace: workspaceContent,
@@ -978,25 +1069,26 @@ export function App() {
             onStartImproveJob={() => startImproveJob().catch((error: unknown) => notify(String(error), "error"))}
             onImportCsv={importCsv}
             jobStatus={jobStatus}
+            scheduleActivities={Object.keys(schedule).length}
           />
           <RunSummary score={score} conflicts={conflicts} />
         </div>
       </div>
     ),
     settings: <SettingsPanel settings={settings} onChange={setSettings} />,
-    fairness: (
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <h2>Insights</h2>
-            <p className="section-copy">
-              Use Diagnostics to inspect current penalty drivers. This area is reserved for richer fairness tables and cross-week load summaries.
-            </p>
-          </div>
-        </div>
-      </section>
+    fairness: <InsightsPanel instance={instance} schedule={schedule} />,
+    projects: (
+      <ProjectsPanel
+        projects={projects}
+        canWrite={principal.permissions.includes("projects:write")}
+        canSave={Boolean(instance)}
+        onRefresh={() => refreshBootstrap().catch((error: unknown) => notify(String(error), "error"))}
+        onSave={(name) => saveCurrentProject(name).catch((error: unknown) => notify(String(error), "error"))}
+        onOpen={(project) => openProject(project).catch((error: unknown) => notify(String(error), "error"))}
+        onDelete={(project) => deleteProject(project).catch((error: unknown) => notify(String(error), "error"))}
+        onRename={(project, name) => renameProject(project, name).catch((error: unknown) => notify(String(error), "error"))}
+      />
     ),
-    projects: <ProjectsPanel projects={projects} onRefresh={() => refreshBootstrap().catch((error: unknown) => notify(String(error), "error"))} />,
     parity: <ParityPanel manifest={parity} />,
     access: <AccessPanel principal={principal} snapshot={accessSnapshot} onChange={applyAccessChange} />,
     admin: (
@@ -1004,10 +1096,11 @@ export function App() {
         principal={principal}
         auditEvents={auditEvents}
         system={system}
+        systemStatus={systemStatus}
         analytics={analyticsSummary}
         onRefresh={refreshAdmin}
         onEmailTest={sendEmailTest}
-        apiBaseUrl={api.baseUrl.replace(/\/$/, "")}
+        onDownload={(path, filename) => api.download(path, filename).catch((error: unknown) => notify(String(error), "error"))}
       />
     ),
   } as Record<ViewKey, ReactNode>;

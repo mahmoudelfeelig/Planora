@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { ChangeEvent } from "react";
 import type { Dict, Instance, Schedule } from "../types";
 
@@ -35,6 +36,16 @@ export function ScheduleBoard({
   onRelease,
   onMoveTarget,
 }: Props) {
+  const scheduleIndex = useMemo(() => {
+    const index = new Map<string, Array<[string, Dict]>>();
+    Object.entries(schedule).forEach(([id, row]: [string, Dict]) => {
+      const key = `${Number(row.week)}:${String(row.day)}:${Number(row.slot)}`;
+      const entries = index.get(key) || [];
+      entries.push([id, row]);
+      index.set(key, entries);
+    });
+    return index;
+  }, [schedule]);
   const activityOptions = Object.entries(schedule).map(([id, row]: [string, Dict]) => {
     const course = instance ? entityName(instance.courses, row.course_id, `Course ${row.course_id}`) : `A${id}`;
     return { id, label: `A${id} ${course} W${row.week} ${row.day} S${Number(row.slot) + 1}` };
@@ -56,6 +67,52 @@ export function ScheduleBoard({
     targets.find((target: Dict) => String(target.day) === day && Number(target.slot) === slot);
   const changeWeek = (event: ChangeEvent<HTMLSelectElement>) => onWeekChange(Number(event.target.value));
   const changeActivity = (event: ChangeEvent<HTMLSelectElement>) => onSelectActivity(event.target.value);
+  const durationFor = (id: string, row: Dict) => {
+    const activity = instance.activities[id] || instance.activities[String(Number(id))] || {};
+    return Math.max(1, Number(row.duration ?? activity.duration ?? 1));
+  };
+  const dayCells = (day: string) => {
+    const cells = [];
+    for (let slot = 0; slot < instance.slots_per_day;) {
+      const target = targetFor(day, slot);
+      const events = scheduleIndex.get(`${activeWeek}:${day}:${slot}`) || [];
+      const requestedSpan = events.length === 1 ? durationFor(events[0][0], events[0][1]) : 1;
+      let span = Math.min(requestedSpan, instance.slots_per_day - slot);
+      for (let offset = 1; offset < span; offset += 1) {
+        if (targets.some((row) => String(row.day) === day && Number(row.slot) === slot + offset)
+          || scheduleIndex.has(`${activeWeek}:${day}:${slot + offset}`)) {
+          span = 1;
+          break;
+        }
+      }
+      cells.push(
+        <td
+          key={`${day}-${slot}`}
+          colSpan={span}
+          className={`${target ? `move-target ${target.ok ? "viable" : "blocked"}` : ""} ${span > 1 ? "multi-slot" : ""}`}
+          onClick={() => canEdit && heldActivityId && target?.ok && onMoveTarget(day, slot)}
+        >
+          {target ? (
+            <span className={`delta-badge ${Number(target.delta || 0) <= 0 ? "better" : "worse"}`}>
+              {target.ok ? `${Number(target.delta) >= 0 ? "+" : ""}${target.delta}` : `blocked ${target.hard_conflict_count}`}
+            </span>
+          ) : null}
+          {events.map(([id, row]) => {
+            const duration = durationFor(id, row);
+            return (
+              <div key={id} className={`event ${String(row.kind || "").toLowerCase()} ${String(id) === heldActivityId ? "held" : ""}`}>
+                <strong>{entityName(instance.courses, row.course_id, `Course ${row.course_id}`)}</strong>
+                <span>{String(row.kind || "")} · {entityName(instance.staff, row.staff_id, `Staff ${row.staff_id}`)}</span>
+                <span>{entityName(instance.rooms, row.room_id, `Room ${row.room_id}`)}{duration > 1 ? ` · ${duration} slots` : ""}</span>
+              </div>
+            );
+          })}
+        </td>,
+      );
+      slot += span;
+    }
+    return cells;
+  };
 
   return (
     <section className="panel schedule-panel">
@@ -122,40 +179,7 @@ export function ScheduleBoard({
             {instance.days.map((day) => (
               <tr key={day}>
                 <th>{day}</th>
-                {Array.from({ length: instance.slots_per_day }, (_, slot) => {
-                  const target = targetFor(String(day), slot);
-                  const events = Object.entries(schedule).filter(
-                    ([, row]: [string, Dict]) => Number(row.week) === activeWeek && String(row.day) === day && Number(row.slot) === slot,
-                  );
-
-                  return (
-                    <td
-                      key={`${day}-${slot}`}
-                      className={target ? `move-target ${target.ok ? "viable" : "blocked"}` : ""}
-                      onClick={() => canEdit && heldActivityId && target?.ok && onMoveTarget(String(day), slot)}
-                    >
-                      {target ? (
-                        <span className={`delta-badge ${Number(target.delta || 0) <= 0 ? "better" : "worse"}`}>
-                          {target.ok
-                            ? `${Number(target.delta) >= 0 ? "+" : ""}${target.delta}`
-                            : `blocked ${target.hard_conflict_count}`}
-                        </span>
-                      ) : null}
-                      {events.map(([id, row]: [string, Dict]) => (
-                        <div
-                          key={id}
-                          className={`event ${String(row.kind || "").toLowerCase()} ${String(id) === heldActivityId ? "held" : ""}`}
-                        >
-                          <strong>{entityName(instance.courses, row.course_id, `Course ${row.course_id}`)}</strong>
-                          <span>
-                            {String(row.kind || "")} · {entityName(instance.staff, row.staff_id, `Staff ${row.staff_id}`)}
-                          </span>
-                          <span>{entityName(instance.rooms, row.room_id, `Room ${row.room_id}`)}</span>
-                        </div>
-                      ))}
-                    </td>
-                  );
-                })}
+                {dayCells(String(day))}
               </tr>
             ))}
           </tbody>

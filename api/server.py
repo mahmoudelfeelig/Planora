@@ -7,6 +7,7 @@ import io
 import json
 import os
 import secrets
+import shutil
 import sys
 import tempfile
 import threading
@@ -18,12 +19,14 @@ from urllib.parse import parse_qs, unquote, urlparse
 from typing import Any, Dict, Tuple
 
 from services.application_service import (
+    JobCapacityExceeded,
     JobStore,
     SessionStore,
     list_web_projects,
     load_web_project,
     run_workspace_action,
-    save_web_project,
+    safe_project_name,
+    solve_options_from_payload,
 )
 from services.auth_service import (
     AUTH_COOKIE,
@@ -70,6 +73,7 @@ WEB_PROJECTS_DIR = ROOT_DIR / "data" / "web_projects"
 SESSION_STORE = SessionStore()
 PERSISTENCE = PersistenceStore(default_persistence_path(ROOT_DIR))
 JOB_STORE = JobStore(on_change=PERSISTENCE.save_job)
+STARTED_AT = time.time()
 _RATE_LOCK = threading.Lock()
 _RATE_BUCKETS: dict[str, list[float]] = {}
 
@@ -97,7 +101,8 @@ def _check_rate_limit(handler: BaseHTTPRequestHandler) -> None:
     identity, authenticated = _rate_limit_identity(handler)
     sensitive_auth_paths = {
         "/auth/login", "/auth/register", "/auth/forgot-password",
-        "/auth/reset-password", "/auth/verify-email",
+        "/auth/reset-password", "/auth/verify", "/auth/verify-email",
+        "/auth/resend-verification", "/access/join-invite",
     }
     if path in sensitive_auth_paths:
         category = "auth-sensitive"
@@ -118,6 +123,10 @@ def _check_rate_limit(handler: BaseHTTPRequestHandler) -> None:
         return
     now = time.monotonic()
     with _RATE_LOCK:
+        if len(_RATE_BUCKETS) > 4096:
+            stale_keys = [key for key, stamps in _RATE_BUCKETS.items() if not stamps or now - stamps[-1] >= 60.0]
+            for key in stale_keys:
+                _RATE_BUCKETS.pop(key, None)
         bucket_key = f"{identity}:{category}"
         recent = [stamp for stamp in _RATE_BUCKETS.get(bucket_key, []) if now - stamp < 60.0]
         if len(recent) >= limit:
@@ -143,7 +152,7 @@ def _common_headers(handler: BaseHTTPRequestHandler) -> None:
         if origin != "*":
             handler.send_header("Access-Control-Allow-Credentials", "true")
     handler.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token, X-Planora-User, X-Planora-Role, X-Planora-Tenant")
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
     handler.send_header("X-Content-Type-Options", "nosniff")
     handler.send_header("X-Frame-Options", "DENY")
     handler.send_header("Referrer-Policy", "same-origin")
@@ -207,7 +216,11 @@ def _csv_response(handler: BaseHTTPRequestHandler, filename: str, rows: list[Dic
 
 def _parse_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any]:
     length = int(handler.headers.get("Content-Length", "0") or 0)
-    maximum = int(os.environ.get("PLANORA_MAX_REQUEST_BYTES", str(20 * 1024 * 1024)))
+    path = urlparse(handler.path).path
+    if path in {"/analytics/event", "/events/collect"}:
+        maximum = int(os.environ.get("PLANORA_MAX_ANALYTICS_REQUEST_BYTES", "32768"))
+    else:
+        maximum = int(os.environ.get("PLANORA_MAX_REQUEST_BYTES", str(20 * 1024 * 1024)))
     if length > maximum:
         raise ValueError(f"Request body exceeds the {maximum}-byte limit.")
     body = handler.rfile.read(length) if length > 0 else b"{}"
@@ -240,6 +253,120 @@ def _hash_analytics_client_id(value: str) -> str:
     return hashlib.sha256(f"planora-analytics:{raw}".encode("utf-8")).hexdigest()
 
 
+def _read_text_file(path: str) -> str | None:
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+
+def _read_int_file(path: str) -> int | None:
+    raw = _read_text_file(path)
+    if raw in (None, "", "max"):
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _percent(numerator: int | None, denominator: int | None) -> float | None:
+    if numerator is None or denominator is None or denominator <= 0:
+        return None
+    return round((float(numerator) / float(denominator)) * 100.0, 2)
+
+
+def _host_memory_snapshot() -> Dict[str, Any]:
+    values: Dict[str, int] = {}
+    raw = _read_text_file("/proc/meminfo")
+    if raw:
+        for line in raw.splitlines():
+            if ":" not in line:
+                continue
+            key, rest = line.split(":", 1)
+            number = rest.strip().split()[0] if rest.strip() else ""
+            if number.isdigit():
+                values[key] = int(number) * 1024
+    total = values.get("MemTotal")
+    available = values.get("MemAvailable")
+    used = total - available if total is not None and available is not None else None
+    return {
+        "total_bytes": total,
+        "available_bytes": available,
+        "used_bytes": used,
+        "used_percent": _percent(used, total),
+    }
+
+
+def _container_memory_snapshot() -> Dict[str, Any]:
+    current = _read_int_file("/sys/fs/cgroup/memory.current")
+    limit = _read_int_file("/sys/fs/cgroup/memory.max")
+    if current is None:
+        current = _read_int_file("/sys/fs/cgroup/memory/memory.usage_in_bytes")
+    if limit is None:
+        limit = _read_int_file("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+    if limit is not None and limit > 1 << 60:
+        limit = None
+    return {
+        "used_bytes": current,
+        "limit_bytes": limit,
+        "used_percent": _percent(current, limit),
+    }
+
+
+def _disk_snapshot(path: Path) -> Dict[str, Any]:
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError:
+        usage = shutil.disk_usage(ROOT_DIR)
+    used = int(usage.total - usage.free)
+    return {
+        "path": str(path),
+        "total_bytes": int(usage.total),
+        "used_bytes": used,
+        "free_bytes": int(usage.free),
+        "used_percent": _percent(used, int(usage.total)),
+    }
+
+
+def _system_status_payload() -> Dict[str, Any]:
+    schema = PERSISTENCE.schema_info()
+    db_path = Path(str(schema.get("path") or default_persistence_path(ROOT_DIR)))
+    data_path = db_path.parent if db_path.parent.exists() else ROOT_DIR / "data"
+    try:
+        db_size = db_path.stat().st_size
+    except OSError:
+        db_size = None
+    return {
+        "ok": True,
+        "checked_at": time.time(),
+        "api": {
+            "uptime_seconds": round(time.time() - STARTED_AT, 2),
+            "production": production_mode(),
+            "domain": os.environ.get("PLANORA_DOMAIN", ""),
+            "public_base_url": os.environ.get("PLANORA_PUBLIC_BASE_URL", ""),
+        },
+        "database": {**schema, "size_bytes": db_size},
+        "disk": _disk_snapshot(data_path),
+        "memory": {
+            "container": _container_memory_snapshot(),
+            "host": _host_memory_snapshot(),
+        },
+        "jobs": JOB_STORE.stats(),
+        "limits": {
+            "anonymous_rate_per_minute": int(os.environ.get("PLANORA_RATE_LIMIT_ANONYMOUS_PER_MINUTE", "120")),
+            "authenticated_rate_per_minute": int(os.environ.get("PLANORA_RATE_LIMIT_AUTHENTICATED_PER_MINUTE", "1200")),
+            "auth_rate_per_minute": int(os.environ.get("PLANORA_RATE_LIMIT_AUTH_PER_MINUTE", "20")),
+            "telemetry_rate_per_minute": int(os.environ.get("PLANORA_RATE_LIMIT_TELEMETRY_PER_MINUTE", "600")),
+            "max_request_bytes": int(os.environ.get("PLANORA_MAX_REQUEST_BYTES", str(20 * 1024 * 1024))),
+        },
+        "netdata": {
+            "url": os.environ.get("PLANORA_NETDATA_URL", ""),
+            "note": "Use Netdata Cloud for detailed host and Docker metrics.",
+        },
+    }
+
+
 def _authenticated(handler: BaseHTTPRequestHandler, permission: str | None = None) -> Principal:
     principal = principal_from_headers(handler.headers)
     PERSISTENCE.require_active_session(principal)
@@ -247,6 +374,21 @@ def _authenticated(handler: BaseHTTPRequestHandler, permission: str | None = Non
     if permission:
         require_permission(principal, permission)
     return principal
+
+
+def _global_admin(handler: BaseHTTPRequestHandler, permission: str | None = "audit:read") -> Principal:
+    principal = _authenticated(handler, permission)
+    if not principal.is_global_admin:
+        raise PermissionError("Global administrator access is required.")
+    return principal
+
+
+def _optional_authenticated(handler: BaseHTTPRequestHandler) -> Principal | None:
+    """Resolve a real authenticated principal without making telemetry require login."""
+    try:
+        return _authenticated(handler)
+    except PermissionError:
+        return None
 
 
 def _workspace_session(session_id: str, principal: Principal):
@@ -270,6 +412,8 @@ def _job_record(job_id: str, principal: Principal):
             raise KeyError(f"Unknown job: {job_id}")
         job = JOB_STORE.restore(saved)
     require_tenant_access(principal, job.tenant_id)
+    if principal.role not in {"uni_admin", "admin"} and job.created_by != principal.user_id:
+        raise PermissionError("This user cannot access another user's scheduler job.")
     return job
 
 
@@ -324,6 +468,9 @@ def _error_response(handler: BaseHTTPRequestHandler, exc: Exception) -> None:
             {"error": str(exc), "retry_after": exc.retry_after},
             headers={"Retry-After": str(exc.retry_after)},
         )
+        return
+    if isinstance(exc, JobCapacityExceeded):
+        _json_response(handler, 429, {"error": str(exc), "retry_after": 5}, headers={"Retry-After": "5"})
         return
     if "Rate limit exceeded" in str(exc):
         status = 429
@@ -429,6 +576,7 @@ def _openapi_schema() -> Dict[str, Any]:
             "/analytics/summary": {"get": {"summary": "Read first-party analytics summary"}},
             "/analytics/export.csv": {"get": {"summary": "Export first-party analytics summary as CSV"}},
             "/system": {"get": {"summary": "Return API and persistence health"}},
+            "/system/status": {"get": {"summary": "Return admin-only runtime and resource status"}},
             "/system/email-test": {"post": {"summary": "Send a test email to validate SMTP delivery"}},
             "/parity": {"get": {"summary": "Return desktop/backend/web parity manifest"}},
             "/sessions": {"post": {"summary": "Create a backend workspace session"}},
@@ -443,7 +591,10 @@ def _openapi_schema() -> Dict[str, Any]:
             "/jobs/{job_id}": {"get": {"summary": "Poll async job state"}, "post": {"summary": "Cancel async job"}},
             "/jobs/{job_id}/events": {"get": {"summary": "Read Server-Sent Events job snapshot"}},
             "/projects": {"get": {"summary": "List saved local web projects"}, "post": {"summary": "Save a local web project"}},
-            "/projects/{name}": {"get": {"summary": "Load a local web project"}},
+            "/projects/{name}": {
+                "get": {"summary": "Load a tenant-scoped web project"},
+                "delete": {"summary": "Delete a tenant-scoped web project"},
+            },
             "/solve": {"post": {"summary": "Solve one instance without session state"}},
             "/portfolio": {"post": {"summary": "Run portfolio solve without session state"}},
             "/import/csv": {"post": {"summary": "Import timetable CSV content"}},
@@ -495,15 +646,6 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             return
         if parsed_path == "/ready":
             schema = PERSISTENCE.schema_info()
-            PERSISTENCE.record_analytics_event(
-                {
-                    "client_id_hash": "system-ready",
-                    "tenant_id": "system",
-                    "user_role": "system",
-                    "event_name": "ready_check",
-                    "path": "/ready",
-                }
-            )
             _json_response(self, 200, {"ok": True, "ready": True, "database": schema})
             return
         if parsed_path == "/openapi.json":
@@ -588,7 +730,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             _json_response(self, 200, principal_payload(principal))
             return
         if parsed_path == "/system":
-            principal = _authenticated(self, "audit:read")
+            principal = _global_admin(self)
             _json_response(
                 self,
                 200,
@@ -599,12 +741,16 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if parsed_path == "/system/status":
+            _global_admin(self)
+            _json_response(self, 200, _system_status_payload())
+            return
         if parsed_path == "/parity":
             _authenticated(self, "schedule:read")
             _json_response(self, 200, parity_manifest())
             return
         if parsed_path in {"/audit", "/audit.csv"}:
-            principal = _authenticated(self, "audit:read")
+            principal = _global_admin(self)
             query = parse_qs(urlparse(self.path).query)
             events = PERSISTENCE.list_audit(
                 principal,
@@ -619,7 +765,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 _json_response(self, 200, {"events": events})
             return
         if parts == ["analytics", "summary"]:
-            principal = _authenticated(self, "audit:read")
+            principal = _global_admin(self)
             query = parse_qs(urlparse(self.path).query)
             _json_response(
                 self,
@@ -634,7 +780,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             )
             return
         if parts == ["analytics", "export.csv"]:
-            principal = _authenticated(self, "audit:read")
+            principal = _global_admin(self)
             query = parse_qs(urlparse(self.path).query)
             summary = PERSISTENCE.analytics_summary(
                 principal,
@@ -688,35 +834,49 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 _text_response(self, 404, f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n", content_type="text/event-stream")
                 return
-            _text_response(
-                self,
-                200,
-                f"event: job\ndata: {json.dumps(job)}\n\n",
-                content_type="text/event-stream",
-            )
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            _common_headers(self)
+            self.end_headers()
+            terminal = {"complete", "failed", "cancelled"}
+            try:
+                while True:
+                    job = _job_record(parts[1], principal).to_dict()
+                    self.wfile.write(f"event: job\ndata: {json.dumps(job)}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                    if str(job.get("status")) in terminal:
+                        break
+                    time.sleep(0.5)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            self.close_connection = True
             return
         if parts and parts[0] == "projects":
+            principal = _authenticated(self, "schedule:read")
             try:
-                principal = _authenticated(self, "schedule:read")
                 if len(parts) == 1:
                     persisted = PERSISTENCE.list_projects(principal)
-                    if persisted:
-                        _json_response(self, 200, {"projects": persisted})
-                        return
                     projects_payload = list_web_projects(WEB_PROJECTS_DIR)
-                    visible = []
+                    visible_legacy = []
+                    persisted_names = {str(row.get("name", "")) for row in persisted}
                     for row in projects_payload.get("projects", []):
+                        if str(row.get("name", "")) in persisted_names:
+                            continue
                         try:
                             project_payload = load_web_project(WEB_PROJECTS_DIR, str(row.get("name", "")))
                             tenant_id = dict(project_payload.get("meta") or {}).get("tenant_id")
                         except Exception:
                             tenant_id = "default"
                         if principal.is_global_admin or str(tenant_id or "default") == principal.tenant_id:
-                            visible.append(row)
-                    _json_response(self, 200, {"projects": visible})
+                            visible_legacy.append({**row, "tenant_id": str(tenant_id or "default"), "storage": "legacy"})
+                    _json_response(self, 200, {"projects": [*persisted, *visible_legacy]})
                     return
                 if len(parts) == 2:
-                    project_payload = PERSISTENCE.load_project(parts[1], principal)
+                    query = parse_qs(urlparse(self.path).query)
+                    tenant_id = str((query.get("tenant_id") or [""])[0])
+                    project_payload = PERSISTENCE.load_project(parts[1], principal, tenant_id=tenant_id)
                     if project_payload is None:
                         project_payload = load_web_project(WEB_PROJECTS_DIR, parts[1])
                     require_tenant_access(principal, dict(project_payload.get("meta") or {}).get("tenant_id"))
@@ -752,6 +912,33 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             _error_response(self, exc)
 
+    def do_DELETE(self) -> None:  # noqa: N802
+        self._request_id = self.headers.get("X-Request-ID") or secrets.token_hex(8)
+        try:
+            _check_rate_limit(self)
+            validate_csrf(self.headers)
+            parts = _segments(self.path)
+            if len(parts) != 2 or parts[0] != "projects":
+                _json_response(self, 404, {"error": "Not found"})
+                return
+            principal = _authenticated(self, "projects:write")
+            query = parse_qs(urlparse(self.path).query)
+            tenant_id = str((query.get("tenant_id") or [""])[0])
+            deleted = PERSISTENCE.delete_project(parts[1], principal, tenant_id=tenant_id)
+            if not deleted:
+                _json_response(self, 404, {"error": "Project not found."})
+                return
+            PERSISTENCE.audit(
+                principal,
+                action="project.delete",
+                resource_type="project",
+                resource_id=parts[1],
+                details={"tenant_id": tenant_id or principal.tenant_id},
+            )
+            _json_response(self, 200, {"ok": True})
+        except Exception as exc:
+            _error_response(self, exc)
+
     def _do_POST(self) -> None:
         parts = _segments(self.path)
         try:
@@ -763,11 +950,12 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
         try:
             if parts in (["analytics", "event"], ["events", "collect"]):
                 client_id = str(payload.get("client_id") or "")
+                analytics_principal = _optional_authenticated(self)
                 PERSISTENCE.record_analytics_event(
                     {
                         "client_id_hash": _hash_analytics_client_id(client_id),
-                        "tenant_id": str(payload.get("tenant_id") or "public"),
-                        "user_role": str(payload.get("user_role") or "anonymous"),
+                        "tenant_id": analytics_principal.tenant_id if analytics_principal else "public",
+                        "user_role": analytics_principal.role if analytics_principal else "anonymous",
                         "event_name": str(payload.get("event_name") or ""),
                         "path": str(payload.get("path") or "/"),
                         "view_name": str(payload.get("view_name") or ""),
@@ -950,32 +1138,38 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 principal = _authenticated(self)
                 updated = PERSISTENCE.redeem_invite_for_user(principal, str(payload.get("invite_code", "")))
                 PERSISTENCE.audit(updated, action="access.join_invite", resource_type="user", resource_id=updated.user_id)
-                _json_response(
-                    self,
-                    200,
-                    {
+                PERSISTENCE.revoke_auth_session(principal)
+                token, csrf, ttl, session_principal = _session_for_principal(updated)
+                _auth_json_response(
+                    self, 200, {
                         "ok": True,
-                        "principal": principal_payload(updated),
-                        "organizations": PERSISTENCE.user_organizations(updated)["organizations"],
+                        "token": token,
+                        "csrf_token": csrf,
+                        "principal": principal_payload(session_principal),
+                        "organizations": PERSISTENCE.user_organizations(session_principal)["organizations"],
                     },
+                    token=token, csrf_token=csrf, max_age=ttl,
                 )
                 return
             if parts == ["access", "switch-organization"]:
                 principal = _authenticated(self)
                 updated = PERSISTENCE.switch_user_tenant(principal, str(payload.get("tenant_id", "")))
                 PERSISTENCE.audit(updated, action="access.switch_organization", resource_type="tenant", resource_id=updated.tenant_id)
-                _json_response(
-                    self,
-                    200,
-                    {
+                PERSISTENCE.revoke_auth_session(principal)
+                token, csrf, ttl, session_principal = _session_for_principal(updated)
+                _auth_json_response(
+                    self, 200, {
                         "ok": True,
-                        "principal": principal_payload(updated),
-                        "organizations": PERSISTENCE.user_organizations(updated)["organizations"],
+                        "token": token,
+                        "csrf_token": csrf,
+                        "principal": principal_payload(session_principal),
+                        "organizations": PERSISTENCE.user_organizations(session_principal)["organizations"],
                     },
+                    token=token, csrf_token=csrf, max_age=ttl,
                 )
                 return
             if parts == ["sessions"]:
-                principal = _authenticated(self, "schedule:write")
+                principal = _authenticated(self, "schedule:read")
                 inst_json, schedule, meta = _session_payload_from_request(payload)
                 session = SESSION_STORE.create(
                     instance_json=inst_json,
@@ -1030,7 +1224,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 _json_response(self, 200, result)
                 return
             if parts == ["system", "email-test"]:
-                principal = _authenticated(self, "audit:read")
+                principal = _global_admin(self)
                 to_email = str(payload.get("email") or "").strip()
                 if not to_email:
                     raise ValueError("Email is required.")
@@ -1052,6 +1246,8 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 if payload.get("session_id"):
                     _workspace_session(str(payload["session_id"]), principal)
                 payload["meta"] = stamp_meta(payload.get("meta") if isinstance(payload.get("meta"), dict) else {}, principal)
+                if principal.is_global_admin and payload.get("tenant_id"):
+                    payload["meta"]["tenant_id"] = str(payload["tenant_id"])
                 result = _handle_project_save(payload)
                 project_payload = dict(result.get("project") or {})
                 PERSISTENCE.save_project(str(project_payload.get("name") or payload.get("name") or "project"), project_payload, principal)
@@ -1105,8 +1301,8 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 _json_response(self, 200, result)
                 return
             if self.path == "/graphql":
-                _authenticated(self, "schedule:read")
-                result = _handle_graphql(payload)
+                principal = _authenticated(self, "schedule:read")
+                result = _handle_graphql(payload, principal)
                 _json_response(self, 200, result)
                 return
         except Exception:
@@ -1123,7 +1319,7 @@ def _load_instance_and_options(payload: Dict[str, Any]) -> Tuple[Any, SolveOptio
     if not isinstance(options_raw, dict):
         raise ValueError("Payload options must be an object.")
     inst = instance_from_json(inst_raw)
-    options = SolveOptions(**options_raw)
+    options = solve_options_from_payload(inst, payload)
     return inst, options
 
 
@@ -1167,6 +1363,7 @@ def _session_action_payload(
     payload: Dict[str, Any],
     *,
     progress_hook=None,
+    stop_hook=None,
 ) -> Dict[str, Any]:
     session = SESSION_STORE.get(session_id)
     if isinstance(payload.get("hard_constraints"), dict):
@@ -1182,10 +1379,16 @@ def _session_action_payload(
         action=_canonical_action(action),
         payload=payload,
         progress_hook=progress_hook,
+        stop_hook=stop_hook,
     )
     new_instance = result.get("instance") if isinstance(result.get("instance"), dict) else None
     new_schedule = result.get("schedule") if isinstance(result.get("schedule"), dict) else None
-    if new_schedule is None and _canonical_action(action) == "portfolio":
+    canonical_action = _canonical_action(action)
+    if canonical_action in {"solve", "cp_polish"} and new_schedule is not None:
+        raw_status = int(result.get("raw_status", result.get("status", 0)) or 0)
+        if raw_status not in {2, 4} or not new_schedule:
+            new_schedule = None
+    if new_schedule is None and canonical_action == "portfolio":
         candidates = result.get("candidates") or []
         best_idx = int(result.get("best_index", -1))
         if 0 <= best_idx < len(candidates):
@@ -1209,26 +1412,35 @@ def _handle_session_action(session_id: str, action: str, payload: Dict[str, Any]
 
 def _handle_job_submit(action: str, payload: Dict[str, Any], principal: Principal) -> Dict[str, Any]:
     action_name = _canonical_action(action)
+    supported = {"improve", "score", "conflicts", "export_csv", "move_deltas"}
+    if action_name not in supported:
+        raise ValueError(
+            f"Background action {action_name!r} is not cancellable. Use the synchronous endpoint for that action."
+        )
     session_id = str(payload.get("session_id", "") or "")
 
     def _run(job) -> Dict[str, Any]:
         def _progress(iteration: int, best_penalty: int, current_penalty: int) -> None:
+            total_iterations = int(dict(payload.get("options") or {}).get("iterations", 0) or 0)
             JOB_STORE.update(
                 job.job_id,
                 progress={
                     "event": "local_search",
                     "iteration": int(iteration),
+                    "iterations": total_iterations,
                     "best_penalty": int(best_penalty),
                     "current_penalty": int(current_penalty),
                 },
             )
 
         if session_id:
+            _workspace_session(session_id, principal)
             return _session_action_payload(
                 session_id,
                 action_name,
                 payload,
                 progress_hook=(_progress if action_name == "improve" else None),
+                stop_hook=(lambda: bool(job.cancel_requested)),
             ).get("result", {})
         inst_json, schedule, _meta = _session_payload_from_request(payload)
         return run_workspace_action(
@@ -1237,6 +1449,7 @@ def _handle_job_submit(action: str, payload: Dict[str, Any], principal: Principa
             action=action_name,
             payload=payload,
             progress_hook=(_progress if action_name == "improve" else None),
+            stop_hook=(lambda: bool(job.cancel_requested)),
         )
 
     job = JOB_STORE.submit(
@@ -1245,23 +1458,11 @@ def _handle_job_submit(action: str, payload: Dict[str, Any], principal: Principa
         tenant_id=principal.tenant_id,
         created_by=principal.user_id,
     )
-    return {
-        "job_id": job.job_id,
-        "action": job.action,
-        "tenant_id": job.tenant_id,
-        "created_by": job.created_by,
-        "status": "queued",
-        "progress": {},
-        "result": None,
-        "error": None,
-        "cancel_requested": False,
-        "created_at": job.created_at,
-        "updated_at": job.updated_at,
-    }
+    return job.to_dict()
 
 
 def _handle_project_save(payload: Dict[str, Any]) -> Dict[str, Any]:
-    name = str(payload.get("name", "") or "project")
+    name = safe_project_name(str(payload.get("name", "") or "project"))
     if payload.get("session_id"):
         session = SESSION_STORE.get(str(payload["session_id"]))
         project_payload = {
@@ -1278,7 +1479,7 @@ def _handle_project_save(payload: Dict[str, Any]) -> Dict[str, Any]:
             "schedule": normalize_schedule(schedule),
             "meta": dict(meta or {}),
         }
-    saved = save_web_project(WEB_PROJECTS_DIR, name, project_payload)
+    saved = {"name": safe_project_name(name), "storage": "sqlite"}
     return {"saved": saved, "project": project_payload}
 
 
@@ -1380,7 +1581,7 @@ def _handle_cp_polish(payload: Dict[str, Any]) -> Dict[str, Any]:
     return cp_sat_polish_shared(
         inst,
         schedule,
-        SolveOptions(**options_raw),
+        solve_options_from_payload(inst, payload),
         focus_term=focus_term,
         affected_limit=int(payload.get("affected_limit", 100) or 100),
     )
@@ -1438,13 +1639,19 @@ def _handle_export_csv(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _handle_graphql(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _handle_graphql(payload: Dict[str, Any], principal: Principal | None = None) -> Dict[str, Any]:
     query = str(payload.get("query", "") or "")
     if "health" in query.lower():
         return {"data": {"health": {"ok": True}}}
     if "solveportfolio" in query.lower():
+        if principal is None:
+            raise PermissionError("Authentication required for portfolio solving.")
+        require_permission(principal, "solver:run")
         return {"data": {"portfolio": _handle_portfolio(payload)}}
     if "solve" in query.lower():
+        if principal is None:
+            raise PermissionError("Authentication required for solving.")
+        require_permission(principal, "solver:run")
         return {"data": {"solve": _handle_solve(payload)}}
     return {"errors": [{"message": "Unsupported GraphQL query."}]}
 

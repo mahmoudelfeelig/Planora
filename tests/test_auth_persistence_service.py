@@ -77,6 +77,20 @@ def test_persistence_projects_are_tenant_scoped(tmp_path):
     assert store.load_project("schedule", uni_a)["meta"]["tenant_id"] == "uni-a"
 
 
+def test_bootstrap_role_activates_requested_tenant(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    registered = store.register_email_user(
+        email="server-admin@example.edu",
+        password="correct horse battery",
+        display_name="Server Admin",
+    )["principal"]
+    store.bootstrap_user_role(user_id=registered.user_id, tenant_id="operations", role="admin")
+    resolved = store.resolve_principal(registered)
+    assert resolved.tenant_id == "operations"
+    assert resolved.role == "admin"
+    assert resolved.is_global_admin
+
+
 def test_persistence_sessions_and_audit_events(tmp_path):
     store = PersistenceStore(tmp_path / "planora.sqlite3")
     principal = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a")

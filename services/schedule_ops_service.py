@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import copy
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
@@ -178,6 +179,7 @@ def improve_schedule_shared(
     *,
     focus_term: str = "",
     progress_hook=None,
+    stop_hook=None,
 ) -> Dict[str, Any]:
     base_schedule = normalize_schedule(schedule)
     focused_inst = build_focused_improve_instance(inst, focus_term)
@@ -185,17 +187,26 @@ def improve_schedule_shared(
     progress_events: List[Dict[str, Any]] = []
 
     def _progress(iteration: int, best_penalty: int, current_penalty: int) -> None:
-        progress_events.append(
-            {
-                "iteration": int(iteration),
-                "best_penalty": int(best_penalty),
-                "current_penalty": int(current_penalty),
-            }
-        )
+        event = {
+            "iteration": int(iteration),
+            "best_penalty": int(best_penalty),
+            "current_penalty": int(current_penalty),
+        }
+        maximum = max(10, int(os.environ.get("PLANORA_MAX_PROGRESS_EVENTS", "1000")))
+        if len(progress_events) < maximum:
+            progress_events.append(event)
+        else:
+            progress_events[-1] = event
         if progress_hook is not None:
             progress_hook(int(iteration), int(best_penalty), int(current_penalty))
 
-    improved = improve_schedule(focused_inst, base_schedule, options, progress_hook=_progress)
+    improved = improve_schedule(
+        focused_inst,
+        base_schedule,
+        options,
+        progress_hook=_progress,
+        stop_hook=stop_hook,
+    )
     after = score_schedule(focused_inst, improved)
     global_after = score_schedule(inst, improved)
     return {

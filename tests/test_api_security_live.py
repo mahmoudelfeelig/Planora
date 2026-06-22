@@ -56,6 +56,42 @@ def test_health_and_readiness_are_not_rate_limited(monkeypatch):
             api_server._check_rate_limit(handler)
 
 
+def test_verify_endpoint_uses_sensitive_auth_rate_limit(monkeypatch):
+    api_server._RATE_BUCKETS.clear()
+    monkeypatch.setenv("PLANORA_RATE_LIMIT_AUTH_PER_MINUTE", "1")
+    monkeypatch.setenv("PLANORA_RATE_LIMIT_ANONYMOUS_PER_MINUTE", "100")
+    monkeypatch.setattr(api_server, "principal_from_headers", lambda _headers: (_ for _ in ()).throw(PermissionError()))
+    handler = _RateHandler("/auth/verify")
+    api_server._check_rate_limit(handler)
+    with pytest.raises(api_server.RateLimitExceeded):
+        api_server._check_rate_limit(handler)
+
+
+def test_optional_analytics_identity_uses_resolved_principal(monkeypatch):
+    principal = Principal(user_id="email:viewer@example.edu", role="student", tenant_id="uni-a")
+    monkeypatch.setattr(api_server, "_authenticated", lambda _handler: principal)
+    assert api_server._optional_authenticated(_RateHandler("/analytics/event")) == principal
+    monkeypatch.setattr(api_server, "_authenticated", lambda _handler: (_ for _ in ()).throw(PermissionError()))
+    assert api_server._optional_authenticated(_RateHandler("/analytics/event")) is None
+
+
+def test_infeasible_solve_does_not_clear_workspace_session(monkeypatch):
+    original_schedule = {1: {"week": 1, "day": "MON", "slot": 1, "room_id": 1, "staff_id": 1}}
+    session = api_server.SESSION_STORE.create(
+        instance_json={"activities": {}},
+        schedule=original_schedule,
+        meta={"tenant_id": "default"},
+    )
+    normalized_original = dict(session.schedule)
+    monkeypatch.setattr(
+        api_server,
+        "run_workspace_action",
+        lambda **_kwargs: {"status": -1, "raw_status": 0, "schedule": {}, "hard_conflicts": []},
+    )
+    api_server._session_action_payload(session.session_id, "solve", {})
+    assert api_server.SESSION_STORE.get(session.session_id).schedule == normalized_original
+
+
 def _free_port() -> int:
     try:
         with socket.socket() as sock:

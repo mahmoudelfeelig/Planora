@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import type { Dict, Principal } from "../types";
+import { useState } from "react";
+import type { Dict } from "../types";
 
 type Credentials = {
   email: string;
@@ -13,7 +13,6 @@ type Credentials = {
 };
 
 type Props = {
-  principal: Principal;
   authConfig: Dict;
   credentials: Credentials;
   onCredentialsChange(credentials: Credentials): void;
@@ -31,7 +30,6 @@ type Props = {
 type AuthMode = "login" | "register" | "verify" | "forgot" | "reset";
 
 export function LoginPanel({
-  principal,
   authConfig,
   credentials,
   onCredentialsChange,
@@ -46,7 +44,6 @@ export function LoginPanel({
   initialMode = "login",
 }: Props) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
-  useEffect(() => setMode(initialMode), [initialMode]);
   const update = (key: keyof Credentials, value: string) => {
     onCredentialsChange({ ...credentials, [key]: value });
   };
@@ -117,7 +114,9 @@ export function LoginPanel({
           </label>
           <button type="button" onClick={onLogin}>Sign in</button>
           <p className="auth-switch">
-            No account yet? <button type="button" onClick={() => setMode("register")}>Register</button>
+            {authConfig.registration_enabled !== false
+              ? <>No account yet? <button type="button" onClick={() => setMode("register")}>Register</button></>
+              : "Account registration is currently disabled."}
           </p>
           <p className="auth-switch">
             Forgot your password? <button type="button" onClick={() => setMode("forgot")}>Reset it</button>

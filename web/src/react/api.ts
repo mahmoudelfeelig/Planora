@@ -6,6 +6,8 @@ export type ApiClient = {
   token: string;
   get<T = Dict>(path: string): Promise<T>;
   post<T = Dict>(path: string, payload?: Dict): Promise<T>;
+  delete<T = Dict>(path: string): Promise<T>;
+  download(path: string, fallbackFilename: string): Promise<void>;
 };
 
 export class ApiError extends Error {
@@ -91,6 +93,26 @@ export function createApiClient(baseUrl: string, principal: Principal, token = "
         method: "POST",
         body: JSON.stringify(payload),
       }),
+    delete: (path) => requestJson(baseUrl, principal, token, path, { method: "DELETE" }),
+    download: async (path, fallbackFilename) => {
+      const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
+        credentials: "include",
+        headers: authHeaders(principal, token),
+      });
+      if (!response.ok) {
+        throw new ApiError(`Download failed: ${response.statusText || response.status}`, response.status);
+      }
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = match?.[1] || fallbackFilename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    },
   };
 }
 

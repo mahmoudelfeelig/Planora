@@ -418,6 +418,100 @@ label {
   font-size: 15px;
 }
 
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.section-header h3,
+.section-header p {
+  margin: 0;
+}
+
+.secondary-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text-main);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.secondary-link-button:hover,
+.secondary-link-button:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.usage-row {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.usage-row-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.usage-row small {
+  color: var(--muted);
+}
+
+.usage-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--control-bg);
+  border: 1px solid var(--line);
+}
+
+.usage-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2f9b68;
+}
+
+.usage-track.warn span {
+  background: #d89b28;
+}
+
+.usage-track.danger span {
+  background: #d14b59;
+}
+
+@media (max-width: 980px) {
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .section-header {
+    display: grid;
+  }
+}
+
 .inline-note {
   margin-top: 12px;
   padding: 10px 12px;
@@ -557,6 +651,10 @@ td {
   vertical-align: top;
 }
 
+td.multi-slot {
+  background: color-mix(in srgb, #5ea9e6 8%, #ffffff);
+}
+
 th {
   position: sticky;
   top: 0;
@@ -672,6 +770,23 @@ td.move-target.blocked {
 
 .driver-row {
   grid-template-columns: 1fr auto;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-actions small {
+  flex: 1 1 100%;
+  color: var(--muted);
+}
+
+.table-actions button {
+  min-height: 32px;
+  padding: 6px 10px;
 }
 
 .table-row.header {
@@ -1687,6 +1802,10 @@ a:focus-visible {
 
 :root[data-theme="dark"] .event {
   background: #191924;
+}
+
+:root[data-theme="dark"] td.multi-slot {
+  background: color-mix(in srgb, #7547dd 10%, var(--panel));
 }
 
 :root[data-theme="dark"] .event.held {

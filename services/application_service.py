@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 import time
 import uuid
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict
@@ -24,6 +26,14 @@ from services.schedule_ops_service import (
 from services.solver_service import solve_instance, solve_portfolio
 from utils.generator import instance_to_json
 from utils.io import instance_from_json
+
+HARD_CONSTRAINT_OPTION_KEYS = {
+    "force_repeat_weekly_pattern",
+}
+
+
+class JobCapacityExceeded(RuntimeError):
+    pass
 
 
 def result_payload(result) -> Dict[str, Any]:
@@ -46,6 +56,20 @@ def result_payload(result) -> Dict[str, Any]:
             for attempt in (result.attempts or [])
         ],
     }
+
+
+def solve_options_from_payload(inst: Any, payload: Dict[str, Any] | None) -> SolveOptions:
+    payload = dict(payload or {})
+    options = dict(payload.get("options") or {})
+    hard_constraints = dict(getattr(inst, "hard_constraints", {}) or {})
+    explicit_hard = payload.get("hard_constraints")
+    if isinstance(explicit_hard, dict):
+        hard_constraints.update({str(key): bool(value) for key, value in explicit_hard.items()})
+    for key in list(options):
+        if key in HARD_CONSTRAINT_OPTION_KEYS:
+            hard_constraints[str(key)] = bool(options.pop(key))
+    inst.hard_constraints = hard_constraints
+    return SolveOptions(**options)
 
 
 @dataclass
@@ -80,6 +104,19 @@ class SessionStore:
         self._lock = threading.Lock()
         self._sessions: Dict[str, WorkspaceSession] = {}
 
+    def _prune_locked(self) -> None:
+        ttl = max(60, int(os.environ.get("PLANORA_SESSION_MEMORY_TTL_SECONDS", "3600")))
+        maximum = max(8, int(os.environ.get("PLANORA_MAX_MEMORY_SESSIONS", "128")))
+        cutoff = time.time() - ttl
+        stale = [key for key, value in self._sessions.items() if value.updated_at < cutoff]
+        for key in stale:
+            self._sessions.pop(key, None)
+        overflow = len(self._sessions) - maximum
+        if overflow > 0:
+            oldest = sorted(self._sessions.values(), key=lambda value: value.updated_at)[:overflow]
+            for value in oldest:
+                self._sessions.pop(value.session_id, None)
+
     def create(
         self,
         *,
@@ -94,11 +131,13 @@ class SessionStore:
             meta=dict(meta or {}),
         )
         with self._lock:
+            self._prune_locked()
             self._sessions[session.session_id] = session
         return session
 
     def get(self, session_id: str) -> WorkspaceSession:
         with self._lock:
+            self._prune_locked()
             session = self._sessions.get(str(session_id))
         if session is None:
             raise KeyError(f"Unknown session: {session_id}")
@@ -123,6 +162,7 @@ class SessionStore:
             updated_at=float(updated_at),
         )
         with self._lock:
+            self._prune_locked()
             self._sessions[session.session_id] = session
         return session
 
@@ -180,7 +220,28 @@ class JobStore:
     def __init__(self, on_change: Callable[[JobRecord], None] | None = None) -> None:
         self._lock = threading.Lock()
         self._jobs: Dict[str, JobRecord] = {}
+        self._futures: Dict[str, Future[Any]] = {}
         self._on_change = on_change
+        workers = max(1, int(os.environ.get("PLANORA_JOB_WORKERS", "2")))
+        self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="planora-job")
+
+    def _prune_locked(self) -> None:
+        ttl = max(60, int(os.environ.get("PLANORA_JOB_MEMORY_TTL_SECONDS", "3600")))
+        maximum = max(8, int(os.environ.get("PLANORA_MAX_MEMORY_JOBS", "128")))
+        cutoff = time.time() - ttl
+        terminal = {"complete", "failed", "cancelled"}
+        stale = [key for key, value in self._jobs.items() if value.status in terminal and value.updated_at < cutoff]
+        for key in stale:
+            self._jobs.pop(key, None)
+            self._futures.pop(key, None)
+        terminal_jobs = sorted(
+            (value for value in self._jobs.values() if value.status in terminal),
+            key=lambda value: value.updated_at,
+        )
+        overflow = len(self._jobs) - maximum
+        for value in terminal_jobs[:max(0, overflow)]:
+            self._jobs.pop(value.job_id, None)
+            self._futures.pop(value.job_id, None)
 
     def submit(
         self,
@@ -197,9 +258,22 @@ class JobStore:
             created_by=str(created_by),
         )
         with self._lock:
+            self._prune_locked()
+            active_limit = max(1, int(os.environ.get("PLANORA_MAX_ACTIVE_JOBS_PER_TENANT", "2")))
+            active = sum(
+                1 for value in self._jobs.values()
+                if value.tenant_id == job.tenant_id and value.status in {"queued", "running"}
+            )
+            if active >= active_limit:
+                raise JobCapacityExceeded(f"Tenant already has {active_limit} active scheduler jobs.")
             self._jobs[job.job_id] = job
+        if self._on_change:
+            self._on_change(job)
 
         def _run() -> None:
+            if job.cancel_requested:
+                self.update(job.job_id, status="cancelled", progress={"event": "cancelled"})
+                return
             self.update(job.job_id, status="running", progress={"event": "started"})
             try:
                 result = fn(job)
@@ -208,21 +282,40 @@ class JobStore:
                 else:
                     self.update(job.job_id, status="complete", result=result, progress={"event": "complete"})
             except Exception as exc:
-                self.update(job.job_id, status="failed", error=str(exc), progress={"event": "failed"})
+                if job.cancel_requested:
+                    self.update(job.job_id, status="cancelled", error=None, progress={"event": "cancelled"})
+                else:
+                    self.update(job.job_id, status="failed", error=str(exc), progress={"event": "failed"})
 
-        # Let the submit request return its job handle before CPU-heavy Python
-        # work starts competing for the interpreter and SQLite writer lock.
-        timer = threading.Timer(0.05, _run)
-        timer.daemon = True
-        timer.start()
+        future = self._executor.submit(_run)
+        with self._lock:
+            self._futures[job.job_id] = future
         return job
 
     def get(self, job_id: str) -> JobRecord:
         with self._lock:
+            self._prune_locked()
             job = self._jobs.get(str(job_id))
         if job is None:
             raise KeyError(f"Unknown job: {job_id}")
         return job
+
+    def stats(self) -> Dict[str, Any]:
+        with self._lock:
+            self._prune_locked()
+            statuses: Dict[str, int] = {}
+            actions: Dict[str, int] = {}
+            for job in self._jobs.values():
+                statuses[job.status] = statuses.get(job.status, 0) + 1
+                actions[job.action] = actions.get(job.action, 0) + 1
+            return {
+                "total": len(self._jobs),
+                "statuses": statuses,
+                "actions": actions,
+                "active": sum(statuses.get(status, 0) for status in ("queued", "running")),
+                "workers": max(1, int(os.environ.get("PLANORA_JOB_WORKERS", "2"))),
+                "active_limit_per_tenant": max(1, int(os.environ.get("PLANORA_MAX_ACTIVE_JOBS_PER_TENANT", "2"))),
+            }
 
     def update(self, job_id: str, **updates: Any) -> JobRecord:
         with self._lock:
@@ -235,7 +328,12 @@ class JobStore:
         return job
 
     def cancel(self, job_id: str) -> JobRecord:
-        return self.update(job_id, cancel_requested=True)
+        job = self.update(job_id, cancel_requested=True, progress={"event": "cancelling"})
+        with self._lock:
+            future = self._futures.get(str(job_id))
+        if future is not None and future.cancel():
+            return self.update(job_id, status="cancelled", progress={"event": "cancelled"})
+        return job
 
     def restore(self, payload: Dict[str, Any]) -> JobRecord:
         job = JobRecord(
@@ -252,6 +350,7 @@ class JobStore:
             updated_at=float(payload["updated_at"]),
         )
         with self._lock:
+            self._prune_locked()
             self._jobs[job.job_id] = job
         return job
 
@@ -263,6 +362,7 @@ def run_workspace_action(
     action: str,
     payload: Dict[str, Any] | None = None,
     progress_hook=None,
+    stop_hook=None,
 ) -> Dict[str, Any]:
     payload = dict(payload or {})
     inst = instance_from_json(instance_json)
@@ -270,10 +370,10 @@ def run_workspace_action(
     action = str(action)
 
     if action == "solve":
-        result = solve_instance(inst, SolveOptions(**dict(payload.get("options") or {})))
+        result = solve_instance(inst, solve_options_from_payload(inst, payload))
         return result_payload(result)
     if action == "portfolio":
-        portfolio = solve_portfolio(inst, SolveOptions(**dict(payload.get("options") or {})))
+        portfolio = solve_portfolio(inst, solve_options_from_payload(inst, payload))
         return {
             "best_index": int(portfolio.best_index),
             "candidates": [
@@ -296,12 +396,13 @@ def run_workspace_action(
             ImproveOptions(**dict(payload.get("options") or {})),
             focus_term=str(payload.get("focus_term", "") or ""),
             progress_hook=progress_hook,
+            stop_hook=stop_hook,
         )
     if action == "cp_polish":
         return cp_sat_polish_shared(
             inst,
             schedule_i,
-            SolveOptions(**dict(payload.get("options") or {})),
+            solve_options_from_payload(inst, payload),
             focus_term=str(payload.get("focus_term", "") or ""),
             affected_limit=int(payload.get("affected_limit", 100) or 100),
         )

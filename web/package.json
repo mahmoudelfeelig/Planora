@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint \"src/react/**/*.{ts,tsx}\" --max-warnings=0",
     "build": "tsc --noEmit && vite build",
     "e2e": "playwright test",
     "e2e:install": "playwright install --with-deps chromium"
@@ -16,10 +17,14 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "9.39.1",
     "@playwright/test": "^1.61.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "eslint": "9.39.1",
+    "eslint-plugin-react-hooks": "7.0.1",
     "typescript": "^5.5.0",
+    "typescript-eslint": "8.46.1",
     "vite": "7.3.5"
   },
   "overrides": {

@@ -9,7 +9,6 @@ type Props = {
   onSwitchOrganization(tenantId: string): Promise<void>;
   onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
   onRevokeOtherSessions(): Promise<void>;
-  onResendVerification(): Promise<void>;
 };
 
 export function AccountPanel({
@@ -20,7 +19,6 @@ export function AccountPanel({
   onSwitchOrganization,
   onChangePassword,
   onRevokeOtherSessions,
-  onResendVerification,
 }: Props) {
   const [code, setCode] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -150,9 +148,6 @@ export function AccountPanel({
           </button>
           <button type="button" className="secondary-button" onClick={() => void onRevokeOtherSessions()}>
             Revoke other sessions
-          </button>
-          <button type="button" className="secondary-button" onClick={() => void onResendVerification()}>
-            Resend verification email
           </button>
         </div>
       </section>

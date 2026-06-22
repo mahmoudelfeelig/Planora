@@ -3,7 +3,7 @@ FROM node:22-slim AS build
 WORKDIR /app/web
 
 COPY web/package.json web/package-lock.json* ./
-RUN npm install
+RUN npm ci
 
 COPY web /app/web
 ARG VITE_PLANORA_API_URL=/api

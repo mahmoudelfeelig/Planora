@@ -5,22 +5,77 @@ function rows(value: unknown): Dict[] {
   return Array.isArray(value) ? (value as Dict[]) : [];
 }
 
+function asDict(value: unknown): Dict {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Dict) : {};
+}
+
+function asNumber(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function formatBytes(value: unknown): string {
+  const bytes = asNumber(value);
+  if (bytes === null) return "n/a";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let scaled = bytes;
+  let index = 0;
+  while (scaled >= 1024 && index < units.length - 1) {
+    scaled /= 1024;
+    index += 1;
+  }
+  return `${scaled >= 10 || index === 0 ? scaled.toFixed(0) : scaled.toFixed(1)} ${units[index]}`;
+}
+
+function formatPercent(value: unknown): string {
+  const percent = asNumber(value);
+  return percent === null ? "n/a" : `${percent.toFixed(percent >= 10 ? 0 : 1)}%`;
+}
+
+function formatDuration(seconds: unknown): string {
+  const total = asNumber(seconds);
+  if (total === null) return "n/a";
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function UsageBar({ label, percent, detail }: { label: string; percent: unknown; detail: string }) {
+  const value = Math.max(0, Math.min(100, asNumber(percent) ?? 0));
+  const state = value >= 90 ? "danger" : value >= 75 ? "warn" : "ok";
+  return (
+    <div className="usage-row">
+      <div className="usage-row-header">
+        <span>{label}</span>
+        <strong>{formatPercent(percent)}</strong>
+      </div>
+      <div className={`usage-track ${state}`} aria-label={`${label} ${formatPercent(percent)}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}>
+        <span style={{ width: `${value}%` }} />
+      </div>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
 export function AdminPanel({
   principal,
   auditEvents,
   system,
+  systemStatus,
   analytics,
   onRefresh,
   onEmailTest,
-  apiBaseUrl = "",
+  onDownload,
 }: {
   principal: Principal;
   auditEvents: Dict[];
   system: Dict;
+  systemStatus: Dict;
   analytics: Dict;
   onRefresh(filters: Dict): Promise<void>;
   onEmailTest(email: string): Promise<void>;
-  apiBaseUrl?: string;
+  onDownload(path: string, filename: string): Promise<void>;
 }) {
   const [filters, setFilters] = useState({ days: "30", tenant_id: "", event_name: "", path: "", action: "", user_id: "" });
   const [email, setEmail] = useState("");
@@ -35,6 +90,14 @@ export function AdminPanel({
   const topPaths = rows(analytics.top_paths);
   const topEvents = rows(analytics.top_events);
   const byDay = rows(analytics.by_day);
+  const statusApi = asDict(systemStatus.api);
+  const disk = asDict(systemStatus.disk);
+  const memory = asDict(systemStatus.memory);
+  const containerMemory = asDict(memory.container);
+  const hostMemory = asDict(memory.host);
+  const jobs = asDict(systemStatus.jobs);
+  const netdata = asDict(systemStatus.netdata);
+  const netdataUrl = String(netdata.url || "");
   return (
     <section className="panel">
       <h2>Global Admin</h2>
@@ -49,6 +112,41 @@ export function AdminPanel({
       </div>
 
       <div className="subpanel">
+        <div className="section-header">
+          <div>
+            <h3>Runtime Status</h3>
+            <p className="section-copy">Fast local health signals from the API container and SQLite data volume. Use Netdata for full host and Docker charts.</p>
+          </div>
+          {netdataUrl ? (
+            <a className="secondary-link-button" href={netdataUrl} target="_blank" rel="noreferrer">Open Netdata</a>
+          ) : null}
+        </div>
+        <div className="metric-grid">
+          <div><span>API uptime</span><strong>{formatDuration(statusApi.uptime_seconds)}</strong></div>
+          <div><span>Mode</span><strong>{statusApi.production ? "production" : "development"}</strong></div>
+          <div><span>DB size</span><strong>{formatBytes((systemStatus.database as Dict | undefined)?.size_bytes)}</strong></div>
+          <div><span>Jobs active</span><strong>{String(jobs.active ?? 0)} / {String(jobs.active_limit_per_tenant ?? "n/a")}</strong></div>
+        </div>
+        <div className="status-grid">
+          <UsageBar
+            label="Data volume disk"
+            percent={disk.used_percent}
+            detail={`${formatBytes(disk.used_bytes)} used, ${formatBytes(disk.free_bytes)} free`}
+          />
+          <UsageBar
+            label="API container memory"
+            percent={containerMemory.used_percent}
+            detail={`${formatBytes(containerMemory.used_bytes)} used of ${formatBytes(containerMemory.limit_bytes)}`}
+          />
+          <UsageBar
+            label="Host memory"
+            percent={hostMemory.used_percent}
+            detail={`${formatBytes(hostMemory.used_bytes)} used, ${formatBytes(hostMemory.available_bytes)} available`}
+          />
+        </div>
+      </div>
+
+      <div className="subpanel">
         <h3>Filters & Exports</h3>
         <div className="identity-grid access-controls">
           <label>Days<input value={filters.days} onChange={(event) => setFilters({ ...filters, days: event.target.value })} inputMode="numeric" /></label>
@@ -58,8 +156,8 @@ export function AdminPanel({
           <label>Audit action<input value={filters.action} onChange={(event) => setFilters({ ...filters, action: event.target.value })} placeholder="auth.login" /></label>
           <label>Audit user<input value={filters.user_id} onChange={(event) => setFilters({ ...filters, user_id: event.target.value })} placeholder="email:user@example.edu" /></label>
           <button type="button" onClick={() => void onRefresh(filters)}>Apply filters</button>
-          <a className="button-link" href={`${apiBaseUrl}/analytics/export.csv?${new URLSearchParams(filters).toString()}`}>Export analytics CSV</a>
-          <a className="button-link secondary" href={`${apiBaseUrl}/audit.csv?${new URLSearchParams(filters).toString()}`}>Export audit CSV</a>
+          <button type="button" onClick={() => void onDownload(`/analytics/export.csv?${new URLSearchParams(filters).toString()}`, "planora-analytics.csv")}>Export analytics CSV</button>
+          <button type="button" className="secondary-button" onClick={() => void onDownload(`/audit.csv?${new URLSearchParams(filters).toString()}`, "planora-audit.csv")}>Export audit CSV</button>
         </div>
       </div>
 

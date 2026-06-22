@@ -21,7 +21,7 @@ from services.password_auth_service import (
 )
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 class PersistenceStore:
@@ -135,6 +135,9 @@ class PersistenceStore:
                     user_id TEXT NOT NULL,
                     tenant_id TEXT NOT NULL,
                     role TEXT NOT NULL,
+                    disabled INTEGER NOT NULL DEFAULT 0,
+                    staff_id INTEGER,
+                    student_group_id INTEGER,
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL,
                     PRIMARY KEY (user_id, tenant_id)
@@ -270,6 +273,9 @@ class PersistenceStore:
                 user_id TEXT NOT NULL,
                 tenant_id TEXT NOT NULL,
                 role TEXT NOT NULL,
+                disabled INTEGER NOT NULL DEFAULT 0,
+                staff_id INTEGER,
+                student_group_id INTEGER,
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL,
                 PRIMARY KEY (user_id, tenant_id)
@@ -277,6 +283,14 @@ class PersistenceStore:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_account_tenants_user ON account_tenants(user_id, tenant_id)")
+        account_columns = {
+            "disabled": "INTEGER NOT NULL DEFAULT 0",
+            "staff_id": "INTEGER",
+            "student_group_id": "INTEGER",
+        }
+        for column, definition in account_columns.items():
+            if not self._has_column(conn, "account_tenants", column):
+                conn.execute(f"ALTER TABLE account_tenants ADD COLUMN {column} {definition}")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS analytics_events (
@@ -396,9 +410,11 @@ class PersistenceStore:
             if tenant is not None and not bool(tenant["enabled"]):
                 raise PermissionError("This tenant is disabled.")
             account_row = conn.execute(
-                "SELECT role FROM account_tenants WHERE user_id=? AND tenant_id=?",
+                "SELECT role, disabled, staff_id, student_group_id FROM account_tenants WHERE user_id=? AND tenant_id=?",
                 (principal.user_id, active_tenant_id),
             ).fetchone()
+            if account_row is not None and bool(account_row["disabled"]):
+                raise PermissionError("This account is disabled for the active organization.")
             groups = [
                 str(row["group_id"])
                 for row in conn.execute(
@@ -432,11 +448,15 @@ class PersistenceStore:
                 groups=tuple(groups),
                 session_id=principal.session_id,
                 provider=str(user["provider"] or principal.provider),
-                staff_id=(int(user["staff_id"]) if user["staff_id"] is not None else None),
+                staff_id=(
+                    int(account_row["staff_id"])
+                    if account_row is not None and account_row["staff_id"] is not None
+                    else (int(user["staff_id"]) if user["staff_id"] is not None else None)
+                ),
                 student_group_id=(
-                    int(user["student_group_id"])
-                    if user["student_group_id"] is not None
-                    else None
+                    int(account_row["student_group_id"])
+                    if account_row is not None and account_row["student_group_id"] is not None
+                    else (int(user["student_group_id"]) if user["student_group_id"] is not None else None)
                 ),
                 scopes=tuple(
                     (str(row["role"]), str(row["scope_type"]), str(row["scope_id"]))
@@ -595,6 +615,7 @@ class PersistenceStore:
         verification_code = new_verification_code()
         now = time.time()
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             invite = self._invite_by_code_hash(conn, hash_token(invite_code)) if invite_code else None
             if conn.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,)).fetchone() is not None:
                 raise ValueError("An account with this email already exists.")
@@ -655,9 +676,10 @@ class PersistenceStore:
         invite_hash = hash_token(invite_code)
         now = time.time()
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             invite = self._invite_by_code_hash(conn, invite_hash)
             tenant_id = str(invite["tenant_id"])
-            conn.execute(
+            membership = conn.execute(
                 "INSERT OR IGNORE INTO group_memberships(tenant_id, group_id, user_id, created_at) VALUES(?, ?, ?, ?)",
                 (tenant_id, str(invite["group_id"]), principal.user_id, now),
             )
@@ -683,10 +705,11 @@ class PersistenceStore:
                 "UPDATE users SET tenant_id=?, role=?, updated_at=? WHERE user_id=?",
                 (tenant_id, next_role, now, principal.user_id),
             )
-            conn.execute(
-                "UPDATE invite_codes SET used_count=used_count + 1, updated_at=? WHERE invite_id=?",
-                (now, str(invite["invite_id"])),
-            )
+            if membership.rowcount:
+                conn.execute(
+                    "UPDATE invite_codes SET used_count=used_count + 1, updated_at=? WHERE invite_id=?",
+                    (now, str(invite["invite_id"])),
+                )
         return self.resolve_principal(
             Principal(
                 user_id=principal.user_id,
@@ -737,11 +760,13 @@ class PersistenceStore:
         now = time.time()
         with self._connect() as conn:
             account = conn.execute(
-                "SELECT role FROM account_tenants WHERE user_id=? AND tenant_id=?",
+                "SELECT role, disabled FROM account_tenants WHERE user_id=? AND tenant_id=?",
                 (principal.user_id, target_tenant),
             ).fetchone()
             if account is None and not principal.is_global_admin:
                 raise PermissionError("You do not belong to that organization.")
+            if account is not None and bool(account["disabled"]):
+                raise PermissionError("Your account is disabled for that organization.")
             tenant = conn.execute("SELECT enabled FROM tenants WHERE tenant_id=?", (target_tenant,)).fetchone()
             if tenant is not None and not bool(tenant["enabled"]):
                 raise PermissionError("That organization is disabled.")
@@ -845,6 +870,10 @@ class PersistenceStore:
                 "UPDATE password_reset_tokens SET consumed_at=? WHERE user_id=? AND tenant_id=? AND consumed_at IS NULL",
                 (now, str(row["user_id"]), str(row["tenant_id"])),
             )
+            conn.execute(
+                "UPDATE auth_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                (now, str(row["user_id"])),
+            )
             user = conn.execute(
                 "SELECT * FROM users WHERE user_id=? AND tenant_id=?",
                 (str(row["user_id"]), str(row["tenant_id"])),
@@ -914,6 +943,22 @@ class PersistenceStore:
         action = str(change.get("action", ""))
         now = time.time()
         with self._connect() as conn:
+            def require_group(group_id: str) -> None:
+                row = conn.execute(
+                    "SELECT 1 FROM auth_groups WHERE tenant_id=? AND group_id=?",
+                    (tenant_id, group_id),
+                ).fetchone()
+                if row is None:
+                    raise ValueError("The selected group does not belong to this organization.")
+
+            def require_account(user_id: str) -> None:
+                row = conn.execute(
+                    "SELECT 1 FROM account_tenants WHERE tenant_id=? AND user_id=?",
+                    (tenant_id, user_id),
+                ).fetchone()
+                if row is None:
+                    raise ValueError("The selected user does not belong to this organization.")
+
             if action == "create_group":
                 group_id = str(change.get("group_id") or secrets.token_urlsafe(12))
                 conn.execute(
@@ -921,23 +966,20 @@ class PersistenceStore:
                     (group_id, tenant_id, str(change["name"]), str(change.get("description", "")), now),
                 )
             elif action == "set_membership":
-                values = (tenant_id, str(change["group_id"]), str(change["user_id"]), now)
+                group_id = str(change["group_id"])
+                user_id = str(change["user_id"])
+                require_group(group_id)
+                require_account(user_id)
+                values = (tenant_id, group_id, user_id, now)
                 if bool(change.get("enabled", True)):
                     conn.execute("INSERT OR IGNORE INTO group_memberships(tenant_id, group_id, user_id, created_at) VALUES(?, ?, ?, ?)", values)
-                    user_row = conn.execute("SELECT role FROM users WHERE user_id=?", (str(change["user_id"]),)).fetchone()
-                    conn.execute(
-                        """
-                        INSERT OR IGNORE INTO account_tenants(user_id, tenant_id, role, created_at, updated_at)
-                        VALUES(?, ?, ?, ?, ?)
-                        """,
-                        (str(change["user_id"]), tenant_id, str(user_row["role"] if user_row is not None else "student"), now, now),
-                    )
                 else:
                     conn.execute("DELETE FROM group_memberships WHERE tenant_id=? AND group_id=? AND user_id=?", values[:3])
             elif action == "set_role":
                 role = str(change["role"])
                 if role not in ROLES or (role == "admin" and not principal.is_global_admin):
                     raise PermissionError("That role cannot be assigned.")
+                require_account(str(change["user_id"]))
                 conn.execute(
                     "UPDATE users SET role=?, updated_at=? WHERE tenant_id=? AND user_id=?",
                     (role, now, tenant_id, str(change["user_id"])),
@@ -951,16 +993,18 @@ class PersistenceStore:
                     (str(change["user_id"]), tenant_id, role, now, now),
                 )
             elif action == "set_disabled":
+                require_account(str(change["user_id"]))
                 conn.execute(
-                    "UPDATE users SET disabled=?, updated_at=? WHERE tenant_id=? AND user_id=?",
+                    "UPDATE account_tenants SET disabled=?, updated_at=? WHERE tenant_id=? AND user_id=?",
                     (int(bool(change.get("disabled", True))), now, tenant_id, str(change["user_id"])),
                 )
             elif action == "link_schedule_identity":
+                require_account(str(change["user_id"]))
                 staff_id = change.get("staff_id")
                 student_group_id = change.get("student_group_id")
                 conn.execute(
                     """
-                    UPDATE users SET staff_id=?, student_group_id=?, updated_at=?
+                    UPDATE account_tenants SET staff_id=?, student_group_id=?, updated_at=?
                     WHERE tenant_id=? AND user_id=?
                     """,
                     (
@@ -975,6 +1019,10 @@ class PersistenceStore:
                 role = str(change["role"])
                 if role not in ROLES or (role == "admin" and not principal.is_global_admin):
                     raise PermissionError("That role cannot be assigned.")
+                if str(change["principal_type"]) == "group":
+                    require_group(str(change["principal_id"]))
+                else:
+                    require_account(str(change["principal_id"]))
                 conn.execute(
                     """
                     INSERT OR IGNORE INTO role_bindings(
@@ -992,6 +1040,7 @@ class PersistenceStore:
                 role = str(change.get("role", "student"))
                 if role not in ROLES or role == "admin" or (role == "uni_admin" and not principal.is_global_admin and principal.role != "uni_admin"):
                     raise PermissionError("That invite role cannot be assigned.")
+                require_group(str(change["group_id"]))
                 code = str(change.get("code") or new_plain_token("invite_")).strip()
                 if len(code) < 8:
                     raise ValueError("Invite code must be at least 8 characters.")
@@ -1066,8 +1115,8 @@ class PersistenceStore:
                 (tenant_id, tenant_id, time.time(), time.time()),
             )
             conn.execute(
-                "UPDATE users SET role=?, updated_at=? WHERE user_id=? AND tenant_id=?",
-                (role, time.time(), user_id, tenant_id),
+                "UPDATE users SET tenant_id=?, role=?, updated_at=? WHERE user_id=?",
+                (tenant_id, role, time.time(), user_id),
             )
             conn.execute(
                 """
@@ -1112,6 +1161,16 @@ class PersistenceStore:
                     float(session.updated_at),
                 ),
             )
+            maximum = max(10, int(os.environ.get("PLANORA_MAX_PERSISTED_SESSIONS_PER_TENANT", "100")))
+            conn.execute(
+                """
+                DELETE FROM sessions
+                WHERE tenant_id=? AND session_id NOT IN (
+                    SELECT session_id FROM sessions WHERE tenant_id=? ORDER BY updated_at DESC LIMIT ?
+                )
+                """,
+                (tenant_id, tenant_id, maximum),
+            )
 
     def load_session(self, session_id: str, principal: Principal) -> Dict[str, Any] | None:
         with self._connect() as conn:
@@ -1151,6 +1210,19 @@ class PersistenceStore:
                     payload["created_at"], payload["updated_at"],
                 ),
             )
+            maximum = max(20, int(os.environ.get("PLANORA_MAX_PERSISTED_JOBS_PER_TENANT", "500")))
+            conn.execute(
+                """
+                DELETE FROM jobs
+                WHERE tenant_id=? AND status IN ('complete', 'done', 'failed', 'cancelled')
+                    AND job_id NOT IN (
+                        SELECT job_id FROM jobs
+                        WHERE tenant_id=? AND status IN ('complete', 'done', 'failed', 'cancelled')
+                        ORDER BY updated_at DESC LIMIT ?
+                    )
+                """,
+                (str(payload["tenant_id"]), str(payload["tenant_id"]), maximum),
+            )
 
     def load_job(self, job_id: str, principal: Principal) -> Dict[str, Any] | None:
         with self._connect() as conn:
@@ -1172,6 +1244,14 @@ class PersistenceStore:
     def save_project(self, name: str, payload: Dict[str, Any], principal: Principal) -> None:
         tenant_id = str(dict(payload.get("meta") or {}).get("tenant_id") or principal.tenant_id)
         with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT 1 FROM projects WHERE tenant_id=? AND name=?",
+                (tenant_id, str(name)),
+            ).fetchone()
+            maximum = max(10, int(os.environ.get("PLANORA_MAX_PROJECTS_PER_TENANT", "200")))
+            count = conn.execute("SELECT COUNT(*) FROM projects WHERE tenant_id=?", (tenant_id,)).fetchone()
+            if existing is None and int(count[0] if count else 0) >= maximum:
+                raise ValueError(f"This organization has reached its {maximum}-project limit.")
             conn.execute(
                 """
                 INSERT INTO projects(name, tenant_id, payload_json, created_by, updated_at)
@@ -1206,13 +1286,22 @@ class PersistenceStore:
             if can_access_tenant(principal, str(row["tenant_id"]))
         ]
 
-    def load_project(self, name: str, principal: Principal) -> Dict[str, Any] | None:
+    def load_project(self, name: str, principal: Principal, *, tenant_id: str = "") -> Dict[str, Any] | None:
         with self._connect() as conn:
             if principal.is_global_admin:
-                row = conn.execute(
-                    "SELECT payload_json FROM projects WHERE name=? ORDER BY updated_at DESC LIMIT 1",
-                    (str(name),),
-                ).fetchone()
+                if tenant_id:
+                    row = conn.execute(
+                        "SELECT payload_json FROM projects WHERE tenant_id=? AND name=?",
+                        (str(tenant_id), str(name)),
+                    ).fetchone()
+                else:
+                    rows = conn.execute(
+                        "SELECT payload_json FROM projects WHERE name=? ORDER BY updated_at DESC LIMIT 2",
+                        (str(name),),
+                    ).fetchall()
+                    if len(rows) > 1:
+                        raise ValueError("Project name is ambiguous; specify tenant_id.")
+                    row = rows[0] if rows else None
             else:
                 row = conn.execute(
                     "SELECT payload_json FROM projects WHERE tenant_id=? AND name=?",
@@ -1224,6 +1313,17 @@ class PersistenceStore:
         if not isinstance(payload, dict):
             raise ValueError("Persisted project payload must be an object.")
         return payload
+
+    def delete_project(self, name: str, principal: Principal, *, tenant_id: str = "") -> bool:
+        target_tenant = str(tenant_id or principal.tenant_id)
+        if not principal.is_global_admin and target_tenant != principal.tenant_id:
+            raise PermissionError("This user cannot delete another tenant's project.")
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM projects WHERE tenant_id=? AND name=?",
+                (target_tenant, str(name)),
+            )
+        return bool(cursor.rowcount)
 
     def audit(
         self,
@@ -1262,6 +1362,9 @@ class PersistenceStore:
         if not name or not client_id_hash:
             raise ValueError("Analytics event requires event_name and client_id_hash.")
         details = event.get("details") if isinstance(event.get("details"), dict) else {}
+        details_json = json.dumps(details, ensure_ascii=False)
+        if len(details_json.encode("utf-8")) > 8192:
+            raise ValueError("Analytics event details exceed the 8192-byte limit.")
         with self._connect() as conn:
             conn.execute(
                 """
@@ -1282,7 +1385,7 @@ class PersistenceStore:
                     str(event.get("referrer") or "")[:500],
                     int(event["viewport_width"]) if event.get("viewport_width") not in (None, "") else None,
                     int(event["viewport_height"]) if event.get("viewport_height") not in (None, "") else None,
-                    json.dumps(details, ensure_ascii=False),
+                    details_json,
                     str(event.get("user_agent") or "")[:500],
                     time.time(),
                 ),
