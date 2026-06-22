@@ -61,7 +61,7 @@ export function OperationsPanel({
       </div>
 
       <div className="operation-sections">
-        <div className="action-card">
+        <div className="action-card" id="load">
           <div className="action-card-head">
             <strong>1. Load scenario</strong>
             <span className="muted">Preset or imported timetable</span>
@@ -85,7 +85,7 @@ export function OperationsPanel({
           </div>
         </div>
 
-        <div className="action-card">
+        <div className="action-card" id="solve">
           <div className="action-card-head">
             <strong>2. Build feasible schedule</strong>
             <span className="muted">
@@ -100,7 +100,7 @@ export function OperationsPanel({
           </button>
         </div>
 
-        <div className="action-card">
+        <div className="action-card" id="improve">
           <div className="action-card-head">
             <strong>3. Improve quality</strong>
             <span className="muted">
@@ -123,7 +123,7 @@ export function OperationsPanel({
           </div>
         </div>
 
-        <div className="action-card">
+        <div className="action-card" id="score">
           <div className="action-card-head">
             <strong>4. Analyze current result</strong>
             <span className="muted">No placements change</span>

@@ -32,17 +32,31 @@ async function requestJson<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
-    ...init,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(principal, token),
-      ...(init.method && init.method !== "GET" && csrfToken() ? { "X-CSRF-Token": csrfToken() } : {}),
-      ...(init.headers || {}),
-    },
-  });
-  const payload = await response.json();
+  let response: Response;
+  const target = `${baseUrl.replace(/\/$/, "")}${path}`;
+  try {
+    response = await fetch(target, {
+      ...init,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(principal, token),
+        ...(init.method && init.method !== "GET" && csrfToken() ? { "X-CSRF-Token": csrfToken() } : {}),
+        ...(init.headers || {}),
+      },
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Cannot reach the Planora API at ${baseUrl}. Start the backend on http://127.0.0.1:8787 for local development, or set VITE_PLANORA_API_URL. (${detail})`,
+    );
+  }
+  let payload: Dict = {};
+  try {
+    payload = await response.json();
+  } catch {
+    payload = { error: response.statusText || `HTTP ${response.status}` };
+  }
   if (!response.ok || payload.error) {
     throw new Error(String(payload.error || response.statusText));
   }

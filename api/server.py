@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import secrets
@@ -162,6 +163,13 @@ def _segments(path: str) -> list[str]:
     return [unquote(part) for part in parsed.path.split("/") if part]
 
 
+def _hash_analytics_client_id(value: str) -> str:
+    raw = str(value or "").strip()
+    if len(raw) < 8:
+        raise ValueError("Analytics client id is missing.")
+    return hashlib.sha256(f"planora-analytics:{raw}".encode("utf-8")).hexdigest()
+
+
 def _authenticated(handler: BaseHTTPRequestHandler, permission: str | None = None) -> Principal:
     principal = principal_from_headers(handler.headers)
     PERSISTENCE.require_active_session(principal)
@@ -310,7 +318,12 @@ def _openapi_schema() -> Dict[str, Any]:
             "/auth/refresh": {"post": {"summary": "Rotate the authenticated session"}},
             "/auth/logout": {"post": {"summary": "Revoke and clear the authenticated session"}},
             "/access": {"get": {"summary": "Read tenant access settings"}, "post": {"summary": "Apply a tenant access change"}},
+            "/access/my-organizations": {"get": {"summary": "List organizations linked to the current account"}},
+            "/access/join-invite": {"post": {"summary": "Redeem an invite code after account creation"}},
+            "/access/switch-organization": {"post": {"summary": "Switch the current account's active organization"}},
             "/audit": {"get": {"summary": "List tenant-scoped audit events"}},
+            "/analytics/event": {"post": {"summary": "Record a consented first-party analytics event"}},
+            "/analytics/summary": {"get": {"summary": "Read first-party analytics summary"}},
             "/system": {"get": {"summary": "Return API and persistence health"}},
             "/parity": {"get": {"summary": "Return desktop/backend/web parity manifest"}},
             "/sessions": {"post": {"summary": "Create a backend workspace session"}},
@@ -471,9 +484,17 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             principal = _authenticated(self, "audit:read")
             _json_response(self, 200, {"events": PERSISTENCE.list_audit(principal)})
             return
+        if parts == ["analytics", "summary"]:
+            principal = _authenticated(self, "audit:read")
+            _json_response(self, 200, PERSISTENCE.analytics_summary(principal))
+            return
         if parts == ["access"]:
             principal = _authenticated(self, "access:manage")
             _json_response(self, 200, PERSISTENCE.access_snapshot(principal))
+            return
+        if parts == ["access", "my-organizations"]:
+            principal = _authenticated(self)
+            _json_response(self, 200, PERSISTENCE.user_organizations(principal))
             return
         if parts and parts[0] == "sessions" and len(parts) == 2:
             principal = _authenticated(self, "schedule:read")
@@ -557,7 +578,8 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         try:
             _check_rate_limit(self)
-            validate_csrf(self.headers)
+            if _segments(self.path) != ["analytics", "event"]:
+                validate_csrf(self.headers)
             self._do_POST()
         except Exception as exc:
             _error_response(self, exc)
@@ -571,6 +593,25 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             return
 
         try:
+            if parts == ["analytics", "event"]:
+                client_id = str(payload.get("client_id") or "")
+                PERSISTENCE.record_analytics_event(
+                    {
+                        "client_id_hash": _hash_analytics_client_id(client_id),
+                        "tenant_id": str(payload.get("tenant_id") or "public"),
+                        "user_role": str(payload.get("user_role") or "anonymous"),
+                        "event_name": str(payload.get("event_name") or ""),
+                        "path": str(payload.get("path") or "/"),
+                        "view_name": str(payload.get("view_name") or ""),
+                        "referrer": str(payload.get("referrer") or ""),
+                        "viewport_width": payload.get("viewport_width"),
+                        "viewport_height": payload.get("viewport_height"),
+                        "details": payload.get("details") if isinstance(payload.get("details"), dict) else {},
+                        "user_agent": str(self.headers.get("User-Agent", "") or ""),
+                    }
+                )
+                _json_response(self, 200, {"ok": True})
+                return
             if parts == ["auth", "register"]:
                 if not registration_enabled():
                     raise PermissionError("Registration is disabled.")
@@ -656,6 +697,34 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 _auth_json_response(
                     self, 200, {"token": token, "csrf_token": csrf, "principal": principal_payload(refreshed)},
                     token=token, csrf_token=csrf, max_age=ttl,
+                )
+                return
+            if parts == ["access", "join-invite"]:
+                principal = _authenticated(self)
+                updated = PERSISTENCE.redeem_invite_for_user(principal, str(payload.get("invite_code", "")))
+                PERSISTENCE.audit(updated, action="access.join_invite", resource_type="user", resource_id=updated.user_id)
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "ok": True,
+                        "principal": principal_payload(updated),
+                        "organizations": PERSISTENCE.user_organizations(updated)["organizations"],
+                    },
+                )
+                return
+            if parts == ["access", "switch-organization"]:
+                principal = _authenticated(self)
+                updated = PERSISTENCE.switch_user_tenant(principal, str(payload.get("tenant_id", "")))
+                PERSISTENCE.audit(updated, action="access.switch_organization", resource_type="tenant", resource_id=updated.tenant_id)
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "ok": True,
+                        "principal": principal_payload(updated),
+                        "organizations": PERSISTENCE.user_organizations(updated)["organizations"],
+                    },
                 )
                 return
             if parts == ["sessions"]:

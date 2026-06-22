@@ -12,6 +12,15 @@ export type Principal = {
   student_group_id?: number | null;
 };
 
+export type OrganizationMembership = {
+  tenant_id: string;
+  display_name: string;
+  role: Principal["role"];
+  enabled: boolean;
+  active: boolean;
+  group_count: number;
+};
+
 export type Instance = {
   days: string[];
   weeks: number[];
@@ -34,6 +43,10 @@ export type WorkspaceState = {
 };
 
 export type ViewKey =
+  | "home"
+  | "faq"
+  | "login"
+  | "account"
   | "workspace"
   | "review"
   | "operations"

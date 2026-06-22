@@ -95,6 +95,22 @@ def test_live_api_server_health_solve_and_portfolio_contract(tmp_path):
         assert "tenants:read_all" in whoami["permissions"]
         auth_config = _http_json("GET", f"http://127.0.0.1:{port}/auth/config")
         assert auth_config["mode"] == "email_password"
+        analytics_event = _http_json(
+            "POST",
+            f"http://127.0.0.1:{port}/analytics/event",
+            {
+                "client_id": "pytest-client-123456",
+                "event_name": "page_view",
+                "path": "/workspace",
+                "view_name": "workspace",
+                "viewport_width": 1200,
+                "viewport_height": 800,
+                "tenant_id": "default",
+                "user_role": "anonymous",
+                "details": {"source": "live-test"},
+            },
+        )
+        assert analytics_event == {"ok": True}
         access = _http_json(
             "POST",
             f"http://127.0.0.1:{port}/access",
@@ -131,15 +147,40 @@ def test_live_api_server_health_solve_and_portfolio_contract(tmp_path):
             {"Authorization": f"Bearer {login['token']}"},
         )
         assert token_whoami["tenant_id"] == "uni-a"
+        access_after_login = _http_json(
+            "POST",
+            f"http://127.0.0.1:{port}/access",
+            {"action": "create_group", "name": "Uni A review board", "tenant_id": "uni-a"},
+        )
+        review_group_id = [row["group_id"] for row in access_after_login["groups"] if row["name"] == "Uni A review board"][0]
+        second_invite = _http_json(
+            "POST",
+            f"http://127.0.0.1:{port}/access",
+            {"action": "create_invite", "group_id": review_group_id, "role": "professor", "code": "review-board-invite", "tenant_id": "uni-a"},
+        )
+        assert second_invite["new_invite_code"] == "review-board-invite"
+        joined = _http_json_headers(
+            "POST",
+            f"http://127.0.0.1:{port}/access/join-invite",
+            {"Authorization": f"Bearer {login['token']}"},
+            {"invite_code": "review-board-invite"},
+        )
+        assert review_group_id in joined["principal"]["groups"]
         parity = _http_json("GET", f"http://127.0.0.1:{port}/parity")
         assert parity["coverage_percent"] > 0
         system = _http_json("GET", f"http://127.0.0.1:{port}/system")
         assert system["database"]["schema_version"] >= 2
         assert "auth" in system
+        analytics = _http_json("GET", f"http://127.0.0.1:{port}/analytics/summary")
+        assert analytics["events"] >= 1
+        assert analytics["visitors"] >= 1
+        assert any(row["path"] == "/workspace" for row in analytics["top_paths"])
         openapi = _http_json("GET", f"http://127.0.0.1:{port}/openapi.json")
         assert openapi["openapi"].startswith("3.")
         assert "/sessions" in openapi["paths"]
         assert "/auth/config" in openapi["paths"]
+        assert "/analytics/event" in openapi["paths"]
+        assert "/analytics/summary" in openapi["paths"]
         preset_payload = _http_json("GET", f"http://127.0.0.1:{port}/preset/small_demo")
         assert preset_payload["mode"] == "small_demo"
         assert preset_payload["instance"]["activities"]

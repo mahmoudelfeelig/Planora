@@ -96,6 +96,58 @@ def test_persistence_sessions_and_audit_events(tmp_path):
     assert events[0]["tenant_id"] == "uni-a"
 
 
+def test_persistence_records_and_summarizes_first_party_analytics(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    admin = Principal(user_id="root", role="admin", tenant_id="global")
+    uni_admin = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a")
+    student = Principal(user_id="student-a", role="student", tenant_id="uni-a")
+    store.upsert_user(admin)
+    store.upsert_user(uni_admin)
+    store.record_analytics_event(
+        {
+            "client_id_hash": "client-a",
+            "tenant_id": "uni-a",
+            "user_role": "student",
+            "event_name": "page_view",
+            "path": "/workspace",
+            "view_name": "workspace",
+            "viewport_width": 1280,
+            "viewport_height": 720,
+            "details": {"source": "test"},
+        }
+    )
+    store.record_analytics_event(
+        {
+            "client_id_hash": "client-a",
+            "tenant_id": "uni-a",
+            "user_role": "student",
+            "event_name": "solve_complete",
+            "path": "/workspace",
+        }
+    )
+    store.record_analytics_event(
+        {
+            "client_id_hash": "client-b",
+            "tenant_id": "uni-b",
+            "user_role": "uni_admin",
+            "event_name": "page_view",
+            "path": "/admin",
+        }
+    )
+
+    tenant_summary = store.analytics_summary(uni_admin)
+    assert tenant_summary["events"] == 2
+    assert tenant_summary["visitors"] == 1
+    assert tenant_summary["top_paths"][0]["path"] == "/workspace"
+    assert {row["event_name"] for row in tenant_summary["top_events"]} == {"page_view", "solve_complete"}
+
+    global_summary = store.analytics_summary(admin)
+    assert global_summary["events"] == 3
+    assert global_summary["visitors"] == 2
+    with pytest.raises(PermissionError):
+        store.analytics_summary(student)
+
+
 def test_auth_sessions_are_revocable(tmp_path):
     store = PersistenceStore(tmp_path / "planora.sqlite3")
     principal = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a", session_id="sid-1")
@@ -155,6 +207,69 @@ def test_invite_registration_verification_and_password_login(tmp_path):
     assert group_id in logged_in.groups
 
 
+def test_email_account_can_join_group_after_registration(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    admin = Principal(user_id="admin-a", role="uni_admin", tenant_id="default")
+    store.upsert_user(admin)
+    snapshot = store.apply_access_change(admin, {"action": "create_group", "name": "Reviewers"})
+    group_id = snapshot["groups"][0]["group_id"]
+    store.apply_access_change(
+        admin,
+        {"action": "create_invite", "group_id": group_id, "role": "professor", "code": "reviewers-code"},
+    )
+    registered = store.register_email_user(
+        email="new-user@example.edu",
+        password="correct horse battery",
+        display_name="New User",
+    )
+    principal = registered["principal"]
+    assert principal.role == "student"
+    assert principal.groups == ()
+    store.verify_email_token(registered["verification_token"])
+    logged_in = store.authenticate_email_user(email="new-user@example.edu", password="correct horse battery")
+    joined = store.redeem_invite_for_user(logged_in, "reviewers-code")
+    assert group_id in joined.groups
+    assert joined.role == "professor"
+
+
+def test_email_account_can_join_and_switch_between_organizations(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    global_admin = Principal(user_id="root", role="admin", tenant_id="global")
+    store.upsert_user(global_admin)
+    uni_a_snapshot = store.apply_access_change(global_admin, {"action": "create_group", "tenant_id": "uni-a", "name": "Students"})
+    uni_b_snapshot = store.apply_access_change(global_admin, {"action": "create_group", "tenant_id": "uni-b", "name": "Reviewers"})
+    uni_a_group = [row["group_id"] for row in uni_a_snapshot["groups"] if row["tenant_id"] == "uni-a"][0]
+    uni_b_group = [row["group_id"] for row in uni_b_snapshot["groups"] if row["tenant_id"] == "uni-b"][0]
+    store.apply_access_change(
+        global_admin,
+        {"action": "create_invite", "tenant_id": "uni-a", "group_id": uni_a_group, "role": "student", "code": "uni-a-student-code"},
+    )
+    store.apply_access_change(
+        global_admin,
+        {"action": "create_invite", "tenant_id": "uni-b", "group_id": uni_b_group, "role": "professor", "code": "uni-b-reviewer-code"},
+    )
+    registered = store.register_email_user(
+        email="multi@example.edu",
+        password="correct horse battery",
+        display_name="Multi Org",
+        invite_code="uni-a-student-code",
+    )
+    store.verify_email_token(registered["verification_token"])
+    logged_in = store.authenticate_email_user(email="multi@example.edu", password="correct horse battery")
+    assert logged_in.tenant_id == "uni-a"
+    assert uni_a_group in logged_in.groups
+    joined = store.redeem_invite_for_user(logged_in, "uni-b-reviewer-code")
+    assert joined.tenant_id == "uni-b"
+    assert joined.role == "professor"
+    assert uni_b_group in joined.groups
+    orgs = store.user_organizations(joined)["organizations"]
+    assert {row["tenant_id"] for row in orgs} == {"uni-a", "uni-b"}
+    switched = store.switch_user_tenant(joined, "uni-a")
+    assert switched.tenant_id == "uni-a"
+    assert switched.role == "student"
+    assert uni_a_group in switched.groups
+
+
 def test_invite_rotation_keeps_existing_members(tmp_path):
     store = PersistenceStore(tmp_path / "planora.sqlite3")
     admin = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a")
@@ -196,4 +311,3 @@ def test_parity_manifest_reports_coverage():
     assert manifest["covered"] > 0
     assert manifest["total"] >= manifest["covered"]
     assert any(row["capability"] == "solve" for row in manifest["items"])
-

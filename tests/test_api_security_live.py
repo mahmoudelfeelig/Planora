@@ -33,6 +33,8 @@ def _status(url: str, *, method: str = "GET", payload: dict | None = None, heade
             return int(response.status)
     except urllib.error.HTTPError as exc:
         return int(exc.code)
+    except urllib.error.URLError:
+        return 0
 
 
 @pytest.mark.slow
@@ -67,6 +69,17 @@ def test_production_api_rejects_anonymous_forged_and_local_admin(tmp_path):
             method="POST",
             payload={"email": "attacker@example.edu", "password": "incorrect password"},
         ) == 403
+        assert _status(
+            f"http://127.0.0.1:{port}/analytics/event",
+            method="POST",
+            payload={
+                "client_id": "security-test-client",
+                "event_name": "page_view",
+                "path": "/",
+                "tenant_id": "public",
+            },
+        ) == 200
+        assert _status(f"http://127.0.0.1:{port}/analytics/summary") == 401
         assert _status(f"http://127.0.0.1:{port}/sessions/unknown") == 401
         assert _status(f"http://127.0.0.1:{port}/jobs/unknown") == 401
     finally:
