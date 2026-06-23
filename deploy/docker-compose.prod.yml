@@ -70,15 +70,14 @@ services:
     environment:
       PLANORA_DOMAIN: ${PLANORA_DOMAIN}
       PLANORA_TLS_EMAIL: ${PLANORA_TLS_EMAIL}
-    ports:
-      - "80:80"
-      - "443:443"
     depends_on:
       planora-api:
         condition: service_healthy
-    volumes:
-      - planora-caddy-data:/data
-      - planora-caddy-config:/config
+    networks:
+      default:
+      web:
+        aliases:
+          - planora-web
 
   planora-backup:
     build:
@@ -115,6 +114,8 @@ services:
 
 volumes:
   planora-data:
-  planora-caddy-data:
-  planora-caddy-config:
   planora-backups:
+
+networks:
+  web:
+    external: true

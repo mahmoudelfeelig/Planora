@@ -1,4 +1,4 @@
-{$PLANORA_DOMAIN} {
+:80 {
     encode gzip zstd
 
     header {
@@ -25,6 +25,4 @@
         try_files {path} /index.html
         file_server
     }
-
-    tls {$PLANORA_TLS_EMAIL}
 }
