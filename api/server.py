@@ -1,23 +1,42 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
-import io
 import json
 import os
 import secrets
-import shutil
 import sys
 import tempfile
 import threading
 import time
-import math
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
-from typing import Any, Dict, Tuple
+from urllib.parse import parse_qs, urlparse
+from typing import Any, Dict
 
+from api.http import (
+    common_headers as _common_headers,
+    csv_response as _csv_response,
+    json_response as _json_response,
+    parse_json as _parse_json,
+    request_base_url as _request_base_url,
+    segments as _segments,
+    text_response as _text_response,
+)
+from api.actions import (
+    handle_conflicts as _handle_conflicts,
+    handle_cp_polish as _handle_cp_polish,
+    handle_export_csv as _handle_export_csv,
+    handle_graphql as _handle_graphql,
+    handle_improve as _handle_improve,
+    handle_portfolio as _handle_portfolio,
+    handle_score as _handle_score,
+    handle_solve as _handle_solve,
+)
+from api.schema import openapi_schema as _openapi_schema
+from api import auth_helpers
+from api.rate_limit import RateLimitExceeded, check_rate_limit as _check_rate_limit_impl
+from api.system_status import system_status_payload as _system_status_payload_impl
 from services.application_service import (
     JobCapacityExceeded,
     JobStore,
@@ -26,11 +45,8 @@ from services.application_service import (
     load_web_project,
     run_workspace_action,
     safe_project_name,
-    solve_options_from_payload,
 )
 from services.auth_service import (
-    AUTH_COOKIE,
-    CSRF_COOKIE,
     Principal,
     create_auth_token,
     principal_from_headers,
@@ -41,7 +57,6 @@ from services.auth_service import (
     stamp_meta,
     validate_csrf,
 )
-from services.contracts import ImproveOptions, SolveOptions
 from services.password_auth_service import (
     build_password_reset_email,
     build_verification_email,
@@ -54,18 +69,13 @@ from services.password_auth_service import (
 )
 from services.quality_service import SOFT_WEIGHT_DEFAULTS
 from services.schedule_ops_service import (
-    cp_sat_polish_shared,
-    export_schedule_csv_text,
-    improve_schedule_shared,
     normalize_schedule,
     score_schedule,
 )
-from services.solver_service import solve_instance, solve_portfolio
 from services.persistence_service import PersistenceStore, default_persistence_path
 from services.parity_service import parity_manifest
 from services.timetable_import_service import import_timetable_csv
 from utils.generator import generate_instance, instance_to_json
-from utils.io import instance_from_json
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -78,175 +88,13 @@ _RATE_LOCK = threading.Lock()
 _RATE_BUCKETS: dict[str, list[float]] = {}
 
 
-class RateLimitExceeded(PermissionError):
-    def __init__(self, retry_after: int) -> None:
-        super().__init__("Rate limit exceeded. Please retry shortly.")
-        self.retry_after = max(1, int(retry_after))
-
-
-def _rate_limit_identity(handler: BaseHTTPRequestHandler) -> tuple[str, bool]:
-    try:
-        principal = principal_from_headers(handler.headers)
-        return f"user:{principal.tenant_id}:{principal.user_id}", True
-    except Exception:
-        forwarded = str(handler.headers.get("X-Forwarded-For", "") or "").split(",", 1)[0].strip()
-        client = forwarded or str(handler.client_address[0])
-        return f"ip:{client}", False
-
-
 def _check_rate_limit(handler: BaseHTTPRequestHandler) -> None:
-    path = urlparse(handler.path).path
-    if path in {"/health", "/ready"}:
-        return
-    identity, authenticated = _rate_limit_identity(handler)
-    sensitive_auth_paths = {
-        "/auth/login", "/auth/register", "/auth/forgot-password",
-        "/auth/reset-password", "/auth/verify", "/auth/verify-email",
-        "/auth/resend-verification", "/access/join-invite",
-    }
-    if path in sensitive_auth_paths:
-        category = "auth-sensitive"
-        limit = int(os.environ.get("PLANORA_RATE_LIMIT_AUTH_PER_MINUTE", "20"))
-    elif path in {"/analytics/event", "/events/collect"}:
-        category = "telemetry"
-        limit = int(os.environ.get("PLANORA_RATE_LIMIT_TELEMETRY_PER_MINUTE", "600"))
-    elif authenticated:
-        category = "authenticated"
-        limit = int(os.environ.get("PLANORA_RATE_LIMIT_AUTHENTICATED_PER_MINUTE", "1200"))
-    else:
-        category = "anonymous"
-        limit = int(os.environ.get(
-            "PLANORA_RATE_LIMIT_ANONYMOUS_PER_MINUTE",
-            os.environ.get("PLANORA_RATE_LIMIT_PER_MINUTE", "120"),
-        ))
-    if limit <= 0:
-        return
-    now = time.monotonic()
-    with _RATE_LOCK:
-        if len(_RATE_BUCKETS) > 4096:
-            stale_keys = [key for key, stamps in _RATE_BUCKETS.items() if not stamps or now - stamps[-1] >= 60.0]
-            for key in stale_keys:
-                _RATE_BUCKETS.pop(key, None)
-        bucket_key = f"{identity}:{category}"
-        recent = [stamp for stamp in _RATE_BUCKETS.get(bucket_key, []) if now - stamp < 60.0]
-        if len(recent) >= limit:
-            retry_after = math.ceil(60.0 - (now - recent[0])) if recent else 1
-            raise RateLimitExceeded(retry_after)
-        recent.append(now)
-        _RATE_BUCKETS[bucket_key] = recent
-
-
-def _allowed_origin(handler: BaseHTTPRequestHandler) -> str:
-    origin = str(handler.headers.get("Origin", "") or "")
-    configured = [item.strip().rstrip("/") for item in os.environ.get("PLANORA_ALLOWED_ORIGINS", "").split(",") if item.strip()]
-    if not configured and not production_mode():
-        return origin or "*"
-    return origin if origin.rstrip("/") in configured else ""
-
-
-def _common_headers(handler: BaseHTTPRequestHandler) -> None:
-    origin = _allowed_origin(handler)
-    if origin:
-        handler.send_header("Access-Control-Allow-Origin", origin)
-        handler.send_header("Vary", "Origin")
-        if origin != "*":
-            handler.send_header("Access-Control-Allow-Credentials", "true")
-    handler.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token, X-Planora-User, X-Planora-Role, X-Planora-Tenant")
-    handler.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, DELETE, OPTIONS")
-    handler.send_header("X-Content-Type-Options", "nosniff")
-    handler.send_header("X-Frame-Options", "DENY")
-    handler.send_header("Referrer-Policy", "same-origin")
-    handler.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    handler.send_header("Cache-Control", "no-store")
-    request_id = str(getattr(handler, "_request_id", "") or "")
-    if request_id:
-        handler.send_header("X-Request-ID", request_id)
-
-
-def _json_response(
-    handler: BaseHTTPRequestHandler,
-    status: int,
-    payload: Dict[str, Any],
-    *,
-    headers: Dict[str, str] | None = None,
-) -> None:
-    body = json.dumps(payload).encode("utf-8")
-    handler.send_response(int(status))
-    handler.send_header("Content-Type", "application/json")
-    handler.send_header("Content-Length", str(len(body)))
-    for name, value in dict(headers or {}).items():
-        handler.send_header(str(name), str(value))
-    _common_headers(handler)
-    handler.end_headers()
-    if str(getattr(handler, "command", "")).upper() != "HEAD":
-        handler.wfile.write(body)
-
-
-def _text_response(
-    handler: BaseHTTPRequestHandler,
-    status: int,
-    body: str,
-    *,
-    content_type: str = "text/plain; charset=utf-8",
-) -> None:
-    encoded = str(body).encode("utf-8")
-    handler.send_response(int(status))
-    handler.send_header("Content-Type", content_type)
-    handler.send_header("Content-Length", str(len(encoded)))
-    _common_headers(handler)
-    handler.end_headers()
-    if str(getattr(handler, "command", "")).upper() != "HEAD":
-        handler.wfile.write(encoded)
-
-
-def _csv_response(handler: BaseHTTPRequestHandler, filename: str, rows: list[Dict[str, Any]]) -> None:
-    output = io.StringIO()
-    fieldnames = sorted({key for row in rows for key in row.keys()}) if rows else ["empty"]
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
-    writer.writeheader()
-    for row in rows:
-        writer.writerow({key: row.get(key, "") for key in fieldnames})
-    body = output.getvalue().encode("utf-8")
-    handler.send_response(200)
-    handler.send_header("Content-Type", "text/csv; charset=utf-8")
-    handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
-    handler.send_header("Content-Length", str(len(body)))
-    _common_headers(handler)
-    handler.end_headers()
-    if str(getattr(handler, "command", "")).upper() != "HEAD":
-        handler.wfile.write(body)
-
-
-def _parse_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any]:
-    length = int(handler.headers.get("Content-Length", "0") or 0)
-    path = urlparse(handler.path).path
-    if path in {"/analytics/event", "/events/collect"}:
-        maximum = int(os.environ.get("PLANORA_MAX_ANALYTICS_REQUEST_BYTES", "32768"))
-    else:
-        maximum = int(os.environ.get("PLANORA_MAX_REQUEST_BYTES", str(20 * 1024 * 1024)))
-    if length > maximum:
-        raise ValueError(f"Request body exceeds the {maximum}-byte limit.")
-    body = handler.rfile.read(length) if length > 0 else b"{}"
-    payload = json.loads(body.decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("JSON body must be an object.")
-    return payload
-
-
-def _request_base_url(handler: BaseHTTPRequestHandler) -> str:
-    configured_domain = str(os.environ.get("PLANORA_DOMAIN", "") or "").strip()
-    if production_mode() and configured_domain:
-        return f"https://{configured_domain}"
-    forwarded_proto = str(handler.headers.get("X-Forwarded-Proto", "") or "").strip()
-    forwarded_host = str(handler.headers.get("X-Forwarded-Host", "") or "").strip()
-    host = forwarded_host or str(handler.headers.get("Host", "127.0.0.1:8787") or "127.0.0.1:8787")
-    scheme = forwarded_proto or ("https" if handler.server.server_port == 443 else "http")
-    return f"{scheme}://{host}"
-
-
-def _segments(path: str) -> list[str]:
-    parsed = urlparse(path)
-    return [unquote(part) for part in parsed.path.split("/") if part]
+    _check_rate_limit_impl(
+        handler,
+        buckets=_RATE_BUCKETS,
+        lock=_RATE_LOCK,
+        principal_from_headers=principal_from_headers,
+    )
 
 
 def _hash_analytics_client_id(value: str) -> str:
@@ -256,134 +104,23 @@ def _hash_analytics_client_id(value: str) -> str:
     return hashlib.sha256(f"planora-analytics:{raw}".encode("utf-8")).hexdigest()
 
 
-def _read_text_file(path: str) -> str | None:
-    try:
-        return Path(path).read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-
-
-def _read_int_file(path: str) -> int | None:
-    raw = _read_text_file(path)
-    if raw in (None, "", "max"):
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        return None
-
-
-def _percent(numerator: int | None, denominator: int | None) -> float | None:
-    if numerator is None or denominator is None or denominator <= 0:
-        return None
-    return round((float(numerator) / float(denominator)) * 100.0, 2)
-
-
-def _host_memory_snapshot() -> Dict[str, Any]:
-    values: Dict[str, int] = {}
-    raw = _read_text_file("/proc/meminfo")
-    if raw:
-        for line in raw.splitlines():
-            if ":" not in line:
-                continue
-            key, rest = line.split(":", 1)
-            number = rest.strip().split()[0] if rest.strip() else ""
-            if number.isdigit():
-                values[key] = int(number) * 1024
-    total = values.get("MemTotal")
-    available = values.get("MemAvailable")
-    used = total - available if total is not None and available is not None else None
-    return {
-        "total_bytes": total,
-        "available_bytes": available,
-        "used_bytes": used,
-        "used_percent": _percent(used, total),
-    }
-
-
-def _container_memory_snapshot() -> Dict[str, Any]:
-    current = _read_int_file("/sys/fs/cgroup/memory.current")
-    limit = _read_int_file("/sys/fs/cgroup/memory.max")
-    if current is None:
-        current = _read_int_file("/sys/fs/cgroup/memory/memory.usage_in_bytes")
-    if limit is None:
-        limit = _read_int_file("/sys/fs/cgroup/memory/memory.limit_in_bytes")
-    if limit is not None and limit > 1 << 60:
-        limit = None
-    return {
-        "used_bytes": current,
-        "limit_bytes": limit,
-        "used_percent": _percent(current, limit),
-    }
-
-
-def _disk_snapshot(path: Path) -> Dict[str, Any]:
-    try:
-        usage = shutil.disk_usage(path)
-    except OSError:
-        usage = shutil.disk_usage(ROOT_DIR)
-    used = int(usage.total - usage.free)
-    return {
-        "path": str(path),
-        "total_bytes": int(usage.total),
-        "used_bytes": used,
-        "free_bytes": int(usage.free),
-        "used_percent": _percent(used, int(usage.total)),
-    }
-
-
 def _system_status_payload() -> Dict[str, Any]:
-    schema = PERSISTENCE.schema_info()
-    db_path = Path(str(schema.get("path") or default_persistence_path(ROOT_DIR)))
-    data_path = db_path.parent if db_path.parent.exists() else ROOT_DIR / "data"
-    try:
-        db_size = db_path.stat().st_size
-    except OSError:
-        db_size = None
-    return {
-        "ok": True,
-        "checked_at": time.time(),
-        "api": {
-            "uptime_seconds": round(time.time() - STARTED_AT, 2),
-            "production": production_mode(),
-            "domain": os.environ.get("PLANORA_DOMAIN", ""),
-            "public_base_url": os.environ.get("PLANORA_PUBLIC_BASE_URL", ""),
-        },
-        "database": {**schema, "size_bytes": db_size},
-        "disk": _disk_snapshot(data_path),
-        "memory": {
-            "container": _container_memory_snapshot(),
-            "host": _host_memory_snapshot(),
-        },
-        "jobs": JOB_STORE.stats(),
-        "limits": {
-            "anonymous_rate_per_minute": int(os.environ.get("PLANORA_RATE_LIMIT_ANONYMOUS_PER_MINUTE", "120")),
-            "authenticated_rate_per_minute": int(os.environ.get("PLANORA_RATE_LIMIT_AUTHENTICATED_PER_MINUTE", "1200")),
-            "auth_rate_per_minute": int(os.environ.get("PLANORA_RATE_LIMIT_AUTH_PER_MINUTE", "20")),
-            "telemetry_rate_per_minute": int(os.environ.get("PLANORA_RATE_LIMIT_TELEMETRY_PER_MINUTE", "600")),
-            "max_request_bytes": int(os.environ.get("PLANORA_MAX_REQUEST_BYTES", str(20 * 1024 * 1024))),
-        },
-        "netdata": {
-            "url": os.environ.get("PLANORA_NETDATA_URL", ""),
-            "note": "Use Netdata Cloud for detailed host and Docker metrics.",
-        },
-    }
+    return _system_status_payload_impl(
+        root_dir=ROOT_DIR,
+        started_at=STARTED_AT,
+        persistence=PERSISTENCE,
+        job_store=JOB_STORE,
+        production_mode=production_mode,
+        default_persistence_path=default_persistence_path,
+    )
 
 
 def _authenticated(handler: BaseHTTPRequestHandler, permission: str | None = None) -> Principal:
-    principal = principal_from_headers(handler.headers)
-    PERSISTENCE.require_active_session(principal)
-    principal = PERSISTENCE.resolve_principal(principal)
-    if permission:
-        require_permission(principal, permission)
-    return principal
+    return auth_helpers.authenticated(handler, PERSISTENCE, permission)
 
 
 def _global_admin(handler: BaseHTTPRequestHandler, permission: str | None = "audit:read") -> Principal:
-    principal = _authenticated(handler, permission)
-    if not principal.is_global_admin:
-        raise PermissionError("Global administrator access is required.")
-    return principal
+    return auth_helpers.global_admin(handler, PERSISTENCE, permission)
 
 
 def _optional_authenticated(handler: BaseHTTPRequestHandler) -> Principal | None:
@@ -496,13 +233,14 @@ def _redirect_with_session(
     *,
     max_age: int,
 ) -> None:
-    secure = "; Secure" if production_mode() else ""
-    handler.send_response(303)
-    handler.send_header("Location", location)
-    handler.send_header("Set-Cookie", f"{AUTH_COOKIE}={token}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}")
-    handler.send_header("Set-Cookie", f"{CSRF_COOKIE}={csrf_token}; Path=/; Max-Age={max_age}; SameSite=Lax{secure}")
-    _common_headers(handler)
-    handler.end_headers()
+    auth_helpers.redirect_with_session(
+        handler,
+        location,
+        token,
+        csrf_token,
+        max_age=max_age,
+        common_headers_fn=_common_headers,
+    )
 
 
 def _auth_json_response(
@@ -515,95 +253,20 @@ def _auth_json_response(
     max_age: int = 0,
     clear: bool = False,
 ) -> None:
-    body = json.dumps(payload).encode("utf-8")
-    secure = "; Secure" if production_mode() else ""
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json")
-    handler.send_header("Content-Length", str(len(body)))
-    if clear:
-        handler.send_header("Set-Cookie", f"{AUTH_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{secure}")
-        handler.send_header("Set-Cookie", f"{CSRF_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax{secure}")
-    elif token and csrf_token:
-        handler.send_header("Set-Cookie", f"{AUTH_COOKIE}={token}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}")
-        handler.send_header("Set-Cookie", f"{CSRF_COOKIE}={csrf_token}; Path=/; Max-Age={max_age}; SameSite=Lax{secure}")
-    _common_headers(handler)
-    handler.end_headers()
-    handler.wfile.write(body)
+    auth_helpers.auth_json_response(
+        handler,
+        status,
+        payload,
+        token=token,
+        csrf_token=csrf_token,
+        max_age=max_age,
+        clear=clear,
+        common_headers_fn=_common_headers,
+    )
 
 
 def _session_for_principal(principal: Principal) -> tuple[str, str, int, Principal]:
-    session_id = secrets.token_urlsafe(24)
-    ttl = int(os.environ.get("PLANORA_SESSION_TTL_SECONDS", "28800"))
-    csrf = PERSISTENCE.create_auth_session(principal, session_id, ttl_seconds=ttl)
-    session_principal = Principal(
-        user_id=principal.user_id,
-        role=principal.role,
-        tenant_id=principal.tenant_id,
-        groups=principal.groups,
-        session_id=session_id,
-        provider=principal.provider,
-        staff_id=principal.staff_id,
-        student_group_id=principal.student_group_id,
-        scopes=principal.scopes,
-    )
-    token = create_auth_token(session_principal, ttl_seconds=ttl, session_id=session_id)
-    return token, csrf, ttl, session_principal
-
-
-def _openapi_schema() -> Dict[str, Any]:
-    return {
-        "openapi": "3.0.3",
-        "info": {"title": "Planora Local Scheduler API", "version": "1.0.0"},
-        "paths": {
-            "/health": {"get": {"summary": "Health check"}},
-            "/capabilities": {"get": {"summary": "List UI/API capabilities"}},
-            "/auth/whoami": {"get": {"summary": "Return current principal and permissions"}},
-            "/auth/config": {"get": {"summary": "Read email/password authentication configuration"}},
-            "/auth/register": {"post": {"summary": "Register using email, password, and an invite code"}},
-            "/auth/verify": {"get": {"summary": "Verify an email confirmation token"}, "post": {"summary": "Verify an email confirmation token"}},
-            "/auth/forgot-password": {"post": {"summary": "Request a password reset email"}},
-            "/auth/reset-password": {"post": {"summary": "Reset password using a link token or emailed code"}},
-            "/auth/change-password": {"post": {"summary": "Change password for the current account"}},
-            "/auth/sessions": {"get": {"summary": "List current account sessions"}, "post": {"summary": "Revoke other account sessions"}},
-            "/auth/resend-verification": {"post": {"summary": "Resend email verification"}},
-            "/auth/login": {"post": {"summary": "Sign in with email and password"}},
-            "/auth/refresh": {"post": {"summary": "Rotate the authenticated session"}},
-            "/auth/logout": {"post": {"summary": "Revoke and clear the authenticated session"}},
-            "/access": {"get": {"summary": "Read tenant access settings"}, "post": {"summary": "Apply a tenant access change"}},
-            "/access/my-organizations": {"get": {"summary": "List organizations linked to the current account"}},
-            "/access/join-invite": {"post": {"summary": "Redeem an invite code after account creation"}},
-            "/access/switch-organization": {"post": {"summary": "Switch the current account's active organization"}},
-            "/audit": {"get": {"summary": "List tenant-scoped audit events"}},
-            "/analytics/event": {"post": {"summary": "Record a consented first-party analytics event"}},
-            "/events/collect": {"post": {"summary": "Record a consented first-party telemetry event"}},
-            "/analytics/summary": {"get": {"summary": "Read first-party analytics summary"}},
-            "/analytics/export.csv": {"get": {"summary": "Export first-party analytics summary as CSV"}},
-            "/system": {"get": {"summary": "Return API and persistence health"}},
-            "/system/status": {"get": {"summary": "Return admin-only runtime and resource status"}},
-            "/system/email-test": {"post": {"summary": "Send a test email to validate SMTP delivery"}},
-            "/parity": {"get": {"summary": "Return desktop/backend/web parity manifest"}},
-            "/sessions": {"post": {"summary": "Create a backend workspace session"}},
-            "/sessions/{session_id}": {"get": {"summary": "Read session workspace"}},
-            "/sessions/{session_id}/{action}": {
-                "post": {
-                    "summary": "Run a shared scheduler action on a session",
-                    "description": "Actions include solve, portfolio, score, conflicts, improve, cp-polish, move, lock, unlock, and export-csv.",
-                }
-            },
-            "/jobs/{action}": {"post": {"summary": "Start an async shared scheduler action"}},
-            "/jobs/{job_id}": {"get": {"summary": "Poll async job state"}, "post": {"summary": "Cancel async job"}},
-            "/jobs/{job_id}/events": {"get": {"summary": "Read Server-Sent Events job snapshot"}},
-            "/projects": {"get": {"summary": "List saved local web projects"}, "post": {"summary": "Save a local web project"}},
-            "/projects/{name}": {
-                "get": {"summary": "Load a tenant-scoped web project"},
-                "delete": {"summary": "Delete a tenant-scoped web project"},
-            },
-            "/solve": {"post": {"summary": "Solve one instance without session state"}},
-            "/portfolio": {"post": {"summary": "Run portfolio solve without session state"}},
-            "/import/csv": {"post": {"summary": "Import timetable CSV content"}},
-            "/export/csv": {"post": {"summary": "Export schedule CSV content"}},
-        },
-    }
+    return auth_helpers.session_for_principal(PERSISTENCE, principal)
 
 
 def _session_payload_from_request(payload: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[int, Dict[str, Any]], Dict[str, Any]]:
@@ -1016,7 +679,23 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                         response["verification_code"] = verification_code
                         response["verification_url"] = f"/auth/verify?token={verification_token}"
                 else:
-                    PERSISTENCE.verify_email_token(verification_token)
+                    principal = PERSISTENCE.verify_email_token(verification_token)
+                    auth_token, csrf, ttl, session_principal = _session_for_principal(principal)
+                    PERSISTENCE.audit(principal, action="auth.register", resource_type="user", resource_id=principal.user_id)
+                    _auth_json_response(
+                        self,
+                        200,
+                        {
+                            **response,
+                            "token": auth_token,
+                            "csrf_token": csrf,
+                            "principal": principal_payload(session_principal),
+                        },
+                        token=auth_token,
+                        csrf_token=csrf,
+                        max_age=ttl,
+                    )
+                    return
                 PERSISTENCE.audit(principal, action="auth.register", resource_type="user", resource_id=principal.user_id)
                 _json_response(self, 200, response)
                 return
@@ -1325,28 +1004,6 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
         _json_response(self, 404, {"error": "Not found"})
 
 
-def _load_instance_and_options(payload: Dict[str, Any]) -> Tuple[Any, SolveOptions]:
-    inst_raw = payload.get("instance")
-    options_raw = payload.get("options") or {}
-    if not isinstance(inst_raw, dict):
-        raise ValueError("Payload missing instance JSON.")
-    if not isinstance(options_raw, dict):
-        raise ValueError("Payload options must be an object.")
-    inst = instance_from_json(inst_raw)
-    options = solve_options_from_payload(inst, payload)
-    return inst, options
-
-
-def _load_instance_and_schedule(payload: Dict[str, Any]) -> Tuple[Any, Dict[int, Dict[str, Any]]]:
-    inst_raw = payload.get("instance")
-    schedule_raw = payload.get("schedule")
-    if not isinstance(inst_raw, dict):
-        raise ValueError("Payload missing instance JSON.")
-    if not isinstance(schedule_raw, dict):
-        raise ValueError("Payload missing schedule JSON.")
-    return instance_from_json(inst_raw), normalize_schedule(schedule_raw)
-
-
 def _canonical_action(action: str) -> str:
     aliases = {
         "cp-polish": "cp_polish",
@@ -1513,94 +1170,6 @@ def _safe_optional_local_path(raw: Any) -> str | None:
     return str(candidate)
 
 
-def _result_payload(result) -> Dict[str, Any]:
-    return {
-        "status": int(result.status),
-        "raw_status": int(result.raw_status),
-        "schedule": result.schedule,
-        "hard_conflicts": list(result.hard_conflicts),
-        "meta": dict(result.meta or {}),
-        "attempts": [
-            {
-                "room_mode": str(attempt.room_mode),
-                "use_objective": bool(attempt.use_objective),
-                "time_limit_seconds": attempt.time_limit_seconds,
-                "raw_status": int(attempt.raw_status),
-                "objective_value": attempt.objective_value,
-                "best_objective_bound": attempt.best_objective_bound,
-                "relative_gap": attempt.relative_gap,
-            }
-            for attempt in (result.attempts or [])
-        ],
-    }
-
-
-def _handle_solve(payload: Dict[str, Any]) -> Dict[str, Any]:
-    inst, options = _load_instance_and_options(payload)
-    result = solve_instance(inst, options)
-    return _result_payload(result)
-
-
-def _handle_portfolio(payload: Dict[str, Any]) -> Dict[str, Any]:
-    inst, options = _load_instance_and_options(payload)
-    result = solve_portfolio(inst, options)
-    return {
-        "best_index": int(result.best_index),
-        "candidates": [
-            {
-                "name": str(candidate.name),
-                "options": dict(candidate.options.__dict__),
-                "result": {
-                    **_result_payload(candidate.result),
-                },
-                "soft_penalty": candidate.soft_penalty,
-                "rank_explanation": str(candidate.rank_explanation),
-            }
-            for candidate in result.candidates
-        ],
-    }
-
-
-def _handle_score(payload: Dict[str, Any]) -> Dict[str, Any]:
-    inst, schedule = _load_instance_and_schedule(payload)
-    return score_schedule(inst, schedule)
-
-
-def _handle_conflicts(payload: Dict[str, Any]) -> Dict[str, Any]:
-    return _handle_score(payload)
-
-
-def _handle_improve(payload: Dict[str, Any]) -> Dict[str, Any]:
-    inst, schedule = _load_instance_and_schedule(payload)
-    options_raw = payload.get("options") or {}
-    if not isinstance(options_raw, dict):
-        raise ValueError("Payload options must be an object.")
-    focus_term = str(payload.get("focus_term", "") or "")
-    return improve_schedule_shared(
-        inst,
-        schedule,
-        ImproveOptions(**options_raw),
-        focus_term=focus_term,
-    )
-
-
-def _handle_cp_polish(payload: Dict[str, Any]) -> Dict[str, Any]:
-    inst, schedule = _load_instance_and_schedule(payload)
-    options_raw = payload.get("options") or {}
-    if not isinstance(options_raw, dict):
-        raise ValueError("Payload options must be an object.")
-    focus_term = str(payload.get("focus_term", "") or "")
-    if not focus_term:
-        raise ValueError("focus_term is required for focused CP-SAT polish.")
-    return cp_sat_polish_shared(
-        inst,
-        schedule,
-        solve_options_from_payload(inst, payload),
-        focus_term=focus_term,
-        affected_limit=int(payload.get("affected_limit", 100) or 100),
-    )
-
-
 def _handle_import_csv(payload: Dict[str, Any]) -> Dict[str, Any]:
     content = str(payload.get("content", "") or "")
     if not content.strip():
@@ -1633,41 +1202,6 @@ def _handle_import_csv(payload: Dict[str, Any]) -> Dict[str, Any]:
         "meta": dict(meta or {}),
         "score": score_schedule(inst, schedule),
     }
-
-
-def _handle_export_csv(payload: Dict[str, Any]) -> Dict[str, Any]:
-    inst, schedule = _load_instance_and_schedule(payload)
-    with tempfile.NamedTemporaryFile("w", suffix=".csv", encoding="utf-8", newline="", delete=False) as fh:
-        tmp_path = Path(fh.name)
-    try:
-        content = export_schedule_csv_text(inst, schedule, tmp_path)
-    finally:
-        try:
-            tmp_path.unlink()
-        except Exception:
-            pass
-    return {
-        "filename": str(payload.get("filename", "planora-schedule.csv") or "planora-schedule.csv"),
-        "content_type": "text/csv",
-        "content": content,
-    }
-
-
-def _handle_graphql(payload: Dict[str, Any], principal: Principal | None = None) -> Dict[str, Any]:
-    query = str(payload.get("query", "") or "")
-    if "health" in query.lower():
-        return {"data": {"health": {"ok": True}}}
-    if "solveportfolio" in query.lower():
-        if principal is None:
-            raise PermissionError("Authentication required for portfolio solving.")
-        require_permission(principal, "solver:run")
-        return {"data": {"portfolio": _handle_portfolio(payload)}}
-    if "solve" in query.lower():
-        if principal is None:
-            raise PermissionError("Authentication required for solving.")
-        require_permission(principal, "solver:run")
-        return {"data": {"solve": _handle_solve(payload)}}
-    return {"errors": [{"message": "Unsupported GraphQL query."}]}
 
 
 def serve(*, host: str = "127.0.0.1", port: int = 8787) -> None:

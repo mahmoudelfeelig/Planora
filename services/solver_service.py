@@ -28,6 +28,7 @@ from services.quality_service import (
     evaluate_schedule_sla,
     explain_solution_ranking,
 )
+from services.solver_profiles import OBJECTIVE_PROFILE_PRESETS
 from utils.disruption import build_freeze_locks
 from utils.generator import instance_to_json
 from utils.specs import validate_schedule_against_instance
@@ -53,54 +54,6 @@ def _solve_portfolio_candidate_process(
             )
         )
     return int(idx - 1), str(profile_id), candidate_options, result, soft_penalty
-
-OBJECTIVE_PROFILE_PRESETS: Dict[str, Dict[str, Any]] = {
-    "university_fast": {
-        "label": "University fast",
-        "use_objective": False,
-        "retry_without_objective": False,
-        "phased_solve": False,
-        "room_mode": "greedy",
-        "improve_total_seconds": 0.0,
-    },
-    "university_quality": {
-        "label": "University quality",
-        "use_objective": True,
-        "retry_without_objective": True,
-        "phased_solve": True,
-        "room_mode": "greedy",
-    },
-    "verification": {
-        "label": "Verification",
-        "use_objective": True,
-        "retry_without_objective": True,
-        "phased_solve": False,
-        "room_mode": "cp_rooms",
-    },
-    "fast_feasible": {
-        "label": "Fast feasible",
-        "use_objective": False,
-        "retry_without_objective": False,
-        "phased_solve": False,
-        "improve_total_seconds": 0.0,
-    },
-    "balanced": {
-        "label": "Balanced",
-        "use_objective": True,
-        "retry_without_objective": True,
-        "phased_solve": True,
-    },
-    "quality_first": {
-        "label": "Quality-first",
-        "use_objective": True,
-        "retry_without_objective": True,
-        "phased_solve": True,
-        "improve_slice_seconds": 6.0,
-        "improve_iters_per_slice": 1500,
-        "improve_max_rounds": 16,
-    },
-}
-
 
 def _map_status_to_ui(status: int) -> int:
     if status == cp_model.UNKNOWN:

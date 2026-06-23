@@ -111,6 +111,15 @@ export function AccessPanel({ principal, snapshot, onChange }: Props) {
           <button type="button" className="secondary-button" disabled={!selectedUser} onClick={() => void onChange({ action: "set_disabled", user_id: selectedUser, disabled: false, tenant_id: tenantId })}>
             Re-enable account
           </button>
+          {principal.is_global_admin ? (
+            <button type="button" className="danger-button" disabled={!selectedUser || selectedUser === principal.user_id} onClick={() => {
+              if (window.confirm("Permanently delete this account from Planora? Audit rows remain, but login sessions, group memberships, tenant links, and auth tokens will be removed.")) {
+                void onChange({ action: "delete_user", user_id: selectedUser, tenant_id: tenantId }).then(() => setSelectedUser(""));
+              }
+            }}>
+              Delete user
+            </button>
+          ) : null}
           <label>
             Planora group
             <select value={selectedGroup} onChange={(event) => setSelectedGroup(event.target.value)}>
@@ -156,13 +165,38 @@ export function AccessPanel({ principal, snapshot, onChange }: Props) {
       <section className="panel">
         <h2>Directory</h2>
         <div className="table-like access-table">
-          <div className="table-row header"><span>User</span><span>Role</span><span>Tenant</span><span>Status</span></div>
+          <div className="table-row header"><span>User</span><span>Role</span><span>Tenant</span><span>Status</span><span>Actions</span></div>
           {tenantUsers.map((user) => (
             <div className="table-row" key={String(user.user_id)}>
               <span>{String(user.display_name || user.user_id)}</span>
               <span>{String(user.role)}</span>
               <span>{String(user.tenant_id)}</span>
               <span>{Number(user.disabled || 0) ? "disabled" : "active"}</span>
+              <span className="row-actions">
+                <button type="button" className="secondary-button" onClick={() => setSelectedUser(String(user.user_id))}>Select</button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={String(user.user_id) === principal.user_id}
+                  onClick={() => void onChange({ action: "set_disabled", user_id: String(user.user_id), disabled: !Number(user.disabled || 0), tenant_id: tenantId })}
+                >
+                  {Number(user.disabled || 0) ? "Enable" : "Disable"}
+                </button>
+                {principal.is_global_admin ? (
+                  <button
+                    type="button"
+                    className="danger-button"
+                    disabled={String(user.user_id) === principal.user_id}
+                    onClick={() => {
+                      if (window.confirm(`Permanently delete ${String(user.display_name || user.user_id)}? This cannot be undone.`)) {
+                        void onChange({ action: "delete_user", user_id: String(user.user_id), tenant_id: tenantId });
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
+                ) : null}
+              </span>
             </div>
           ))}
         </div>

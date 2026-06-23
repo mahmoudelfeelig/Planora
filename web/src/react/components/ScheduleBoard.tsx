@@ -12,7 +12,7 @@ type Props = {
   canEdit: boolean;
   onWeekChange(week: number): void;
   onSelectActivity(id: string): void;
-  onHold(): void;
+  onHold(id?: string): void;
   onRelease(): void;
   onMoveTarget(day: string, slot: number): void;
 };
@@ -67,6 +67,17 @@ export function ScheduleBoard({
     targets.find((target: Dict) => String(target.day) === day && Number(target.slot) === slot);
   const changeWeek = (event: ChangeEvent<HTMLSelectElement>) => onWeekChange(Number(event.target.value));
   const changeActivity = (event: ChangeEvent<HTMLSelectElement>) => onSelectActivity(event.target.value);
+  const hasSchedule = Object.keys(schedule).length > 0;
+  const holdActivity = (id: string) => {
+    if (!canEdit) return;
+    onSelectActivity(id);
+    onHold(id);
+  };
+  const dragActivity = (id: string) => {
+    if (!canEdit) return;
+    onSelectActivity(id);
+    onHold(id);
+  };
   const durationFor = (id: string, row: Dict) => {
     const activity = instance.activities[id] || instance.activities[String(Number(id))] || {};
     return Math.max(1, Number(row.duration ?? activity.duration ?? 1));
@@ -91,6 +102,13 @@ export function ScheduleBoard({
           colSpan={span}
           className={`${target ? `move-target ${target.ok ? "viable" : "blocked"}` : ""} ${span > 1 ? "multi-slot" : ""}`}
           onClick={() => canEdit && heldActivityId && target?.ok && onMoveTarget(day, slot)}
+          onDragOver={(event) => {
+            if (canEdit && heldActivityId && target?.ok) event.preventDefault();
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            if (canEdit && heldActivityId && target?.ok) onMoveTarget(day, slot);
+          }}
         >
           {target ? (
             <span className={`delta-badge ${Number(target.delta || 0) <= 0 ? "better" : "worse"}`}>
@@ -100,7 +118,17 @@ export function ScheduleBoard({
           {events.map(([id, row]) => {
             const duration = durationFor(id, row);
             return (
-              <div key={id} className={`event ${String(row.kind || "").toLowerCase()} ${String(id) === heldActivityId ? "held" : ""}`}>
+              <div
+                key={id}
+                className={`event ${String(row.kind || "").toLowerCase()} ${String(id) === heldActivityId ? "held" : ""} ${String(id) === selectedActivityId ? "selected" : ""}`}
+                draggable={canEdit}
+                onClick={() => holdActivity(id)}
+                onDragStart={(event) => {
+                  event.dataTransfer.setData("text/plain", id);
+                  event.dataTransfer.effectAllowed = "move";
+                  dragActivity(id);
+                }}
+              >
                 <strong>{entityName(instance.courses, row.course_id, `Course ${row.course_id}`)}</strong>
                 <span>{String(row.kind || "")} · {entityName(instance.staff, row.staff_id, `Staff ${row.staff_id}`)}</span>
                 <span>{entityName(instance.rooms, row.room_id, `Room ${row.room_id}`)}{duration > 1 ? ` · ${duration} slots` : ""}</span>
@@ -149,7 +177,7 @@ export function ScheduleBoard({
             ))}
           </select>
         </label>
-        <button type="button" disabled={!canEdit || !selectedActivityId} onClick={onHold}>
+        <button type="button" disabled={!canEdit || !selectedActivityId} onClick={() => onHold()}>
           Hold selected
         </button>
         <button type="button" disabled={!canEdit || !heldActivityId} onClick={onRelease}>
@@ -158,11 +186,13 @@ export function ScheduleBoard({
       </div>
 
       <div className="hold-status">
-        {heldActivityId
-          ? `Holding A${heldActivityId}. Click a green target cell to execute the move.`
-          : canEdit
-            ? "Nothing is currently held. Select an activity and hold it to preview move deltas."
-            : "Read-only mode. Ask a university admin for repair permissions if you need to edit this schedule."}
+        {!hasSchedule
+          ? "This scenario has no placements yet. Run Solve or import/open a timetable with scheduled activities before using the repair board."
+          : heldActivityId
+            ? `Holding A${heldActivityId}. Drag it to a green target cell, or click a green target cell to move it.`
+            : canEdit
+              ? "Click an activity to hold it, then drag it to a green target cell."
+              : "Read-only mode. Ask a university admin for repair permissions if you need to edit this schedule."}
       </div>
 
       <div className="schedule-scroll">

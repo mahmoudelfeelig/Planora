@@ -6,7 +6,7 @@ import secrets
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 from services.auth_service import Principal, ROLE_ORDER, can_access_tenant
 from services.password_auth_service import (
@@ -19,9 +19,8 @@ from services.password_auth_service import (
     should_rehash_password,
     verify_password,
 )
-
-
-SCHEMA_VERSION = 7
+from services import persistence_access, persistence_audit, persistence_schema
+from services.persistence_config import default_persistence_path
 
 
 class PersistenceStore:
@@ -37,312 +36,20 @@ class PersistenceStore:
 
     def _init_schema(self) -> None:
         with self._connect() as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS meta (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sessions (
-                    session_id TEXT PRIMARY KEY,
-                    tenant_id TEXT NOT NULL,
-                    created_by TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    instance_json TEXT NOT NULL,
-                    schedule_json TEXT NOT NULL,
-                    meta_json TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS projects (
-                    name TEXT NOT NULL,
-                    tenant_id TEXT NOT NULL,
-                    payload_json TEXT NOT NULL,
-                    created_by TEXT NOT NULL,
-                    updated_at REAL NOT NULL,
-                    PRIMARY KEY (tenant_id, name)
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id TEXT PRIMARY KEY,
-                    tenant_id TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    display_name TEXT,
-                    updated_at REAL NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS audit_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tenant_id TEXT NOT NULL,
-                    user_id TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    resource_type TEXT NOT NULL,
-                    resource_id TEXT NOT NULL,
-                    details_json TEXT NOT NULL,
-                    created_at REAL NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS migrations (
-                    version INTEGER PRIMARY KEY,
-                    applied_at REAL NOT NULL
-                )
-                """
-            )
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS tenants (
-                    tenant_id TEXT PRIMARY KEY,
-                    display_name TEXT NOT NULL,
-                    enabled INTEGER NOT NULL DEFAULT 1,
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS auth_groups (
-                    group_id TEXT PRIMARY KEY,
-                    tenant_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    description TEXT NOT NULL DEFAULT '',
-                    created_at REAL NOT NULL,
-                    UNIQUE (tenant_id, name)
-                );
-                CREATE TABLE IF NOT EXISTS group_memberships (
-                    tenant_id TEXT NOT NULL,
-                    group_id TEXT NOT NULL,
-                    user_id TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    PRIMARY KEY (group_id, user_id)
-                );
-                CREATE TABLE IF NOT EXISTS account_tenants (
-                    user_id TEXT NOT NULL,
-                    tenant_id TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    disabled INTEGER NOT NULL DEFAULT 0,
-                    staff_id INTEGER,
-                    student_group_id INTEGER,
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL,
-                    PRIMARY KEY (user_id, tenant_id)
-                );
-                CREATE TABLE IF NOT EXISTS role_bindings (
-                    binding_id TEXT PRIMARY KEY,
-                    tenant_id TEXT NOT NULL,
-                    principal_type TEXT NOT NULL CHECK(principal_type IN ('user', 'group')),
-                    principal_id TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    scope_type TEXT NOT NULL DEFAULT 'tenant',
-                    scope_id TEXT NOT NULL DEFAULT '*',
-                    created_at REAL NOT NULL,
-                    UNIQUE (tenant_id, principal_type, principal_id, role, scope_type, scope_id)
-                );
-                CREATE TABLE IF NOT EXISTS auth_sessions (
-                    session_id TEXT PRIMARY KEY,
-                    tenant_id TEXT NOT NULL,
-                    user_id TEXT NOT NULL,
-                    csrf_token TEXT NOT NULL,
-                    expires_at REAL NOT NULL,
-                    revoked_at REAL,
-                    created_at REAL NOT NULL,
-                    last_seen_at REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS invite_codes (
-                    invite_id TEXT PRIMARY KEY,
-                    tenant_id TEXT NOT NULL,
-                    group_id TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    code_hash TEXT NOT NULL UNIQUE,
-                    label TEXT NOT NULL DEFAULT '',
-                    max_uses INTEGER,
-                    used_count INTEGER NOT NULL DEFAULT 0,
-                    expires_at REAL,
-                    disabled INTEGER NOT NULL DEFAULT 0,
-                    created_by TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS email_verification_tokens (
-                    token_hash TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    tenant_id TEXT NOT NULL,
-                    expires_at REAL NOT NULL,
-                    consumed_at REAL,
-                    created_at REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                    token_hash TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    tenant_id TEXT NOT NULL,
-                    expires_at REAL NOT NULL,
-                    consumed_at REAL,
-                    created_at REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS jobs (
-                    job_id TEXT PRIMARY KEY,
-                    tenant_id TEXT NOT NULL,
-                    created_by TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    progress_json TEXT NOT NULL,
-                    result_json TEXT,
-                    error TEXT,
-                    cancel_requested INTEGER NOT NULL DEFAULT 0,
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS analytics_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    client_id_hash TEXT NOT NULL,
-                    tenant_id TEXT NOT NULL DEFAULT 'public',
-                    user_role TEXT NOT NULL DEFAULT 'anonymous',
-                    event_name TEXT NOT NULL,
-                    path TEXT NOT NULL,
-                    view_name TEXT NOT NULL DEFAULT '',
-                    referrer TEXT NOT NULL DEFAULT '',
-                    viewport_width INTEGER,
-                    viewport_height INTEGER,
-                    details_json TEXT NOT NULL DEFAULT '{}',
-                    user_agent TEXT NOT NULL DEFAULT '',
-                    created_at REAL NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
-                CREATE INDEX IF NOT EXISTS idx_groups_tenant ON auth_groups(tenant_id);
-                CREATE INDEX IF NOT EXISTS idx_memberships_user ON group_memberships(tenant_id, user_id);
-                CREATE INDEX IF NOT EXISTS idx_account_tenants_user ON account_tenants(user_id, tenant_id);
-                CREATE INDEX IF NOT EXISTS idx_bindings_principal ON role_bindings(tenant_id, principal_type, principal_id);
-                CREATE INDEX IF NOT EXISTS idx_audit_tenant_created ON audit_events(tenant_id, created_at DESC);
-                CREATE INDEX IF NOT EXISTS idx_jobs_tenant_updated ON jobs(tenant_id, updated_at DESC);
-                CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(created_at DESC);
-                CREATE INDEX IF NOT EXISTS idx_analytics_tenant_created ON analytics_events(tenant_id, created_at DESC);
-                CREATE INDEX IF NOT EXISTS idx_invites_tenant ON invite_codes(tenant_id, group_id);
-                CREATE INDEX IF NOT EXISTS idx_verification_user ON email_verification_tokens(user_id, tenant_id);
-                CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id, tenant_id);
-                """
-            )
-            conn.execute(
-                "UPDATE jobs SET status='failed', error='API restarted while job was active', updated_at=? WHERE status IN ('queued', 'running')",
-                (time.time(),),
-            )
-            self._migrate(conn)
+            persistence_schema.init_schema(conn)
 
     def _schema_version(self, conn: sqlite3.Connection) -> int:
-        row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-        if row is None:
-            return 0
-        return int(row["value"])
+        return persistence_schema.schema_version(conn)
 
     def _has_column(self, conn: sqlite3.Connection, table: str, column: str) -> bool:
-        return any(str(row["name"]) == column for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
+        return persistence_schema.has_column(conn, table, column)
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
-        current = self._schema_version(conn)
-        if current < 2 and not self._has_column(conn, "users", "display_name"):
-            conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
-        user_columns = {
-            "provider": "TEXT NOT NULL DEFAULT 'local'",
-            "email": "TEXT",
-            "disabled": "INTEGER NOT NULL DEFAULT 0",
-            "staff_id": "INTEGER",
-            "student_group_id": "INTEGER",
-            "password_hash": "TEXT",
-            "email_verified_at": "REAL",
-        }
-        for column, definition in user_columns.items():
-            if not self._has_column(conn, "users", column):
-                conn.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS account_tenants (
-                user_id TEXT NOT NULL,
-                tenant_id TEXT NOT NULL,
-                role TEXT NOT NULL,
-                disabled INTEGER NOT NULL DEFAULT 0,
-                staff_id INTEGER,
-                student_group_id INTEGER,
-                created_at REAL NOT NULL,
-                updated_at REAL NOT NULL,
-                PRIMARY KEY (user_id, tenant_id)
-            )
-            """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_account_tenants_user ON account_tenants(user_id, tenant_id)")
-        account_columns = {
-            "disabled": "INTEGER NOT NULL DEFAULT 0",
-            "staff_id": "INTEGER",
-            "student_group_id": "INTEGER",
-        }
-        for column, definition in account_columns.items():
-            if not self._has_column(conn, "account_tenants", column):
-                conn.execute(f"ALTER TABLE account_tenants ADD COLUMN {column} {definition}")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS analytics_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id_hash TEXT NOT NULL,
-                tenant_id TEXT NOT NULL DEFAULT 'public',
-                user_role TEXT NOT NULL DEFAULT 'anonymous',
-                event_name TEXT NOT NULL,
-                path TEXT NOT NULL,
-                view_name TEXT NOT NULL DEFAULT '',
-                referrer TEXT NOT NULL DEFAULT '',
-                viewport_width INTEGER,
-                viewport_height INTEGER,
-                details_json TEXT NOT NULL DEFAULT '{}',
-                user_agent TEXT NOT NULL DEFAULT '',
-                created_at REAL NOT NULL
-            )
-            """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(created_at DESC)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_tenant_created ON analytics_events(tenant_id, created_at DESC)")
-        now = time.time()
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO account_tenants(user_id, tenant_id, role, created_at, updated_at)
-            SELECT user_id, tenant_id, role, ?, ? FROM users
-            """,
-            (now, now),
-        )
-        for version in range(current + 1, SCHEMA_VERSION + 1):
-            conn.execute(
-                "INSERT OR IGNORE INTO migrations(version, applied_at) VALUES(?, ?)",
-                (int(version), time.time()),
-            )
-        conn.execute(
-            "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
-            ("schema_version", str(SCHEMA_VERSION)),
-        )
+        persistence_schema.migrate(conn)
 
     def schema_info(self) -> Dict[str, Any]:
         with self._connect() as conn:
-            version = self._schema_version(conn)
-            migrations = [
-                {"version": int(row["version"]), "applied_at": float(row["applied_at"])}
-                for row in conn.execute("SELECT version, applied_at FROM migrations ORDER BY version").fetchall()
-            ]
-        return {
-            "path": str(self.path),
-            "schema_version": int(version),
-            "latest_version": SCHEMA_VERSION,
-            "migrations": migrations,
-        }
+            return persistence_schema.schema_info(conn, self.path)
 
     def upsert_user(self, principal: Principal) -> None:
         with self._connect() as conn:
@@ -902,197 +609,10 @@ class PersistenceStore:
         return self.resolve_principal(Principal(user_id=user_id, role=str(row["role"]), tenant_id=str(row["tenant_id"]), provider="email"))
 
     def access_snapshot(self, principal: Principal) -> Dict[str, Any]:
-        from services.auth_service import require_permission
-
-        require_permission(principal, "access:manage")
-        tenant_filter = "" if principal.is_global_admin else " WHERE tenant_id=?"
-        args: tuple[Any, ...] = () if principal.is_global_admin else (principal.tenant_id,)
-        with self._connect() as conn:
-            users = [dict(row) for row in conn.execute(f"SELECT * FROM users{tenant_filter} ORDER BY tenant_id, display_name", args).fetchall()]
-            groups = [dict(row) for row in conn.execute(f"SELECT * FROM auth_groups{tenant_filter} ORDER BY tenant_id, name", args).fetchall()]
-            memberships = [dict(row) for row in conn.execute(f"SELECT * FROM group_memberships{tenant_filter} ORDER BY tenant_id, group_id, user_id", args).fetchall()]
-            account_tenants = [dict(row) for row in conn.execute(f"SELECT * FROM account_tenants{tenant_filter} ORDER BY tenant_id, user_id", args).fetchall()]
-            bindings = [dict(row) for row in conn.execute(f"SELECT * FROM role_bindings{tenant_filter} ORDER BY tenant_id, principal_type, principal_id", args).fetchall()]
-            invites = [
-                dict(row)
-                for row in conn.execute(
-                    f"""
-                    SELECT invite_id, tenant_id, group_id, role, label, max_uses, used_count,
-                        expires_at, disabled, created_by, created_at, updated_at
-                    FROM invite_codes{tenant_filter}
-                    ORDER BY tenant_id, group_id, label
-                    """,
-                    args,
-                ).fetchall()
-            ]
-        return {
-            "users": users,
-            "groups": groups,
-            "memberships": memberships,
-            "account_tenants": account_tenants,
-            "role_bindings": bindings,
-            "invite_codes": invites,
-        }
+        return persistence_access.access_snapshot(self, principal)
 
     def apply_access_change(self, principal: Principal, change: Dict[str, Any]) -> Dict[str, Any]:
-        from services.auth_service import ROLES, require_permission, require_tenant_access
-
-        require_permission(principal, "access:manage")
-        tenant_id = str(change.get("tenant_id") or principal.tenant_id)
-        require_tenant_access(principal, tenant_id)
-        action = str(change.get("action", ""))
-        now = time.time()
-        with self._connect() as conn:
-            def require_group(group_id: str) -> None:
-                row = conn.execute(
-                    "SELECT 1 FROM auth_groups WHERE tenant_id=? AND group_id=?",
-                    (tenant_id, group_id),
-                ).fetchone()
-                if row is None:
-                    raise ValueError("The selected group does not belong to this organization.")
-
-            def require_account(user_id: str) -> None:
-                row = conn.execute(
-                    "SELECT 1 FROM account_tenants WHERE tenant_id=? AND user_id=?",
-                    (tenant_id, user_id),
-                ).fetchone()
-                if row is None:
-                    raise ValueError("The selected user does not belong to this organization.")
-
-            if action == "create_group":
-                group_id = str(change.get("group_id") or secrets.token_urlsafe(12))
-                conn.execute(
-                    "INSERT INTO auth_groups(group_id, tenant_id, name, description, created_at) VALUES(?, ?, ?, ?, ?)",
-                    (group_id, tenant_id, str(change["name"]), str(change.get("description", "")), now),
-                )
-            elif action == "set_membership":
-                group_id = str(change["group_id"])
-                user_id = str(change["user_id"])
-                require_group(group_id)
-                require_account(user_id)
-                values = (tenant_id, group_id, user_id, now)
-                if bool(change.get("enabled", True)):
-                    conn.execute("INSERT OR IGNORE INTO group_memberships(tenant_id, group_id, user_id, created_at) VALUES(?, ?, ?, ?)", values)
-                else:
-                    conn.execute("DELETE FROM group_memberships WHERE tenant_id=? AND group_id=? AND user_id=?", values[:3])
-            elif action == "set_role":
-                role = str(change["role"])
-                if role not in ROLES or (role == "admin" and not principal.is_global_admin):
-                    raise PermissionError("That role cannot be assigned.")
-                require_account(str(change["user_id"]))
-                conn.execute(
-                    "UPDATE users SET role=?, updated_at=? WHERE tenant_id=? AND user_id=?",
-                    (role, now, tenant_id, str(change["user_id"])),
-                )
-                conn.execute(
-                    """
-                    INSERT INTO account_tenants(user_id, tenant_id, role, created_at, updated_at)
-                    VALUES(?, ?, ?, ?, ?)
-                    ON CONFLICT(user_id, tenant_id) DO UPDATE SET role=excluded.role, updated_at=excluded.updated_at
-                    """,
-                    (str(change["user_id"]), tenant_id, role, now, now),
-                )
-            elif action == "set_disabled":
-                require_account(str(change["user_id"]))
-                conn.execute(
-                    "UPDATE account_tenants SET disabled=?, updated_at=? WHERE tenant_id=? AND user_id=?",
-                    (int(bool(change.get("disabled", True))), now, tenant_id, str(change["user_id"])),
-                )
-            elif action == "link_schedule_identity":
-                require_account(str(change["user_id"]))
-                staff_id = change.get("staff_id")
-                student_group_id = change.get("student_group_id")
-                conn.execute(
-                    """
-                    UPDATE account_tenants SET staff_id=?, student_group_id=?, updated_at=?
-                    WHERE tenant_id=? AND user_id=?
-                    """,
-                    (
-                        int(staff_id) if staff_id not in (None, "") else None,
-                        int(student_group_id) if student_group_id not in (None, "") else None,
-                        now,
-                        tenant_id,
-                        str(change["user_id"]),
-                    ),
-                )
-            elif action == "bind_role":
-                role = str(change["role"])
-                if role not in ROLES or (role == "admin" and not principal.is_global_admin):
-                    raise PermissionError("That role cannot be assigned.")
-                if str(change["principal_type"]) == "group":
-                    require_group(str(change["principal_id"]))
-                else:
-                    require_account(str(change["principal_id"]))
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO role_bindings(
-                        binding_id, tenant_id, principal_type, principal_id, role,
-                        scope_type, scope_id, created_at
-                    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        secrets.token_urlsafe(12), tenant_id, str(change["principal_type"]),
-                        str(change["principal_id"]), role, str(change.get("scope_type", "tenant")),
-                        str(change.get("scope_id", "*")), now,
-                    ),
-                )
-            elif action == "create_invite":
-                role = str(change.get("role", "student"))
-                if role not in ROLES or role == "admin" or (role == "uni_admin" and not principal.is_global_admin and principal.role != "uni_admin"):
-                    raise PermissionError("That invite role cannot be assigned.")
-                require_group(str(change["group_id"]))
-                code = str(change.get("code") or new_plain_token("invite_")).strip()
-                if len(code) < 8:
-                    raise ValueError("Invite code must be at least 8 characters.")
-                conn.execute(
-                    """
-                    INSERT INTO invite_codes(
-                        invite_id, tenant_id, group_id, role, code_hash, label,
-                        max_uses, used_count, expires_at, disabled, created_by, created_at, updated_at
-                    ) VALUES(?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?)
-                    """,
-                    (
-                        str(change.get("invite_id") or secrets.token_urlsafe(12)),
-                        tenant_id,
-                        str(change["group_id"]),
-                        role,
-                        hash_token(code),
-                        str(change.get("label") or ""),
-                        int(change["max_uses"]) if change.get("max_uses") not in (None, "") else None,
-                        float(change["expires_at"]) if change.get("expires_at") not in (None, "") else None,
-                        principal.user_id,
-                        now,
-                        now,
-                    ),
-                )
-                conn.commit()
-                snapshot = self.access_snapshot(principal)
-                snapshot["new_invite_code"] = code
-                return snapshot
-            elif action == "rotate_invite":
-                code = str(change.get("code") or new_plain_token("invite_")).strip()
-                if len(code) < 8:
-                    raise ValueError("Invite code must be at least 8 characters.")
-                conn.execute(
-                    """
-                    UPDATE invite_codes SET code_hash=?, label=COALESCE(?, label),
-                        used_count=0, disabled=0, updated_at=?
-                    WHERE tenant_id=? AND invite_id=?
-                    """,
-                    (hash_token(code), change.get("label"), now, tenant_id, str(change["invite_id"])),
-                )
-                conn.commit()
-                snapshot = self.access_snapshot(principal)
-                snapshot["new_invite_code"] = code
-                return snapshot
-            elif action == "set_invite_disabled":
-                conn.execute(
-                    "UPDATE invite_codes SET disabled=?, updated_at=? WHERE tenant_id=? AND invite_id=?",
-                    (int(bool(change.get("disabled", True))), now, tenant_id, str(change["invite_id"])),
-                )
-            else:
-                raise ValueError(f"Unknown access change action: {action}")
-        return self.access_snapshot(principal)
+        return persistence_access.apply_access_change(self, principal, change)
 
     def bootstrap_user_role(self, *, user_id: str, tenant_id: str, role: str) -> None:
         from services.auth_service import ROLES
@@ -1334,62 +854,17 @@ class PersistenceStore:
         resource_id: str,
         details: Dict[str, Any] | None = None,
     ) -> None:
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO audit_events(
-                    tenant_id, user_id, role, action, resource_type, resource_id,
-                    details_json, created_at
-                )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    principal.tenant_id,
-                    principal.user_id,
-                    principal.role,
-                    str(action),
-                    str(resource_type),
-                    str(resource_id),
-                    json.dumps(dict(details or {}), ensure_ascii=False),
-                    time.time(),
-                ),
-            )
+        persistence_audit.audit(
+            self,
+            principal,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=details,
+        )
 
     def record_analytics_event(self, event: Dict[str, Any]) -> None:
-        name = str(event.get("event_name") or "").strip()[:80]
-        path = str(event.get("path") or "/").strip()[:500]
-        client_id_hash = str(event.get("client_id_hash") or "").strip()[:128]
-        if not name or not client_id_hash:
-            raise ValueError("Analytics event requires event_name and client_id_hash.")
-        details = event.get("details") if isinstance(event.get("details"), dict) else {}
-        details_json = json.dumps(details, ensure_ascii=False)
-        if len(details_json.encode("utf-8")) > 8192:
-            raise ValueError("Analytics event details exceed the 8192-byte limit.")
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO analytics_events(
-                    client_id_hash, tenant_id, user_role, event_name, path, view_name,
-                    referrer, viewport_width, viewport_height, details_json,
-                    user_agent, created_at
-                )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    client_id_hash,
-                    str(event.get("tenant_id") or "public")[:120],
-                    str(event.get("user_role") or "anonymous")[:60],
-                    name,
-                    path,
-                    str(event.get("view_name") or "")[:120],
-                    str(event.get("referrer") or "")[:500],
-                    int(event["viewport_width"]) if event.get("viewport_width") not in (None, "") else None,
-                    int(event["viewport_height"]) if event.get("viewport_height") not in (None, "") else None,
-                    details_json,
-                    str(event.get("user_agent") or "")[:500],
-                    time.time(),
-                ),
-            )
+        persistence_audit.record_analytics_event(self, event)
 
     def analytics_summary(
         self,
@@ -1400,86 +875,14 @@ class PersistenceStore:
         event_name: str = "",
         path: str = "",
     ) -> Dict[str, Any]:
-        from services.auth_service import require_permission
-
-        require_permission(principal, "audit:read")
-        cutoff = time.time() - max(1, int(days)) * 86400
-        filters = ["created_at>=?"]
-        args_list: list[Any] = [cutoff]
-        requested_tenant = str(tenant_id or "").strip()
-        if principal.is_global_admin and requested_tenant:
-            filters.append("tenant_id=?")
-            args_list.append(requested_tenant)
-        elif not principal.is_global_admin:
-            filters.append("tenant_id=?")
-            args_list.append(principal.tenant_id)
-        if event_name:
-            filters.append("event_name=?")
-            args_list.append(str(event_name))
-        if path:
-            filters.append("path LIKE ?")
-            args_list.append(f"%{path}%")
-        where = " AND ".join(filters)
-        args: tuple[Any, ...] = tuple(args_list)
-        with self._connect() as conn:
-            totals = conn.execute(
-                f"""
-                SELECT COUNT(*) AS events, COUNT(DISTINCT client_id_hash) AS visitors
-                FROM analytics_events
-                WHERE {where}
-                """,
-                args,
-            ).fetchone()
-            top_paths = [
-                dict(row)
-                for row in conn.execute(
-                    f"""
-                    SELECT path, COUNT(*) AS events, COUNT(DISTINCT client_id_hash) AS visitors
-                    FROM analytics_events
-                    WHERE {where}
-                    GROUP BY path
-                    ORDER BY events DESC, path
-                    LIMIT 10
-                    """,
-                    args,
-                ).fetchall()
-            ]
-            top_events = [
-                dict(row)
-                for row in conn.execute(
-                    f"""
-                    SELECT event_name, COUNT(*) AS events
-                    FROM analytics_events
-                    WHERE {where}
-                    GROUP BY event_name
-                    ORDER BY events DESC, event_name
-                    LIMIT 10
-                    """,
-                    args,
-                ).fetchall()
-            ]
-            by_day = [
-                dict(row)
-                for row in conn.execute(
-                    f"""
-                    SELECT date(created_at, 'unixepoch') AS day, COUNT(*) AS events,
-                        COUNT(DISTINCT client_id_hash) AS visitors
-                    FROM analytics_events
-                    WHERE {where}
-                    GROUP BY day
-                    ORDER BY day
-                    """,
-                    args,
-                ).fetchall()
-            ]
-        return {
-            "days": int(days),
-            "events": int(totals["events"] or 0) if totals is not None else 0,
-            "visitors": int(totals["visitors"] or 0) if totals is not None else 0,
-            "top_paths": top_paths,
-            "top_events": top_events,
-            "by_day": by_day,
-        }
+        return persistence_audit.analytics_summary(
+            self,
+            principal,
+            days=days,
+            tenant_id=tenant_id,
+            event_name=event_name,
+            path=path,
+        )
 
     def list_audit(
         self,
@@ -1490,45 +893,11 @@ class PersistenceStore:
         user_id: str = "",
         tenant_id: str = "",
     ) -> List[Dict[str, Any]]:
-        filters: list[str] = []
-        args_list: list[Any] = []
-        if principal.is_global_admin:
-            requested_tenant = str(tenant_id or "").strip()
-            if requested_tenant:
-                filters.append("tenant_id=?")
-                args_list.append(requested_tenant)
-        else:
-            filters.append("tenant_id=?")
-            args_list.append(principal.tenant_id)
-        if action:
-            filters.append("action LIKE ?")
-            args_list.append(f"%{action}%")
-        if user_id:
-            filters.append("user_id LIKE ?")
-            args_list.append(f"%{user_id}%")
-        where = f" WHERE {' AND '.join(filters)}" if filters else ""
-        sql = f"SELECT * FROM audit_events{where} ORDER BY id DESC LIMIT ?"
-        args: Iterable[Any] = (*args_list, int(limit))
-        with self._connect() as conn:
-            rows = conn.execute(sql, tuple(args)).fetchall()
-        return [
-            {
-                "id": int(row["id"]),
-                "tenant_id": str(row["tenant_id"]),
-                "user_id": str(row["user_id"]),
-                "role": str(row["role"]),
-                "action": str(row["action"]),
-                "resource_type": str(row["resource_type"]),
-                "resource_id": str(row["resource_id"]),
-                "details": json.loads(str(row["details_json"])),
-                "created_at": float(row["created_at"]),
-            }
-            for row in rows
-        ]
-
-
-def default_persistence_path(root: str | Path) -> Path:
-    configured = os.environ.get("PLANORA_DB_PATH")
-    if configured:
-        return Path(configured)
-    return Path(root) / "data" / "planora.sqlite3"
+        return persistence_audit.list_audit(
+            self,
+            principal,
+            limit=limit,
+            action=action,
+            user_id=user_id,
+            tenant_id=tenant_id,
+        )

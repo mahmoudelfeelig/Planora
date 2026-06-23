@@ -56,6 +56,13 @@ def test_health_and_readiness_are_not_rate_limited(monkeypatch):
             api_server._check_rate_limit(handler)
 
 
+def test_openapi_documents_head_health_and_readiness():
+    paths = api_server._openapi_schema()["paths"]
+    assert "head" in paths["/health"]
+    assert "get" in paths["/ready"]
+    assert "head" in paths["/ready"]
+
+
 def test_verify_endpoint_uses_sensitive_auth_rate_limit(monkeypatch):
     api_server._RATE_BUCKETS.clear()
     monkeypatch.setenv("PLANORA_RATE_LIMIT_AUTH_PER_MINUTE", "1")

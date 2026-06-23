@@ -1,15 +1,34 @@
 import type { Principal, ViewKey } from "../types";
 import type { ReactNode } from "react";
 
-const AUTH_VIEWS: Array<{ key: ViewKey; label: string; adminOnly?: boolean; permission?: string }> = [
-  { key: "workspace", label: "Schedule" },
-  { key: "operations", label: "Solve" },
-  { key: "review", label: "Diagnostics" },
-  { key: "fairness", label: "Insights" },
-  { key: "projects", label: "Projects" },
-  { key: "account", label: "My Groups" },
-  { key: "access", label: "Users", permission: "access:manage" },
-  { key: "admin", label: "Admin", adminOnly: true },
+const AUTH_VIEW_GROUPS: Array<{
+  label: string;
+  views: Array<{ key: ViewKey; label: string; adminOnly?: boolean; permission?: string }>;
+}> = [
+  {
+    label: "Plan",
+    views: [
+      { key: "workspace", label: "Schedule" },
+      { key: "operations", label: "Solve" },
+      { key: "projects", label: "Projects" },
+    ],
+  },
+  {
+    label: "Review",
+    views: [
+      { key: "review", label: "Diagnostics" },
+      { key: "fairness", label: "Insights" },
+      { key: "parity", label: "Platform" },
+    ],
+  },
+  {
+    label: "Account",
+    views: [
+      { key: "account", label: "My Groups" },
+      { key: "access", label: "Users", permission: "access:manage" },
+      { key: "admin", label: "Admin", adminOnly: true },
+    ],
+  },
 ];
 
 type Props = {
@@ -37,10 +56,13 @@ export function AppShell({
   onAnalyticsConsentChange,
   children,
 }: Props) {
-  const visibleViews = AUTH_VIEWS.filter((view) =>
-    (!view.adminOnly || principal.is_global_admin) &&
-    (!view.permission || principal.permissions.includes(view.permission)),
-  );
+  const visibleGroups = AUTH_VIEW_GROUPS.map((group) => ({
+    ...group,
+    views: group.views.filter((view) =>
+      (!view.adminOnly || principal.is_global_admin) &&
+      (!view.permission || principal.permissions.includes(view.permission)),
+    ),
+  })).filter((group) => group.views.length > 0);
 
   return (
     <div className="app-frame">
@@ -51,15 +73,20 @@ export function AppShell({
         </button>
         <nav className="top-links" aria-label="Main navigation">
           {authenticated
-            ? visibleViews.filter((view) => view.key !== "account").map((view) => (
-                <button
-                  key={view.key}
-                  type="button"
-                  className={activeView === view.key ? "active" : ""}
-                  onClick={() => onViewChange(view.key)}
-                >
-                  {view.label}
-                </button>
+            ? visibleGroups.map((group) => (
+                <div className="nav-cluster" key={group.label}>
+                  <span>{group.label}</span>
+                  {group.views.map((view) => (
+                    <button
+                      key={view.key}
+                      type="button"
+                      className={activeView === view.key ? "active" : ""}
+                      onClick={() => onViewChange(view.key)}
+                    >
+                      {view.label}
+                    </button>
+                  ))}
+                </div>
               ))
             : null}
         </nav>
@@ -76,18 +103,12 @@ export function AppShell({
               </svg>
             )}
           </button>
-          <button type="button" className={activeView === "privacy" ? "active" : ""} onClick={() => onViewChange("privacy")}>Privacy</button>
-          <button type="button" className={activeView === "faq" ? "active" : ""} onClick={() => onViewChange("faq")}>FAQ</button>
           {authenticated ? (
             <>
-              <button type="button" className={activeView === "account" ? "active" : ""} onClick={() => onViewChange("account")}>My Groups</button>
-              <div className="session-pill">
-            <span>{principal.role}</span>
-            <button type="button" onClick={onSignOut}>Sign out</button>
-              </div>
+              <button type="button" className="secondary-button nav-auth-button" onClick={onSignOut}>Sign out</button>
             </>
           ) : (
-            <button type="button" className={activeView === "login" ? "active" : ""} onClick={() => onViewChange("login")}>Login</button>
+            <button type="button" className={activeView === "login" ? "active nav-auth-button" : "nav-auth-button"} onClick={() => onViewChange("login")}>Login</button>
           )}
         </div>
       </header>
@@ -108,6 +129,9 @@ export function AppShell({
         </button>
         <button type="button" className="footer-link-button" onClick={() => onViewChange("privacy")}>
           Privacy
+        </button>
+        <button type="button" className="footer-link-button" onClick={() => onViewChange("faq")}>
+          FAQ
         </button>
         <span>© Mahmoud Elfeel</span>
       </footer>

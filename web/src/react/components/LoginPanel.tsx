@@ -17,7 +17,7 @@ type Props = {
   credentials: Credentials;
   onCredentialsChange(credentials: Credentials): void;
   onLogin(): void | Promise<void>;
-  onRegister(): void | Promise<void>;
+  onRegister(): boolean | Promise<boolean>;
   onVerify(): void | Promise<void>;
   onForgotPassword(): void | Promise<void>;
   onResetPassword(): void | Promise<void>;
@@ -158,8 +158,9 @@ export function LoginPanel({
           <button
             type="button"
             onClick={async () => {
-              await onRegister();
-              setMode("verify");
+              if (await onRegister()) {
+                setMode("verify");
+              }
             }}
           >
             Create account

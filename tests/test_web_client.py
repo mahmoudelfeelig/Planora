@@ -139,9 +139,20 @@ def test_deployment_scaffold_exists():
     assert "PLANORA_TOKEN_PEPPER" in env_example
     assert "PLANORA_SMTP_PASSWORD" in env_example
     assert "PLANORA_AUTH_SECRET_FILE" not in prod_compose
+    assert "method='HEAD'" in prod_compose
 
 
 def test_web_client_uses_root_application_logo():
     root_logo = (ROOT / "app_icon.png").read_bytes()
     web_logo = (ROOT / "web" / "public" / "app-icon.png").read_bytes()
     assert hashlib.sha256(root_logo).digest() == hashlib.sha256(web_logo).digest()
+
+
+def test_registration_flow_handles_immediate_auth_payload():
+    app = (ROOT / "web" / "src" / "react" / "App.tsx").read_text(encoding="utf-8")
+    login = (ROOT / "web" / "src" / "react" / "components" / "LoginPanel.tsx").read_text(encoding="utf-8")
+
+    assert "if (payload.token && payload.principal)" in app
+    assert 'return false;' in app
+    assert "onRegister(): boolean | Promise<boolean>" in login
+    assert "if (await onRegister())" in login
