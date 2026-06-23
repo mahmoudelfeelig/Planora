@@ -128,9 +128,14 @@ def test_deployment_scaffold_exists():
     assert "planora-web" in compose
     assert "planora-data" in compose
     assert "planora-web" in prod_compose
-    assert "planora-caddy-data" in prod_compose
+    assert "planora-caddy-data" not in prod_compose
+    assert '"80:80"' not in prod_compose
+    assert '"443:443"' not in prod_compose
+    assert "external: true" in prod_compose
+    assert "- planora-web" in prod_compose
     assert "caddy:2.9-alpine" in web_dockerfile
-    assert "PLANORA_DOMAIN" in caddyfile
+    assert ":80" in caddyfile
+    assert "tls {$PLANORA_TLS_EMAIL}" not in caddyfile
     assert "PLANORA_DB_PATH" in env_example
     assert "VITE_PLANORA_API_URL" in env_example
     assert "PLANORA_SMTP_HOST" in env_example
