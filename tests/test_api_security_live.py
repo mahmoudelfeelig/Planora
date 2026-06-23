@@ -102,15 +102,20 @@ def _free_port() -> int:
 
 
 def _status(url: str, *, method: str = "GET", payload: dict | None = None, headers: dict | None = None) -> int:
+    status, _body = _status_and_body(url, method=method, payload=payload, headers=headers)
+    return status
+
+
+def _status_and_body(url: str, *, method: str = "GET", payload: dict | None = None, headers: dict | None = None) -> tuple[int, bytes]:
     body = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(url, data=body, method=method, headers={"Content-Type": "application/json", **(headers or {})})
     try:
         with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310
-            return int(response.status)
+            return int(response.status), response.read()
     except urllib.error.HTTPError as exc:
-        return int(exc.code)
+        return int(exc.code), exc.read()
     except urllib.error.URLError:
-        return 0
+        return 0, b""
 
 
 @pytest.mark.slow
@@ -134,6 +139,10 @@ def test_production_api_rejects_anonymous_forged_and_local_admin(tmp_path):
         deadline = time.time() + 10
         while time.time() < deadline and _status(f"http://127.0.0.1:{port}/health") != 200:
             time.sleep(0.1)
+        for path in ("/health", "/ready"):
+            status, body = _status_and_body(f"http://127.0.0.1:{port}{path}", method="HEAD")
+            assert status == 200
+            assert body == b""
         assert _status(f"http://127.0.0.1:{port}/auth/config") == 200
         assert _status(f"http://127.0.0.1:{port}/auth/whoami") == 401
         assert _status(

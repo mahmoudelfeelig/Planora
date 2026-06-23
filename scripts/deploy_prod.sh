@@ -29,9 +29,10 @@ compose() {
 }
 
 wait_for_ready() {
+  local require_head="${1:-1}"
   local attempt
   for attempt in $(seq 1 "$HEALTH_ATTEMPTS"); do
-    if curl -fsS "$HEALTH_URL" >/dev/null; then
+    if curl -fsS "$HEALTH_URL" >/dev/null && { [[ "$require_head" != "1" ]] || curl -fsSI "$HEALTH_URL" >/dev/null; }; then
       return 0
     fi
     echo "Health check attempt $attempt/$HEALTH_ATTEMPTS failed; retrying in ${HEALTH_SLEEP_SECONDS}s..."
@@ -46,7 +47,7 @@ rollback() {
   git reset --hard "$previous_sha"
   compose config --quiet
   compose up -d --build --remove-orphans
-  if ! wait_for_ready; then
+  if ! wait_for_ready 0; then
     echo "Rollback health check also failed. Inspect container logs manually:" >&2
     compose ps >&2 || true
     compose logs --tail=120 planora-api >&2 || true

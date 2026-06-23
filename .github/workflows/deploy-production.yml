@@ -33,9 +33,8 @@ jobs:
             export PLANORA_APP_DIR="${PLANORA_APP_DIR:-/opt/planora}"
             export PLANORA_DEPLOY_BRANCH="${PLANORA_DEPLOY_BRANCH:-main}"
             export PLANORA_HEALTH_URL="${PLANORA_HEALTH_URL:-https://planora.elfeel.me/api/ready}"
-            if [ ! -f "$PLANORA_APP_DIR/scripts/deploy_prod.sh" ]; then
-              cd "$PLANORA_APP_DIR"
-              git fetch --prune origin "$PLANORA_DEPLOY_BRANCH"
-              git checkout -B "$PLANORA_DEPLOY_BRANCH" "origin/$PLANORA_DEPLOY_BRANCH"
-            fi
-            bash "$PLANORA_APP_DIR/scripts/deploy_prod.sh"
+            cd "$PLANORA_APP_DIR"
+            git fetch --prune origin "$PLANORA_DEPLOY_BRANCH"
+            tmp_script="$(mktemp)"
+            git show "origin/$PLANORA_DEPLOY_BRANCH:scripts/deploy_prod.sh" > "$tmp_script"
+            bash "$tmp_script"

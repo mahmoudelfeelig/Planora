@@ -152,7 +152,7 @@ def _common_headers(handler: BaseHTTPRequestHandler) -> None:
         if origin != "*":
             handler.send_header("Access-Control-Allow-Credentials", "true")
     handler.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token, X-Planora-User, X-Planora-Role, X-Planora-Tenant")
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+    handler.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, DELETE, OPTIONS")
     handler.send_header("X-Content-Type-Options", "nosniff")
     handler.send_header("X-Frame-Options", "DENY")
     handler.send_header("Referrer-Policy", "same-origin")
@@ -178,7 +178,8 @@ def _json_response(
         handler.send_header(str(name), str(value))
     _common_headers(handler)
     handler.end_headers()
-    handler.wfile.write(body)
+    if str(getattr(handler, "command", "")).upper() != "HEAD":
+        handler.wfile.write(body)
 
 
 def _text_response(
@@ -194,7 +195,8 @@ def _text_response(
     handler.send_header("Content-Length", str(len(encoded)))
     _common_headers(handler)
     handler.end_headers()
-    handler.wfile.write(encoded)
+    if str(getattr(handler, "command", "")).upper() != "HEAD":
+        handler.wfile.write(encoded)
 
 
 def _csv_response(handler: BaseHTTPRequestHandler, filename: str, rows: list[Dict[str, Any]]) -> None:
@@ -211,7 +213,8 @@ def _csv_response(handler: BaseHTTPRequestHandler, filename: str, rows: list[Dic
     handler.send_header("Content-Length", str(len(body)))
     _common_headers(handler)
     handler.end_headers()
-    handler.wfile.write(body)
+    if str(getattr(handler, "command", "")).upper() != "HEAD":
+        handler.wfile.write(body)
 
 
 def _parse_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any]:
@@ -634,6 +637,17 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
         self._request_id = self.headers.get("X-Request-ID") or secrets.token_hex(8)
         try:
             _check_rate_limit(self)
+            self._do_GET()
+        except Exception as exc:
+            _error_response(self, exc)
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        self._request_id = self.headers.get("X-Request-ID") or secrets.token_hex(8)
+        try:
+            _check_rate_limit(self)
+            if urlparse(self.path).path not in {"/health", "/ready"}:
+                _json_response(self, 404, {"error": "Not found"})
+                return
             self._do_GET()
         except Exception as exc:
             _error_response(self, exc)
