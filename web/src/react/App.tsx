@@ -249,9 +249,17 @@ export function App() {
     bootstrapStarted.current = true;
     const publicPath = ["/", "/login", "/faq", "/privacy"].includes(window.location.pathname);
     if (!api.token && publicPath) {
-      api.get<Dict>("/auth/config")
-        .then(setAuthConfig)
-        .catch((error: unknown) => notify(String(error), "error"));
+      const cookieApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+      cookieApi.post<{ token: string; principal: Principal }>("/auth/refresh", {})
+        .then(async (payload) => {
+          const authenticatedApi = acceptAuthPayload(payload);
+          await refreshBootstrap(authenticatedApi);
+        })
+        .catch(() => {
+          api.get<Dict>("/auth/config")
+            .then(setAuthConfig)
+            .catch((error: unknown) => notify(String(error), "error"));
+        });
       return;
     }
     refreshBootstrap().catch(async (error: unknown) => {
