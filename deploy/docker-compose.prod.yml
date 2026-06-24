@@ -120,7 +120,9 @@ services:
 
 volumes:
   planora-data:
+    name: planora-data
   planora-backups:
+    name: planora-backups
 
 networks:
   web:

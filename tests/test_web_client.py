@@ -133,6 +133,8 @@ def test_deployment_scaffold_exists():
     assert "container_name: planora-web" in prod_compose
     assert "container_name: planora-backup" in prod_compose
     assert "container_name: planora-retention" in prod_compose
+    assert "name: planora-data" in prod_compose
+    assert "name: planora-backups" in prod_compose
     assert "planora-caddy-data" not in prod_compose
     assert '"80:80"' not in prod_compose
     assert '"443:443"' not in prod_compose
