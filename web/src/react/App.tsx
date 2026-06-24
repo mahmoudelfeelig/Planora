@@ -17,9 +17,11 @@ import { InsightsPanel } from "./components/InsightsPanel";
 import {
   analyticsClientId,
   clearCookie,
+  readStoredAuthToken,
   readAnalyticsConsent,
   readStoredTheme,
   setCookie,
+  writeStoredAuthToken,
   type AnalyticsConsent,
   type ThemeMode,
 } from "./browser_state";
@@ -66,7 +68,7 @@ const privacyContent = <PrivacyContent />;
 
 export function App() {
   const [principal, setPrincipal] = useState<Principal>(DEFAULT_PRINCIPAL);
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(readStoredAuthToken);
   const [authenticated, setAuthenticated] = useState(false);
   const [view, setView] = useState<ViewKey>(viewFromLocation);
   const [presets, setPresets] = useState<string[]>([]);
@@ -175,6 +177,23 @@ export function App() {
     }, 5200);
   }
 
+  function clearAuthState() {
+    writeStoredAuthToken("");
+    setToken("");
+    setAuthenticated(false);
+    setPrincipal(DEFAULT_PRINCIPAL);
+    setAccessSnapshot({});
+    setOrganizations([]);
+    setAuthSessions([]);
+    setPresets([]);
+    setProjects([]);
+    setParity({});
+    setAuditEvents([]);
+    setSystem({});
+    setSystemStatus({});
+    setAnalyticsSummary({});
+  }
+
   const refreshBootstrap = useCallback(async (client = api) => {
     const authPayload = await client.get<Dict>("/auth/config");
     setAuthConfig(authPayload);
@@ -226,7 +245,7 @@ export function App() {
     refreshBootstrap().catch((error: unknown) => {
       const authenticationFailure = error instanceof ApiError && [401, 403].includes(error.status);
       if (authenticationFailure) {
-        setAuthenticated(false);
+        clearAuthState();
         const publicPath = ["/", "/login", "/faq", "/privacy"].includes(window.location.pathname);
         if (!publicPath) {
           notify("Sign in or create an account to continue.", "info");
@@ -289,7 +308,17 @@ export function App() {
     }
   }
 
+  useEffect(() => {
+    if (!authenticated || view !== "login" || verificationSuccess) return;
+    const path = VIEW_PATHS.workspace;
+    if (window.location.pathname !== path) {
+      window.history.replaceState(null, "", path);
+    }
+    setView("workspace");
+  }, [authenticated, verificationSuccess, view]);
+
   function acceptAuthPayload(payload: { token: string; principal: Principal }) {
+    writeStoredAuthToken(payload.token);
     setToken(payload.token);
     setPrincipal(payload.principal);
     setAuthenticated(true);
@@ -304,14 +333,10 @@ export function App() {
       notify(`Could not securely sign out: ${String(error)}`, "error");
       return;
     }
-    setToken("");
-    setAuthenticated(false);
-    setPrincipal(DEFAULT_PRINCIPAL);
+    clearAuthState();
     setInstance(null);
     setSchedule({});
     setSessionId("");
-    setOrganizations([]);
-    setAuthSessions([]);
     notify("Signed out", "info");
     window.history.pushState(null, "", "/login");
     setView("login");

@@ -42,6 +42,9 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "Desktop / Backend / Web Parity" in parity
     assert "/auth/whoami" in app
     assert "/auth/login" in app
+    assert "readStoredAuthToken" in app
+    assert "writeStoredAuthToken(payload.token)" in app
+    assert 'writeStoredAuthToken("")' in app
     assert "/auth/config" in app
     assert "/auth/register" in app
     assert "/audit" in app

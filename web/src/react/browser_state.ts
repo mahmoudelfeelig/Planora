@@ -1,6 +1,8 @@
 export type ThemeMode = "light" | "dark";
 export type AnalyticsConsent = "pending" | "granted" | "denied";
 
+const AUTH_TOKEN_KEY = "planora_auth_token";
+
 export function readStoredTheme(): ThemeMode {
   const stored = localStorage.getItem("planora_theme");
   if (stored === "dark" || stored === "light") return stored;
@@ -18,6 +20,26 @@ export function setCookie(name: string, value: string, maxAgeSeconds: number) {
 
 export function clearCookie(name: string) {
   document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`;
+}
+
+export function readStoredAuthToken(): string {
+  try {
+    return sessionStorage.getItem(AUTH_TOKEN_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function writeStoredAuthToken(token: string) {
+  try {
+    if (token) {
+      sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    } else {
+      sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+  } catch {
+    // Some browsers disable sessionStorage in strict privacy modes.
+  }
 }
 
 export function analyticsClientId(): string {
