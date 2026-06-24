@@ -254,10 +254,23 @@ export function App() {
         .catch((error: unknown) => notify(String(error), "error"));
       return;
     }
-    refreshBootstrap().catch((error: unknown) => {
+    refreshBootstrap().catch(async (error: unknown) => {
       const authenticationFailure = error instanceof ApiError && [401, 403].includes(error.status);
       if (authenticationFailure) {
         if (api.token !== tokenRef.current) return;
+        if (api.token) {
+          try {
+            writeStoredAuthToken("");
+            setToken("");
+            const cookieApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+            const payload = await cookieApi.post<{ token: string; principal: Principal }>("/auth/refresh", {});
+            const authenticatedApi = acceptAuthPayload(payload);
+            await refreshBootstrap(authenticatedApi);
+            return;
+          } catch {
+            // Fall through to the normal signed-out state if the cookie is not valid either.
+          }
+        }
         clearAuthState();
         if (!publicPath) {
           notify("Sign in or create an account to continue.", "info");
