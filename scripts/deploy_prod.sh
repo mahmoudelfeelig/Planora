@@ -61,7 +61,7 @@ trap rollback ERR
 
 echo "Deploying Planora from $REMOTE/$BRANCH in $APP_DIR..."
 git fetch --prune "$REMOTE" "$BRANCH"
-git checkout -B "$BRANCH" "$REMOTE/$BRANCH"
+git checkout -f -B "$BRANCH" "$REMOTE/$BRANCH"
 git reset --hard "$REMOTE/$BRANCH"
 
 compose config --quiet
