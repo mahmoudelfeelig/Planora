@@ -1,5 +1,8 @@
+name: planora
+
 services:
   planora-api:
+    container_name: planora-api
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -61,6 +64,7 @@ services:
     pids_limit: ${PLANORA_API_PIDS:-256}
 
   planora-web:
+    container_name: planora-web
     build:
       context: ..
       dockerfile: deploy/web.Dockerfile
@@ -80,6 +84,7 @@ services:
           - planora-web
 
   planora-backup:
+    container_name: planora-backup
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -97,6 +102,7 @@ services:
       - ALL
 
   planora-retention:
+    container_name: planora-retention
     build:
       context: ..
       dockerfile: deploy/Dockerfile
