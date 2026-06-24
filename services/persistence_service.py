@@ -216,6 +216,33 @@ class PersistenceStore:
                 (time.time(), principal.session_id, principal.user_id),
             )
 
+    def replace_auth_session(
+        self,
+        principal: Principal,
+        next_session_id: str,
+        *,
+        ttl_seconds: int,
+    ) -> str:
+        csrf = secrets.token_urlsafe(32)
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT INTO auth_sessions(
+                    session_id, tenant_id, user_id, csrf_token, expires_at,
+                    revoked_at, created_at, last_seen_at
+                ) VALUES(?, ?, ?, ?, ?, NULL, ?, ?)
+                """,
+                (next_session_id, principal.tenant_id, principal.user_id, csrf, now + ttl_seconds, now, now),
+            )
+            if principal.session_id:
+                conn.execute(
+                    "UPDATE auth_sessions SET revoked_at=? WHERE session_id=? AND user_id=?",
+                    (now, principal.session_id, principal.user_id),
+                )
+        return csrf
+
     def list_auth_sessions(self, principal: Principal) -> Dict[str, Any]:
         now = time.time()
         with self._connect() as conn:
@@ -475,6 +502,8 @@ class PersistenceStore:
             if account is not None and bool(account["disabled"]):
                 raise PermissionError("Your account is disabled for that organization.")
             tenant = conn.execute("SELECT enabled FROM tenants WHERE tenant_id=?", (target_tenant,)).fetchone()
+            if tenant is None:
+                raise ValueError("Organization was not found.")
             if tenant is not None and not bool(tenant["enabled"]):
                 raise PermissionError("That organization is disabled.")
             role = str(account["role"] if account is not None else principal.role)

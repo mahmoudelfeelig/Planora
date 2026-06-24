@@ -181,6 +181,20 @@ def test_auth_sessions_are_revocable(tmp_path):
         store.require_active_session(principal)
 
 
+def test_auth_session_replacement_revokes_old_after_creating_new(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    old = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a", session_id="sid-old")
+    new = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a", session_id="sid-new")
+    store.upsert_user(old)
+    store.create_auth_session(old, "sid-old", ttl_seconds=60)
+    csrf = store.replace_auth_session(old, "sid-new", ttl_seconds=60)
+
+    assert csrf
+    with pytest.raises(PermissionError, match="expired or revoked"):
+        store.require_active_session(old)
+    store.require_active_session(new)
+
+
 def test_auth_session_listing_password_change_and_revoke_others(tmp_path):
     store = PersistenceStore(tmp_path / "planora.sqlite3")
     registered = store.register_email_user(
@@ -360,6 +374,15 @@ def test_email_account_can_join_and_switch_between_organizations(tmp_path):
     assert uni_a_group in switched.groups
 
 
+def test_global_admin_cannot_switch_to_missing_organization(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    global_admin = Principal(user_id="root", role="admin", tenant_id="global")
+    store.upsert_user(global_admin)
+
+    with pytest.raises(ValueError, match="Organization was not found"):
+        store.switch_user_tenant(global_admin, "missing-org")
+
+
 def test_invite_rotation_keeps_existing_members(tmp_path):
     store = PersistenceStore(tmp_path / "planora.sqlite3")
     admin = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a")
@@ -394,6 +417,17 @@ def test_invite_rotation_keeps_existing_members(tmp_path):
     )["principal"]
     assert group_id in store.resolve_principal(first).groups
     assert group_id in store.resolve_principal(second).groups
+
+
+def test_invite_mutations_require_existing_invite(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    admin = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a")
+    store.upsert_user(admin)
+
+    with pytest.raises(ValueError, match="Invite code was not found"):
+        store.apply_access_change(admin, {"action": "rotate_invite", "invite_id": "missing", "code": "new-code-123"})
+    with pytest.raises(ValueError, match="Invite code was not found"):
+        store.apply_access_change(admin, {"action": "set_invite_disabled", "invite_id": "missing", "disabled": True})
 
 
 def test_parity_manifest_reports_coverage():

@@ -111,11 +111,16 @@ export function App() {
   const [redirectSeconds, setRedirectSeconds] = useState(5);
   const [loginInitialMode, setLoginInitialMode] = useState<LoginInitialMode>("login");
   const bootstrapStarted = useRef(false);
+  const tokenRef = useRef(token);
 
   const api = useMemo(
     () => createApiClient(API_DEFAULT, principal, token),
     [principal, token],
   );
+
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
 
   const trackAnalytics = useCallback((eventName: string, details: Dict = {}) => {
     if (analyticsConsent !== "granted") return;
@@ -242,11 +247,18 @@ export function App() {
   useEffect(() => {
     if (bootstrapStarted.current) return;
     bootstrapStarted.current = true;
+    const publicPath = ["/", "/login", "/faq", "/privacy"].includes(window.location.pathname);
+    if (!api.token && publicPath) {
+      api.get<Dict>("/auth/config")
+        .then(setAuthConfig)
+        .catch((error: unknown) => notify(String(error), "error"));
+      return;
+    }
     refreshBootstrap().catch((error: unknown) => {
       const authenticationFailure = error instanceof ApiError && [401, 403].includes(error.status);
       if (authenticationFailure) {
+        if (api.token !== tokenRef.current) return;
         clearAuthState();
-        const publicPath = ["/", "/login", "/faq", "/privacy"].includes(window.location.pathname);
         if (!publicPath) {
           notify("Sign in or create an account to continue.", "info");
           window.history.replaceState(null, "", "/login");
@@ -259,7 +271,7 @@ export function App() {
         notify(String(error), "error");
       }
     });
-  }, [refreshBootstrap]);
+  }, [api, refreshBootstrap]);
 
   useEffect(() => {
     const onPop = () => setView(viewFromLocation());

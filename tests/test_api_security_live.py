@@ -150,6 +150,9 @@ def test_production_api_rejects_anonymous_forged_and_local_admin(tmp_path):
             status, body = _status_and_body(f"http://127.0.0.1:{port}{path}", method="HEAD")
             assert status == 200
             assert body == b""
+        status, body = _status_and_body(f"http://127.0.0.1:{port}/auth/config", method="HEAD")
+        assert status == 200
+        assert body == b""
         assert _status(f"http://127.0.0.1:{port}/auth/config") == 200
         assert _status(f"http://127.0.0.1:{port}/auth/whoami") == 401
         assert _status(

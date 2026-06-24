@@ -308,8 +308,9 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
         self._request_id = self.headers.get("X-Request-ID") or secrets.token_hex(8)
         try:
             _check_rate_limit(self)
-            if urlparse(self.path).path not in {"/health", "/ready"}:
-                _json_response(self, 404, {"error": "Not found"})
+            parsed_path = urlparse(self.path).path
+            if parsed_path == "/auth/verify":
+                _json_response(self, 405, {"error": "Method not allowed"})
                 return
             self._do_GET()
         except Exception as exc:
@@ -490,8 +491,11 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             principal = _authenticated(self, "schedule:read")
             try:
                 session = _workspace_session(parts[1], principal)
-            except Exception as exc:
+            except KeyError as exc:
                 _json_response(self, 404, {"error": str(exc)})
+                return
+            except Exception as exc:
+                _error_response(self, exc)
                 return
             _json_response(self, 200, _project_workspace_payload(principal, session.to_dict(include_workspace=True)))
             return
@@ -500,16 +504,24 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             try:
                 job = _job_record(parts[1], principal)
                 _json_response(self, 200, job.to_dict())
-            except Exception as exc:
+            except KeyError as exc:
                 _json_response(self, 404, {"error": str(exc)})
+            except Exception as exc:
+                _error_response(self, exc)
             return
         if parts and parts[0] == "jobs" and len(parts) == 3 and parts[2] == "events":
             principal = _authenticated(self, "schedule:read")
             try:
                 job_record = _job_record(parts[1], principal)
                 job = job_record.to_dict()
-            except Exception as exc:
+            except KeyError as exc:
                 _text_response(self, 404, f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n", content_type="text/event-stream")
+                return
+            except PermissionError as exc:
+                _text_response(self, 403, f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n", content_type="text/event-stream")
+                return
+            except Exception as exc:
+                _text_response(self, 500, f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n", content_type="text/event-stream")
                 return
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -517,6 +529,9 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
             _common_headers(self)
             self.end_headers()
+            if self.command == "HEAD":
+                self.close_connection = True
+                return
             terminal = {"complete", "failed", "cancelled"}
             try:
                 while True:
@@ -559,8 +574,14 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                     require_tenant_access(principal, dict(project_payload.get("meta") or {}).get("tenant_id"))
                     _json_response(self, 200, _project_workspace_payload(principal, project_payload))
                     return
-            except Exception as exc:
+            except (FileNotFoundError, KeyError) as exc:
                 _json_response(self, 404, {"error": str(exc)})
+                return
+            except PermissionError as exc:
+                _error_response(self, exc)
+                return
+            except Exception as exc:
+                _error_response(self, exc)
                 return
         if self.path.startswith("/preset/"):
             _authenticated(self, "schedule:read")
@@ -810,10 +831,9 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 return
             if parts == ["auth", "refresh"]:
                 principal = _authenticated(self)
-                PERSISTENCE.revoke_auth_session(principal)
                 session_id = secrets.token_urlsafe(24)
                 ttl = int(os.environ.get("PLANORA_SESSION_TTL_SECONDS", "28800"))
-                csrf = PERSISTENCE.create_auth_session(principal, session_id, ttl_seconds=ttl)
+                csrf = PERSISTENCE.replace_auth_session(principal, session_id, ttl_seconds=ttl)
                 refreshed = Principal(
                     user_id=principal.user_id, role=principal.role, tenant_id=principal.tenant_id,
                     groups=principal.groups, session_id=session_id, provider=principal.provider,

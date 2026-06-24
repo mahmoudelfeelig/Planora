@@ -45,6 +45,8 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "readStoredAuthToken" in app
     assert "writeStoredAuthToken(payload.token)" in app
     assert 'writeStoredAuthToken("")' in app
+    assert "tokenRef.current = token" in app
+    assert "if (!api.token && publicPath)" in app
     assert "/auth/config" in app
     assert "/auth/register" in app
     assert "/audit" in app

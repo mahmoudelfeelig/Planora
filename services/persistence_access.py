@@ -193,7 +193,7 @@ def apply_access_change(store: Any, principal: Principal, change: Dict[str, Any]
             code = str(change.get("code") or new_plain_token("invite_")).strip()
             if len(code) < 8:
                 raise ValueError("Invite code must be at least 8 characters.")
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE invite_codes SET code_hash=?, label=COALESCE(?, label),
                     used_count=0, disabled=0, updated_at=?
@@ -201,15 +201,19 @@ def apply_access_change(store: Any, principal: Principal, change: Dict[str, Any]
                 """,
                 (hash_token(code), change.get("label"), now, tenant_id, str(change["invite_id"])),
             )
+            if not cursor.rowcount:
+                raise ValueError("Invite code was not found.")
             conn.commit()
             snapshot = access_snapshot(store, principal)
             snapshot["new_invite_code"] = code
             return snapshot
         elif action == "set_invite_disabled":
-            conn.execute(
+            cursor = conn.execute(
                 "UPDATE invite_codes SET disabled=?, updated_at=? WHERE tenant_id=? AND invite_id=?",
                 (int(bool(change.get("disabled", True))), now, tenant_id, str(change["invite_id"])),
             )
+            if not cursor.rowcount:
+                raise ValueError("Invite code was not found.")
         else:
             raise ValueError(f"Unknown access change action: {action}")
     return access_snapshot(store, principal)
