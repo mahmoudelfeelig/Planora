@@ -833,7 +833,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 principal = _authenticated(self)
                 session_id = secrets.token_urlsafe(24)
                 ttl = int(os.environ.get("PLANORA_SESSION_TTL_SECONDS", "28800"))
-                csrf = PERSISTENCE.replace_auth_session(principal, session_id, ttl_seconds=ttl)
+                csrf = PERSISTENCE.create_auth_session(principal, session_id, ttl_seconds=ttl)
                 refreshed = Principal(
                     user_id=principal.user_id, role=principal.role, tenant_id=principal.tenant_id,
                     groups=principal.groups, session_id=session_id, provider=principal.provider,

@@ -195,6 +195,19 @@ def test_auth_session_replacement_revokes_old_after_creating_new(tmp_path):
     store.require_active_session(new)
 
 
+def test_refresh_session_creation_keeps_existing_session_active(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    old = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a", session_id="sid-old")
+    new = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a", session_id="sid-new")
+    store.upsert_user(old)
+    store.create_auth_session(old, "sid-old", ttl_seconds=60)
+    csrf = store.create_auth_session(old, "sid-new", ttl_seconds=60)
+
+    assert csrf
+    store.require_active_session(old)
+    store.require_active_session(new)
+
+
 def test_auth_session_listing_password_change_and_revoke_others(tmp_path):
     store = PersistenceStore(tmp_path / "planora.sqlite3")
     registered = store.register_email_user(
