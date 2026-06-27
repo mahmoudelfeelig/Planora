@@ -49,7 +49,8 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "writeStoredAuthToken(payload.token)" in app
     assert 'writeStoredAuthToken("")' in app
     assert "tokenRef.current = token" in app
-    assert "if (!api.token && publicPath)" in app
+    assert "if (api.token || publicPath)" in app
+    assert "if (api.token) {\n        writeStoredAuthToken(\"\");\n        setToken(\"\");\n      }" in app
     assert "await refreshBootstrap(authenticatedApi)" in app
     assert 'cookieApi.post<{ token: string; principal: Principal }>("/auth/refresh", {})' in app
     assert "/auth/config" in app
