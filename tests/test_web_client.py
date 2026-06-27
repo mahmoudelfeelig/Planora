@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_web_client_assets_and_typescript_contract_exist():
     index = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
     app = (ROOT / "web" / "src" / "react" / "App.tsx").read_text(encoding="utf-8")
+    server = (ROOT / "api" / "server.py").read_text(encoding="utf-8")
     shell = (ROOT / "web" / "src" / "react" / "components" / "AppShell.tsx").read_text(encoding="utf-8")
     board = (ROOT / "web" / "src" / "react" / "components" / "ScheduleBoard.tsx").read_text(encoding="utf-8")
     login = (ROOT / "web" / "src" / "react" / "components" / "LoginPanel.tsx").read_text(encoding="utf-8")
@@ -34,6 +35,8 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "/privacy" in app
     assert "/system/email-test" in app
     assert "/analytics/summary" in app
+    assert 'if parts == ["analytics", "summary"]:\n            principal = _authenticated(self, "audit:read")' in server
+    assert 'if parsed_path in {"/audit", "/audit.csv"}:\n            principal = _authenticated(self, "audit:read")' in server
     assert "ParityPanel" in app
     assert "move-target" in board
     assert "delta-badge" in board
@@ -53,6 +56,7 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "/auth/register" in app
     assert "/audit" in app
     assert "/system" in app
+    assert "whoami.is_global_admin" in app
     assert "/parity" in app
     assert "/jobs/improve" in app
     assert "hard_constraints:" in app

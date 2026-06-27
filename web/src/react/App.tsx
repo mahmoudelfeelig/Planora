@@ -220,22 +220,26 @@ export function App() {
     setOrganizations(organizationPayload.organizations || []);
     setAuthSessions(sessionPayload.sessions || []);
     if (whoami.permissions.includes("audit:read")) {
-      const requests: [Promise<{ events: Dict[] }>, Promise<Dict>, Promise<Dict>, Promise<Dict>] = [
+      const [audit, analyticsPayload] = await Promise.all([
         client.get<{ events: Dict[] }>("/audit"),
-        client.get<Dict>("/system"),
-        client.get<Dict>("/system/status"),
         client.get<Dict>("/analytics/summary"),
-      ];
-      const [audit, systemPayload, statusPayload, analyticsPayload] = await Promise.all(requests);
+      ]);
       setAuditEvents(audit.events || []);
-      setSystem(systemPayload);
-      setSystemStatus(statusPayload);
       setAnalyticsSummary(analyticsPayload);
     } else {
       setAuditEvents([]);
+      setAnalyticsSummary({});
+    }
+    if (whoami.is_global_admin) {
+      const [systemPayload, statusPayload] = await Promise.all([
+        client.get<Dict>("/system"),
+        client.get<Dict>("/system/status"),
+      ]);
+      setSystem(systemPayload);
+      setSystemStatus(statusPayload);
+    } else {
       setSystem({});
       setSystemStatus({});
-      setAnalyticsSummary({});
     }
     if (whoami.permissions.includes("access:manage")) {
       setAccessSnapshot(await client.get<Dict>("/access"));
@@ -248,17 +252,39 @@ export function App() {
     if (bootstrapStarted.current) return;
     bootstrapStarted.current = true;
     const publicPath = ["/", "/login", "/faq", "/privacy"].includes(window.location.pathname);
-    if (!api.token && publicPath) {
-      const cookieApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const cookieApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    if (api.token || publicPath) {
+      if (api.token) {
+        writeStoredAuthToken("");
+        setToken("");
+      }
       cookieApi.post<{ token: string; principal: Principal }>("/auth/refresh", {})
         .then(async (payload) => {
           const authenticatedApi = acceptAuthPayload(payload);
           await refreshBootstrap(authenticatedApi);
         })
-        .catch(() => {
-          api.get<Dict>("/auth/config")
-            .then(setAuthConfig)
-            .catch((error: unknown) => notify(String(error), "error"));
+        .catch(async () => {
+          if (publicPath) {
+            cookieApi.get<Dict>("/auth/config")
+              .then(setAuthConfig)
+              .catch((error: unknown) => notify(String(error), "error"));
+            return;
+          }
+          try {
+            await refreshBootstrap(cookieApi);
+          } catch (error) {
+            clearAuthState();
+            if (!publicPath) {
+              notify("Sign in or create an account to continue.", "info");
+              window.history.replaceState(null, "", "/login");
+              setView("login");
+            } else if (error instanceof ApiError && error.status === 429) {
+              const wait = error.retryAfter ? ` Try again in ${error.retryAfter} seconds.` : " Try again shortly.";
+              notify(`The server is temporarily busy.${wait}`, "error");
+            } else if (!(error instanceof ApiError && [401, 403].includes(error.status))) {
+              notify(String(error), "error");
+            }
+          }
         });
       return;
     }
@@ -410,7 +436,8 @@ export function App() {
   }
 
   async function login() {
-    const payload = await api.post<{ token: string; principal: Principal }>("/auth/login", {
+    const authApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const payload = await authApi.post<{ token: string; principal: Principal }>("/auth/login", {
       email: credentials.email,
       password: credentials.password,
     });
@@ -422,7 +449,8 @@ export function App() {
   }
 
   async function register() {
-    const payload = await api.post<Dict>("/auth/register", {
+    const authApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const payload = await authApi.post<Dict>("/auth/register", {
       email: credentials.email,
       password: credentials.password,
       display_name: credentials.displayName,
@@ -443,7 +471,8 @@ export function App() {
   }
 
   async function verifyEmail() {
-    const payload = await api.post<{ token: string; principal: Principal }>("/auth/verify", {
+    const authApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const payload = await authApi.post<{ token: string; principal: Principal }>("/auth/verify", {
       email: credentials.email,
       code: credentials.verificationCode,
       token: credentials.verificationCode,
@@ -457,14 +486,16 @@ export function App() {
   }
 
   async function forgotPassword() {
-    const payload = await api.post<Dict>("/auth/forgot-password", { email: credentials.email });
+    const authApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const payload = await authApi.post<Dict>("/auth/forgot-password", { email: credentials.email });
     const resetCode = payload.reset_code ? ` Dev code: ${String(payload.reset_code)}` : "";
     const resetToken = payload.reset_token ? ` Dev token: ${String(payload.reset_token)}` : "";
     notify(`If that email exists, Planora sent a password reset link and code.${resetCode}${resetToken}`, "success");
   }
 
   async function resetPassword() {
-    const payload = await api.post<{ token: string; principal: Principal }>("/auth/reset-password", {
+    const authApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const payload = await authApi.post<{ token: string; principal: Principal }>("/auth/reset-password", {
       email: credentials.email,
       code: credentials.resetCode,
       token: credentials.resetToken || credentials.resetCode,

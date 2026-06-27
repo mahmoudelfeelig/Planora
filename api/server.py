@@ -428,7 +428,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             _json_response(self, 200, parity_manifest())
             return
         if parsed_path in {"/audit", "/audit.csv"}:
-            principal = _global_admin(self)
+            principal = _authenticated(self, "audit:read")
             query = parse_qs(urlparse(self.path).query)
             events = PERSISTENCE.list_audit(
                 principal,
@@ -443,7 +443,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 _json_response(self, 200, {"events": events})
             return
         if parts == ["analytics", "summary"]:
-            principal = _global_admin(self)
+            principal = _authenticated(self, "audit:read")
             query = parse_qs(urlparse(self.path).query)
             _json_response(
                 self,
@@ -458,7 +458,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             )
             return
         if parts == ["analytics", "export.csv"]:
-            principal = _global_admin(self)
+            principal = _authenticated(self, "audit:read")
             query = parse_qs(urlparse(self.path).query)
             summary = PERSISTENCE.analytics_summary(
                 principal,
