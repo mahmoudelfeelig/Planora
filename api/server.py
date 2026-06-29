@@ -94,6 +94,8 @@ _CSRF_EXEMPT_POST_PATHS = {
     ("auth", "verify"),
     ("auth", "forgot-password"),
     ("auth", "reset-password"),
+    ("auth", "logout"),
+    ("auth", "refresh"),
 }
 
 
@@ -837,9 +839,10 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 )
                 return
             if parts == ["auth", "logout"]:
-                principal = _authenticated(self)
-                PERSISTENCE.revoke_auth_session(principal)
-                PERSISTENCE.audit(principal, action="auth.logout", resource_type="user", resource_id=principal.user_id)
+                principal = _optional_authenticated(self)
+                if principal is not None:
+                    PERSISTENCE.revoke_auth_session(principal)
+                    PERSISTENCE.audit(principal, action="auth.logout", resource_type="user", resource_id=principal.user_id)
                 _auth_json_response(self, 200, {"ok": True}, clear=True)
                 return
             if parts == ["auth", "refresh"]:

@@ -10,6 +10,10 @@ export type ApiClient = {
   download(path: string, fallbackFilename: string): Promise<void>;
 };
 
+type ApiClientOptions = {
+  devHeaders?: boolean;
+};
+
 export class ApiError extends Error {
   status: number;
   retryAfter: number | null;
@@ -22,10 +26,11 @@ export class ApiError extends Error {
   }
 }
 
-function authHeaders(principal: Principal, token = ""): HeadersInit {
+function authHeaders(principal: Principal, token = "", devHeaders = true): HeadersInit {
   if (token) {
     return { Authorization: `Bearer ${token}` };
   }
+  if (!devHeaders) return {};
   return {
     "X-Planora-User": principal.user_id,
     "X-Planora-Role": principal.role,
@@ -45,6 +50,7 @@ async function requestJson<T>(
   token: string,
   path: string,
   init: RequestInit = {},
+  options: ApiClientOptions = {},
 ): Promise<T> {
   let response: Response;
   const target = `${baseUrl.replace(/\/$/, "")}${path}`;
@@ -54,7 +60,7 @@ async function requestJson<T>(
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        ...authHeaders(principal, token),
+        ...authHeaders(principal, token, options.devHeaders !== false),
         ...(init.method && init.method !== "GET" && csrfToken() ? { "X-CSRF-Token": csrfToken() } : {}),
         ...(init.headers || {}),
       },
@@ -82,22 +88,27 @@ async function requestJson<T>(
   return payload as T;
 }
 
-export function createApiClient(baseUrl: string, principal: Principal, token = ""): ApiClient {
+export function createApiClient(
+  baseUrl: string,
+  principal: Principal,
+  token = "",
+  options: ApiClientOptions = {},
+): ApiClient {
   return {
     baseUrl,
     principal,
     token,
-    get: (path) => requestJson(baseUrl, principal, token, path),
+    get: (path) => requestJson(baseUrl, principal, token, path, {}, options),
     post: (path, payload = {}) =>
       requestJson(baseUrl, principal, token, path, {
         method: "POST",
         body: JSON.stringify(payload),
-      }),
-    delete: (path) => requestJson(baseUrl, principal, token, path, { method: "DELETE" }),
+      }, options),
+    delete: (path) => requestJson(baseUrl, principal, token, path, { method: "DELETE" }, options),
     download: async (path, fallbackFilename) => {
       const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
         credentials: "include",
-        headers: authHeaders(principal, token),
+        headers: authHeaders(principal, token, options.devHeaders !== false),
       });
       if (!response.ok) {
         throw new ApiError(`Download failed: ${response.statusText || response.status}`, response.status);
@@ -116,10 +127,15 @@ export function createApiClient(baseUrl: string, principal: Principal, token = "
   };
 }
 
+export function createUnauthenticatedApiClient(baseUrl: string): ApiClient {
+  return createApiClient(baseUrl, DEFAULT_PRINCIPAL, "", { devHeaders: false });
+}
+
 export const DEFAULT_PRINCIPAL: Principal = {
   user_id: "local-admin",
   role: "admin",
   tenant_id: "default",
   permissions: [],
   is_global_admin: true,
+  provider: "dev-header",
 };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ApiError, createApiClient, DEFAULT_PRINCIPAL } from "./api";
+import { ApiError, createApiClient, createUnauthenticatedApiClient, DEFAULT_PRINCIPAL } from "./api";
 import { AccountPanel } from "./components/AccountPanel";
 import { AdminPanel } from "./components/AdminPanel";
 import { AccessPanel } from "./components/AccessPanel";
@@ -182,6 +182,10 @@ export function App() {
     }, 5200);
   }
 
+  function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
   function clearAuthState() {
     writeStoredAuthToken("");
     setToken("");
@@ -252,7 +256,7 @@ export function App() {
     if (bootstrapStarted.current) return;
     bootstrapStarted.current = true;
     const publicPath = ["/", "/login", "/faq", "/privacy"].includes(window.location.pathname);
-    const cookieApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const cookieApi = createUnauthenticatedApiClient(API_DEFAULT);
     if (api.token || publicPath) {
       if (api.token) {
         writeStoredAuthToken("");
@@ -296,7 +300,7 @@ export function App() {
           try {
             writeStoredAuthToken("");
             setToken("");
-            const cookieApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+            const cookieApi = createUnauthenticatedApiClient(API_DEFAULT);
             const payload = await cookieApi.post<{ token: string; principal: Principal }>("/auth/refresh", {});
             const authenticatedApi = acceptAuthPayload(payload);
             await refreshBootstrap(authenticatedApi);
@@ -384,19 +388,30 @@ export function App() {
     return createApiClient(API_DEFAULT, payload.principal, payload.token);
   }
 
+  async function refreshAfterAuth(client: ReturnType<typeof createApiClient>) {
+    try {
+      await refreshBootstrap(client);
+    } catch (error) {
+      notify(`Signed in, but workspace data did not finish loading: ${errorMessage(error)}`, "error");
+    }
+  }
+
   async function signOut() {
     trackAnalytics("logout");
+    let logoutError: unknown = null;
     try {
       await api.post<Dict>("/auth/logout", {});
     } catch (error) {
-      notify(`Could not securely sign out: ${String(error)}`, "error");
-      return;
+      logoutError = error;
     }
     clearAuthState();
     setInstance(null);
     setSchedule({});
     setSessionId("");
-    notify("Signed out", "info");
+    notify(
+      logoutError ? `Signed out locally. The server logout call failed: ${errorMessage(logoutError)}` : "Signed out",
+      logoutError ? "error" : "info",
+    );
     window.history.pushState(null, "", "/login");
     setView("login");
   }
@@ -436,20 +451,20 @@ export function App() {
   }
 
   async function login() {
-    const authApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const authApi = createUnauthenticatedApiClient(API_DEFAULT);
     const payload = await authApi.post<{ token: string; principal: Principal }>("/auth/login", {
       email: credentials.email,
       password: credentials.password,
     });
     const authenticatedApi = acceptAuthPayload(payload);
-    await refreshBootstrap(authenticatedApi);
     trackAnalytics("login_success", { role: payload.principal.role, tenant_id: payload.principal.tenant_id });
     notify("Signed in", "success");
     navigate("workspace");
+    await refreshAfterAuth(authenticatedApi);
   }
 
   async function register() {
-    const authApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const authApi = createUnauthenticatedApiClient(API_DEFAULT);
     const payload = await authApi.post<Dict>("/auth/register", {
       email: credentials.email,
       password: credentials.password,
@@ -458,10 +473,10 @@ export function App() {
     if (payload.token && payload.principal) {
       const authPayload = payload as { token: string; principal: Principal };
       const authenticatedApi = acceptAuthPayload(authPayload);
-      await refreshBootstrap(authenticatedApi);
       trackAnalytics("registration_complete", { role: authPayload.principal.role, tenant_id: authPayload.principal.tenant_id });
       notify("Account created. You are signed in.", "success");
       navigate("workspace");
+      await refreshAfterAuth(authenticatedApi);
       return false;
     }
     const verificationUrl = payload.verification_url ? ` Dev verification link: ${String(payload.verification_url)}` : "";
@@ -471,22 +486,22 @@ export function App() {
   }
 
   async function verifyEmail() {
-    const authApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const authApi = createUnauthenticatedApiClient(API_DEFAULT);
     const payload = await authApi.post<{ token: string; principal: Principal }>("/auth/verify", {
       email: credentials.email,
       code: credentials.verificationCode,
       token: credentials.verificationCode,
     });
     const authenticatedApi = acceptAuthPayload(payload);
-    await refreshBootstrap(authenticatedApi);
     setVerificationSuccess(true);
     setRedirectSeconds(5);
     window.history.replaceState(null, "", "/login?verified=1");
     notify("Email confirmed. You are signed in.", "success");
+    await refreshAfterAuth(authenticatedApi);
   }
 
   async function forgotPassword() {
-    const authApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const authApi = createUnauthenticatedApiClient(API_DEFAULT);
     const payload = await authApi.post<Dict>("/auth/forgot-password", { email: credentials.email });
     const resetCode = payload.reset_code ? ` Dev code: ${String(payload.reset_code)}` : "";
     const resetToken = payload.reset_token ? ` Dev token: ${String(payload.reset_token)}` : "";
@@ -494,7 +509,7 @@ export function App() {
   }
 
   async function resetPassword() {
-    const authApi = createApiClient(API_DEFAULT, DEFAULT_PRINCIPAL, "");
+    const authApi = createUnauthenticatedApiClient(API_DEFAULT);
     const payload = await authApi.post<{ token: string; principal: Principal }>("/auth/reset-password", {
       email: credentials.email,
       code: credentials.resetCode,
@@ -502,11 +517,11 @@ export function App() {
       new_password: credentials.newPassword,
     });
     const authenticatedApi = acceptAuthPayload(payload);
-    await refreshBootstrap(authenticatedApi);
     setVerificationSuccess(true);
     setRedirectSeconds(5);
     window.history.replaceState(null, "", "/login?verified=1");
     notify("Password reset. You are signed in.", "success");
+    await refreshAfterAuth(authenticatedApi);
   }
 
   async function applyAccessChange(change: Dict) {

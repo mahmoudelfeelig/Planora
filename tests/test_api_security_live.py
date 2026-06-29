@@ -83,13 +83,13 @@ def test_csrf_gate_exempts_only_public_auth_posts():
         ["auth", "verify"],
         ["auth", "forgot-password"],
         ["auth", "reset-password"],
+        ["auth", "logout"],
+        ["auth", "refresh"],
     )
     for parts in public_posts:
         assert not api_server._post_requires_csrf(parts)
 
     protected_posts = (
-        ["auth", "logout"],
-        ["auth", "refresh"],
         ["auth", "change-password"],
         ["auth", "sessions"],
         ["auth", "resend-verification"],
@@ -141,15 +141,20 @@ def _status(url: str, *, method: str = "GET", payload: dict | None = None, heade
 
 
 def _status_and_body(url: str, *, method: str = "GET", payload: dict | None = None, headers: dict | None = None) -> tuple[int, bytes]:
+    status, body, _headers = _status_body_headers(url, method=method, payload=payload, headers=headers)
+    return status, body
+
+
+def _status_body_headers(url: str, *, method: str = "GET", payload: dict | None = None, headers: dict | None = None):
     body = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(url, data=body, method=method, headers={"Content-Type": "application/json", **(headers or {})})
     try:
         with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310
-            return int(response.status), response.read()
+            return int(response.status), response.read(), response.headers
     except urllib.error.HTTPError as exc:
-        return int(exc.code), exc.read()
+        return int(exc.code), exc.read(), exc.headers
     except urllib.error.URLError:
-        return 0, b""
+        return 0, b"", {}
 
 
 @pytest.mark.slow
@@ -200,6 +205,25 @@ def test_production_api_rejects_anonymous_forged_and_local_admin(tmp_path):
         assert stale_cookie_status == 403
         assert b"Invalid CSRF token" not in stale_cookie_body
         assert b"Email or password is incorrect" in stale_cookie_body
+        stale_refresh_status, stale_refresh_body = _status_and_body(
+            f"http://127.0.0.1:{port}/auth/refresh",
+            method="POST",
+            payload={},
+            headers={"Cookie": "planora_session=stale-invalid-session"},
+        )
+        assert stale_refresh_status in {401, 403}
+        assert b"Invalid CSRF token" not in stale_refresh_body
+        stale_logout_status, stale_logout_body, stale_logout_headers = _status_body_headers(
+            f"http://127.0.0.1:{port}/auth/logout",
+            method="POST",
+            payload={},
+            headers={"Cookie": "planora_session=stale-invalid-session"},
+        )
+        assert stale_logout_status == 200
+        assert json.loads(stale_logout_body.decode()) == {"ok": True}
+        set_cookies = stale_logout_headers.get_all("Set-Cookie", [])
+        assert any(cookie.startswith("planora_session=;") and "Max-Age=0" in cookie for cookie in set_cookies)
+        assert any(cookie.startswith("planora_csrf=;") and "Max-Age=0" in cookie for cookie in set_cookies)
         assert _status(
             f"http://127.0.0.1:{port}/analytics/event",
             method="POST",
