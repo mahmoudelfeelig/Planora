@@ -86,6 +86,19 @@ JOB_STORE = JobStore(on_change=PERSISTENCE.save_job)
 STARTED_AT = time.time()
 _RATE_LOCK = threading.Lock()
 _RATE_BUCKETS: dict[str, list[float]] = {}
+_CSRF_EXEMPT_POST_PATHS = {
+    ("analytics", "event"),
+    ("events", "collect"),
+    ("auth", "login"),
+    ("auth", "register"),
+    ("auth", "verify"),
+    ("auth", "forgot-password"),
+    ("auth", "reset-password"),
+}
+
+
+def _post_requires_csrf(parts: list[str]) -> bool:
+    return tuple(parts) not in _CSRF_EXEMPT_POST_PATHS
 
 
 def _check_rate_limit(handler: BaseHTTPRequestHandler) -> None:
@@ -604,7 +617,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
         self._request_id = self.headers.get("X-Request-ID") or secrets.token_hex(8)
         try:
             _check_rate_limit(self)
-            if _segments(self.path) not in (["analytics", "event"], ["events", "collect"]):
+            if _post_requires_csrf(_segments(self.path)):
                 validate_csrf(self.headers)
             self._do_POST()
         except Exception as exc:

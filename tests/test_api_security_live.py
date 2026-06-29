@@ -74,6 +74,33 @@ def test_verify_endpoint_uses_sensitive_auth_rate_limit(monkeypatch):
         api_server._check_rate_limit(handler)
 
 
+def test_csrf_gate_exempts_only_public_auth_posts():
+    public_posts = (
+        ["analytics", "event"],
+        ["events", "collect"],
+        ["auth", "login"],
+        ["auth", "register"],
+        ["auth", "verify"],
+        ["auth", "forgot-password"],
+        ["auth", "reset-password"],
+    )
+    for parts in public_posts:
+        assert not api_server._post_requires_csrf(parts)
+
+    protected_posts = (
+        ["auth", "logout"],
+        ["auth", "refresh"],
+        ["auth", "change-password"],
+        ["auth", "sessions"],
+        ["auth", "resend-verification"],
+        ["access", "join-invite"],
+        ["sessions"],
+        ["projects"],
+    )
+    for parts in protected_posts:
+        assert api_server._post_requires_csrf(parts)
+
+
 def test_optional_analytics_identity_uses_resolved_principal(monkeypatch):
     principal = Principal(user_id="email:viewer@example.edu", role="student", tenant_id="uni-a")
     monkeypatch.setattr(api_server, "_authenticated", lambda _handler: principal)
@@ -164,6 +191,15 @@ def test_production_api_rejects_anonymous_forged_and_local_admin(tmp_path):
             method="POST",
             payload={"email": "attacker@example.edu", "password": "incorrect password"},
         ) == 403
+        stale_cookie_status, stale_cookie_body = _status_and_body(
+            f"http://127.0.0.1:{port}/auth/login",
+            method="POST",
+            payload={"email": "attacker@example.edu", "password": "incorrect password"},
+            headers={"Cookie": "planora_session=stale-invalid-session"},
+        )
+        assert stale_cookie_status == 403
+        assert b"Invalid CSRF token" not in stale_cookie_body
+        assert b"Email or password is incorrect" in stale_cookie_body
         assert _status(
             f"http://127.0.0.1:{port}/analytics/event",
             method="POST",
