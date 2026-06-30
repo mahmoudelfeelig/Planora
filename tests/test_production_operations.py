@@ -76,6 +76,26 @@ def test_database_retention_cleanup_prunes_policy_tables(tmp_path):
         assert conn.execute("SELECT session_id FROM auth_sessions").fetchone()[0] == "active"
 
 
+def test_retention_keeps_revoked_auth_session_until_token_expiry(tmp_path):
+    database = tmp_path / "planora.sqlite3"
+    now = time.time()
+    with sqlite3.connect(database) as conn:
+        conn.execute(
+            "CREATE TABLE auth_sessions(session_id TEXT PRIMARY KEY, expires_at REAL NOT NULL, revoked_at REAL)"
+        )
+        conn.execute(
+            "INSERT INTO auth_sessions(session_id, expires_at, revoked_at) VALUES('revoked-active', ?, ?)",
+            (now + 3600, now),
+        )
+
+    cleanup_database(database)
+
+    with sqlite3.connect(database) as conn:
+        assert conn.execute(
+            "SELECT session_id FROM auth_sessions WHERE session_id='revoked-active'"
+        ).fetchone() is not None
+
+
 class _FakeHandler:
     def __init__(self) -> None:
         self.headers: dict[str, str] = {}

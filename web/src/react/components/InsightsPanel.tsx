@@ -63,7 +63,25 @@ export function InsightsPanel({ instance, schedule }: { instance: Instance | nul
   }, [instance, schedule]);
 
   if (!instance || !insights.placements) {
-    return <section className="panel"><h2>Insights</h2><p className="section-copy">Load or solve a timetable to compare teaching load, student load, and room utilization.</p></section>;
+    return (
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Insights</h2>
+            <p className="section-copy">Compare teaching load, student load, and room utilization after a timetable has been loaded.</p>
+          </div>
+        </div>
+        <div className="empty-state insights-empty">
+          <strong>No schedule analytics yet</strong>
+          <span>Load a scenario and run the solver to populate fairness and utilization metrics.</span>
+          <div className="empty-preview-grid" aria-hidden="true">
+            <span>Staff workload</span>
+            <span>Group balance</span>
+            <span>Room usage</span>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   const usedRooms = insights.roomUses.size;

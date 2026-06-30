@@ -40,9 +40,10 @@ export function ProjectsPanel({ projects, canWrite, canSave, onRefresh, onSave, 
           })}>Save current workspace</button>
         </div>
       ) : null}
-      <div className="table-like">
-        <div className="table-row header"><span>Name</span><span>Tenant</span><span>Owner / Actions</span></div>
-        {projects.length ? projects.map((project) => (
+      {projects.length ? (
+        <div className="table-like">
+          <div className="table-row header"><span>Name</span><span>Tenant</span><span>Owner / Actions</span></div>
+          {projects.map((project) => (
           <div className="table-row" key={`${project.tenant_id || "default"}-${project.name}`}>
             <span>{String(project.name)}</span>
             <span>{String(project.tenant_id || "default")}</span>
@@ -62,8 +63,14 @@ export function ProjectsPanel({ projects, canWrite, canSave, onRefresh, onSave, 
               ) : null}
             </span>
           </div>
-        )) : <div className="empty-row">No saved projects visible for this role.</div>}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state projects-empty">
+          <strong>No saved projects</strong>
+          <span>Load a scenario in Solver, then save the workspace here when it is ready to revisit.</span>
+        </div>
+      )}
     </section>
   );
 }

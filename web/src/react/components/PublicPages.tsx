@@ -159,7 +159,7 @@ export function FaqContent() {
           ["What are invite codes?", "Invite codes are used after account creation. They let a signed-in user join a university group and receive the schedule visibility or editing permissions assigned to that group."],
           ["Can one user join multiple organizations?", "Yes. Use My Groups after login to redeem invite codes for different universities, then switch the active organization from the account page."],
           ["Do you use analytics cookies?", "Analytics is optional. Essential cookies support login, CSRF protection, and consent. First-party analytics cookies are only set if you opt in."],
-          ["Where is the data stored?", "The production Docker deployment stores SQLite data in the planora-data volume.."],
+          ["Where is the data stored?", "The production Docker deployment stores SQLite data in the planora-data volume."],
         ].map(([question, answer]) => (
           <article className="faq-card" key={question}>
             <h2>{question}</h2>

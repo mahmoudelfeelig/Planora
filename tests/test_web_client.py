@@ -26,6 +26,13 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert 'src="/src/react/main.tsx"' in index
     assert "createRoot" in (ROOT / "web" / "src" / "react" / "main.tsx").read_text(encoding="utf-8")
     assert "AppShell" in app
+    assert "AUTH_VIEW_GROUPS" not in shell
+    assert 'label: "Plan"' not in shell
+    assert 'label: "Review"' not in shell
+    assert 'label: "Account"' not in shell
+    assert "workspace-sidebar" in shell
+    assert "mobile-nav-toggle" in shell
+    assert 'label: "Solver settings"' in shell
     assert "ScheduleBoard" in app
     assert "ReviewPanel" in app
     assert "ProjectsPanel" in app
@@ -42,18 +49,15 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "delta-badge" in board
     assert "Confirmation code" in login
     assert "Register" in login
-    assert "Desktop / Backend / Web Parity" in parity
+    assert "Platform coverage" in parity
     assert "/auth/whoami" in app
     assert "/auth/login" in app
-    assert "readStoredAuthToken" in app
-    assert "writeStoredAuthToken(payload.token)" in app
-    assert 'writeStoredAuthToken("")' in app
-    assert "tokenRef.current = token" in app
-    assert "if (api.token || publicPath)" in app
-    assert "if (api.token) {\n        writeStoredAuthToken(\"\");\n        setToken(\"\");\n      }" in app
+    assert "readStoredAuthToken" not in app
+    assert "writeStoredAuthToken" not in app
+    assert "sessionStorage" not in app
     assert "await refreshAfterAuth(authenticatedApi)" in app
     assert "createUnauthenticatedApiClient" in app
-    assert 'cookieApi.post<{ token: string; principal: Principal }>("/auth/refresh", {})' in app
+    assert "refreshBootstrap(cookieApi)" in app
     assert "/auth/config" in app
     assert "/auth/register" in app
     assert "/audit" in app

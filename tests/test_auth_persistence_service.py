@@ -181,6 +181,39 @@ def test_auth_sessions_are_revocable(tmp_path):
         store.require_active_session(principal)
 
 
+def test_missing_auth_session_record_is_optional_but_can_be_enforced(tmp_path, monkeypatch):
+    store = PersistenceStore(tmp_path / "optional-session.sqlite3")
+    principal = Principal(
+        user_id="email:user@example.edu",
+        role="student",
+        tenant_id="default",
+        session_id="missing-session",
+        provider="email",
+    )
+
+    store.require_active_session(principal)
+
+    monkeypatch.setenv("PLANORA_REQUIRE_AUTH_SESSION_RECORD", "1")
+    with pytest.raises(PermissionError, match="session is not active"):
+        store.require_active_session(principal)
+
+
+def test_production_does_not_accept_token_for_missing_account(tmp_path, monkeypatch):
+    store = PersistenceStore(tmp_path / "missing-account.sqlite3")
+    principal = Principal(
+        user_id="email:deleted@example.edu",
+        role="student",
+        tenant_id="default",
+        session_id="missing-session",
+        provider="email",
+    )
+
+    monkeypatch.setenv("PLANORA_PRODUCTION", "1")
+    store.require_active_session(principal)
+    with pytest.raises(PermissionError, match="account is no longer active"):
+        store.resolve_principal(principal)
+
+
 def test_auth_session_replacement_revokes_old_after_creating_new(tmp_path):
     store = PersistenceStore(tmp_path / "planora.sqlite3")
     old = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a", session_id="sid-old")

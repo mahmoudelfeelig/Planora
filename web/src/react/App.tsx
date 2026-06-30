@@ -17,11 +17,9 @@ import { InsightsPanel } from "./components/InsightsPanel";
 import {
   analyticsClientId,
   clearCookie,
-  readStoredAuthToken,
   readAnalyticsConsent,
   readStoredTheme,
   setCookie,
-  writeStoredAuthToken,
   type AnalyticsConsent,
   type ThemeMode,
 } from "./browser_state";
@@ -68,7 +66,6 @@ const privacyContent = <PrivacyContent />;
 
 export function App() {
   const [principal, setPrincipal] = useState<Principal>(DEFAULT_PRINCIPAL);
-  const [token, setToken] = useState(readStoredAuthToken);
   const [authenticated, setAuthenticated] = useState(false);
   const [view, setView] = useState<ViewKey>(viewFromLocation);
   const [presets, setPresets] = useState<string[]>([]);
@@ -111,16 +108,11 @@ export function App() {
   const [redirectSeconds, setRedirectSeconds] = useState(5);
   const [loginInitialMode, setLoginInitialMode] = useState<LoginInitialMode>("login");
   const bootstrapStarted = useRef(false);
-  const tokenRef = useRef(token);
 
   const api = useMemo(
-    () => createApiClient(API_DEFAULT, principal, token),
-    [principal, token],
+    () => createApiClient(API_DEFAULT, principal, ""),
+    [principal],
   );
-
-  useEffect(() => {
-    tokenRef.current = token;
-  }, [token]);
 
   const trackAnalytics = useCallback((eventName: string, details: Dict = {}) => {
     if (analyticsConsent !== "granted") return;
@@ -146,13 +138,12 @@ export function App() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body,
       keepalive: true,
       credentials: "include",
     }).catch(() => undefined);
-  }, [analyticsConsent, authenticated, principal.role, principal.tenant_id, token, view]);
+  }, [analyticsConsent, authenticated, principal.role, principal.tenant_id, view]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -187,8 +178,6 @@ export function App() {
   }
 
   function clearAuthState() {
-    writeStoredAuthToken("");
-    setToken("");
     setAuthenticated(false);
     setPrincipal(DEFAULT_PRINCIPAL);
     setAccessSnapshot({});
@@ -257,60 +246,15 @@ export function App() {
     bootstrapStarted.current = true;
     const publicPath = ["/", "/login", "/faq", "/privacy"].includes(window.location.pathname);
     const cookieApi = createUnauthenticatedApiClient(API_DEFAULT);
-    if (api.token || publicPath) {
-      if (api.token) {
-        writeStoredAuthToken("");
-        setToken("");
-      }
-      cookieApi.post<{ token: string; principal: Principal }>("/auth/refresh", {})
-        .then(async (payload) => {
-          const authenticatedApi = acceptAuthPayload(payload);
-          await refreshBootstrap(authenticatedApi);
-        })
-        .catch(async () => {
-          if (publicPath) {
-            cookieApi.get<Dict>("/auth/config")
-              .then(setAuthConfig)
-              .catch((error: unknown) => notify(String(error), "error"));
-            return;
-          }
-          try {
-            await refreshBootstrap(cookieApi);
-          } catch (error) {
-            clearAuthState();
-            if (!publicPath) {
-              notify("Sign in or create an account to continue.", "info");
-              window.history.replaceState(null, "", "/login");
-              setView("login");
-            } else if (error instanceof ApiError && error.status === 429) {
-              const wait = error.retryAfter ? ` Try again in ${error.retryAfter} seconds.` : " Try again shortly.";
-              notify(`The server is temporarily busy.${wait}`, "error");
-            } else if (!(error instanceof ApiError && [401, 403].includes(error.status))) {
-              notify(String(error), "error");
-            }
-          }
-        });
-      return;
-    }
-    refreshBootstrap().catch(async (error: unknown) => {
+    refreshBootstrap(cookieApi).catch((error: unknown) => {
       const authenticationFailure = error instanceof ApiError && [401, 403].includes(error.status);
       if (authenticationFailure) {
-        if (api.token !== tokenRef.current) return;
-        if (api.token) {
-          try {
-            writeStoredAuthToken("");
-            setToken("");
-            const cookieApi = createUnauthenticatedApiClient(API_DEFAULT);
-            const payload = await cookieApi.post<{ token: string; principal: Principal }>("/auth/refresh", {});
-            const authenticatedApi = acceptAuthPayload(payload);
-            await refreshBootstrap(authenticatedApi);
-            return;
-          } catch {
-            // Fall through to the normal signed-out state if the cookie is not valid either.
-          }
-        }
         clearAuthState();
-        if (!publicPath) {
+        if (publicPath) {
+          cookieApi.get<Dict>("/auth/config")
+            .then(setAuthConfig)
+            .catch((configError: unknown) => notify(String(configError), "error"));
+        } else {
           notify("Sign in or create an account to continue.", "info");
           window.history.replaceState(null, "", "/login");
           setView("login");
@@ -322,7 +266,7 @@ export function App() {
         notify(String(error), "error");
       }
     });
-  }, [api, refreshBootstrap]);
+  }, [refreshBootstrap]);
 
   useEffect(() => {
     const onPop = () => setView(viewFromLocation());
@@ -381,11 +325,9 @@ export function App() {
   }, [authenticated, verificationSuccess, view]);
 
   function acceptAuthPayload(payload: { token: string; principal: Principal }) {
-    writeStoredAuthToken(payload.token);
-    setToken(payload.token);
     setPrincipal(payload.principal);
     setAuthenticated(true);
-    return createApiClient(API_DEFAULT, payload.principal, payload.token);
+    return createApiClient(API_DEFAULT, payload.principal, "");
   }
 
   async function refreshAfterAuth(client: ReturnType<typeof createApiClient>) {
@@ -1015,8 +957,8 @@ export function App() {
       {analyticsConsent === "pending" ? (
         <div className="cookie-banner" role="dialog" aria-label="Cookie notice">
           <div>
-            <strong>Cookie settings</strong>
-            <p>Planora uses essential cookies for login, CSRF protection, and consent. Optional first-party analytics helps improve the product and can be turned off anytime.</p>
+            <strong>Privacy choices</strong>
+            <p>Essential cookies secure sign-in. Optional first-party analytics can be changed anytime.</p>
           </div>
           <div className="cookie-actions">
             <button type="button" className="secondary-button" onClick={() => setAnalyticsConsent("denied")}>

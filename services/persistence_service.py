@@ -106,6 +106,11 @@ class PersistenceStore:
                 (principal.user_id,),
             ).fetchone()
             if user is None:
+                if (
+                    os.environ.get("PLANORA_PRODUCTION", "0").lower() in {"1", "true", "yes", "on"}
+                    and principal.provider != "dev-header"
+                ):
+                    raise PermissionError("This account is no longer active.")
                 return principal
             if bool(user["disabled"]):
                 raise PermissionError("This account is disabled.")
@@ -196,8 +201,11 @@ class PersistenceStore:
                 (principal.session_id, principal.tenant_id, principal.user_id),
             ).fetchone()
             if row is None:
-                # Dev bearer tokens created before the session table are accepted only outside production.
-                if os.environ.get("PLANORA_PRODUCTION", "0").lower() in {"1", "true", "yes", "on"}:
+                require_record = os.environ.get(
+                    "PLANORA_REQUIRE_AUTH_SESSION_RECORD",
+                    "0",
+                ).lower() in {"1", "true", "yes", "on"}
+                if require_record:
                     raise PermissionError("Authentication session is not active.")
                 return
             if row["revoked_at"] is not None or float(row["expires_at"]) <= now:

@@ -29,9 +29,16 @@ export function ReviewPanel({ conflicts, score }: { conflicts: string[]; score: 
             </p>
           </div>
         </div>
-        <ol className="conflict-list">
-          {conflicts.length ? conflicts.map((conflict, index) => <li key={index}>{conflict}</li>) : <li>None</li>}
-        </ol>
+        {conflicts.length ? (
+          <ol className="conflict-list">
+            {conflicts.map((conflict, index) => <li key={index}>{conflict}</li>)}
+          </ol>
+        ) : (
+          <div className="empty-state compact-empty">
+            <strong>No hard conflicts detected</strong>
+            <span>Load or score a timetable to populate conflict diagnostics.</span>
+          </div>
+        )}
       </section>
       <section className="panel">
         <div className="panel-heading">
@@ -42,9 +49,16 @@ export function ReviewPanel({ conflicts, score }: { conflicts: string[]; score: 
             </p>
           </div>
         </div>
-        <ol className="conflict-list">
-          {suggestions.length ? suggestions.map((suggestion, index) => <li key={index}>{suggestion}</li>) : <li>Load, solve, or score a timetable to see repair suggestions.</li>}
-        </ol>
+        {suggestions.length ? (
+          <ol className="conflict-list">
+            {suggestions.map((suggestion, index) => <li key={index}>{suggestion}</li>)}
+          </ol>
+        ) : (
+          <div className="empty-state compact-empty">
+            <strong>No repair steps yet</strong>
+            <span>Solve or score a timetable and Planora will turn the results into actionable repair steps.</span>
+          </div>
+        )}
       </section>
       <section className="panel">
         <div className="panel-heading">
@@ -61,7 +75,12 @@ export function ReviewPanel({ conflicts, score }: { conflicts: string[]; score: 
               <span>{String(driver.label || driver.term || "Penalty")}</span>
               <strong>{String(driver.penalty ?? driver.value ?? "")}</strong>
             </div>
-          )) : "Score the schedule to see drivers."}
+          )) : (
+            <div className="empty-state compact-empty">
+              <strong>No penalty breakdown yet</strong>
+              <span>Recalculate the schedule score to identify the largest quality penalties.</span>
+            </div>
+          )}
         </div>
       </section>
     </div>

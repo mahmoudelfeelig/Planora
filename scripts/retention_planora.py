@@ -56,7 +56,11 @@ def cleanup_database(database: Path, *, keep_days: int = 183, dry_run: bool = Fa
                 conn.execute(f"DELETE FROM {table} WHERE expires_at < ?", (time.time(),))
 
         if _table_exists(conn, "auth_sessions"):
-            predicate = "expires_at < ? OR revoked_at IS NOT NULL"
+            # Keep revoked rows until their signed token has expired. When
+            # persisted-session enforcement is optional, deleting a revoked row
+            # early would make it indistinguishable from a recoverable missing
+            # session record.
+            predicate = "expires_at < ?"
             count = _count_where(conn, "auth_sessions", predicate, (time.time(),))
             deleted["expired auth sessions"] = count
             if count and not dry_run:
