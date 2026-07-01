@@ -74,9 +74,15 @@ For Brevo or another SMTP provider:
 ```bash
 git pull
 docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml build
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml up -d
+docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml up -d --force-recreate
 curl -fsS https://planora.elfeel.me/api/ready
 ```
+
+Automated deployments additionally compare the hashed JavaScript asset inside
+`planora-web` with the asset served by the public domain. A healthy API is not
+enough to pass deployment when the external proxy still routes to stale web
+content. Set `PLANORA_FRONTEND_URL` only when the public frontend URL differs
+from the origin of `PLANORA_HEALTH_URL`.
 
 Rollback:
 

@@ -139,6 +139,8 @@ def test_deployment_scaffold_exists():
     env_example = (ROOT / "deploy" / ".env.example").read_text(encoding="utf-8")
     web_dockerfile = (ROOT / "deploy" / "web.Dockerfile").read_text(encoding="utf-8")
     caddyfile = (ROOT / "deploy" / "Caddyfile").read_text(encoding="utf-8")
+    deploy_script = (ROOT / "scripts" / "deploy_prod.sh").read_text(encoding="utf-8")
+    deploy_workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(encoding="utf-8")
     assert "python:3.13-slim" in dockerfile
     assert "api.server" in dockerfile
     assert "planora-api" in compose
@@ -169,6 +171,10 @@ def test_deployment_scaffold_exists():
     assert "PLANORA_SMTP_PASSWORD" in env_example
     assert "PLANORA_AUTH_SECRET_FILE" not in prod_compose
     assert "method='HEAD'" in prod_compose
+    assert "compose up -d --force-recreate --no-deps planora-web" in deploy_script
+    assert "container_frontend_asset" in deploy_script
+    assert "wait_for_frontend" in deploy_script
+    assert "PLANORA_FRONTEND_URL" in deploy_workflow
 
 
 def test_web_client_uses_root_application_logo():
