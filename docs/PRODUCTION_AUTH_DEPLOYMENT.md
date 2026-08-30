@@ -62,16 +62,25 @@ PLANORA_BACKUP_KEEP_COUNT=800
 
 ## Deployment
 
-```powershell
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml up -d --build
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml ps
-```
+The official production release path is the repository's minimal OIDC caller.
+After `main` CI succeeds, it invokes the immutable shared release workflow;
+the private deployment controller builds and verifies the candidate, records
+the release receipt, and performs rollback when a gate fails. Repository or
+GitHub Actions SSH credentials are not part of this path.
+
+The first centralized launch intentionally uses new, isolated data and backup
+volumes. It does not import, rename, mount, or delete any legacy Planora
+volume. The generic volume names in `deploy/docker-compose.prod.yml` are for
+local or independent self-hosting and are not the official production state
+contract. Do not run a direct host-side `compose up --build` as a substitute
+for the controller-owned release.
 
 The API is not published directly. Caddy terminates HTTPS, strips `/api`, and applies browser security headers. `/health` checks the process and `/ready` checks database readiness.
 
 ## First administrator
 
-Create a one-use bootstrap invite from the deployment host:
+An authorized operator can create a one-use bootstrap invite through an
+attended production session after the fresh-state gate passes:
 
 ```powershell
 docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml exec planora-api python -m scripts.bootstrap_invite --database /app/data/planora.sqlite3 --tenant default --group "Initial admins" --role uni_admin --max-uses 1

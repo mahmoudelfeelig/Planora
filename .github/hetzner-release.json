@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "id": "planora",
+  "source": {
+    "repository": "mahmoudelfeelig/Planora",
+    "default_branch": "main",
+    "required_workflows": ["CI"]
+  },
+  "registry": {
+    "host": "registry.elfeel.me",
+    "image_namespace": "apps/planora",
+    "release_repository": "releases/planora"
+  },
+  "release": {
+    "strategy": "source-build",
+    "components": [
+      {
+        "name": "api",
+        "context": ".",
+        "dockerfile": "deploy/Dockerfile"
+      },
+      {
+        "name": "web",
+        "context": ".",
+        "dockerfile": "deploy/web.Dockerfile",
+        "build_args": {
+          "VITE_PLANORA_API_URL": "/api"
+        }
+      }
+    ]
+  }
+}

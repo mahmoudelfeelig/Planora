@@ -139,10 +139,19 @@ def test_deployment_scaffold_exists():
     env_example = (ROOT / "deploy" / ".env.example").read_text(encoding="utf-8")
     web_dockerfile = (ROOT / "deploy" / "web.Dockerfile").read_text(encoding="utf-8")
     caddyfile = (ROOT / "deploy" / "Caddyfile").read_text(encoding="utf-8")
-    deploy_script = (ROOT / "scripts" / "deploy_prod.sh").read_text(encoding="utf-8")
     deploy_workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(encoding="utf-8")
     assert "python:3.13-slim" in dockerfile
     assert "api.server" in dockerfile
+    assert "COPY scripts scripts" in dockerfile
+    copy_sources = [
+        line.split()[1]
+        for line in dockerfile.splitlines()
+        if line.strip().startswith("COPY ") and "--from=" not in line
+    ]
+    assert copy_sources
+    assert all((ROOT / source).exists() for source in copy_sources)
+    assert "scripts/backup_planora.py" in prod_compose
+    assert "scripts/retention_planora.py" in prod_compose
     assert "planora-api" in compose
     assert "planora-web" in compose
     assert "planora-data" in compose
@@ -171,10 +180,12 @@ def test_deployment_scaffold_exists():
     assert "PLANORA_SMTP_PASSWORD" in env_example
     assert "PLANORA_AUTH_SECRET_FILE" not in prod_compose
     assert "method='HEAD'" in prod_compose
-    assert "compose up -d --force-recreate --no-deps planora-web" in deploy_script
-    assert "container_frontend_asset" in deploy_script
-    assert "wait_for_frontend" in deploy_script
-    assert "PLANORA_FRONTEND_URL" in deploy_workflow
+    assert "HetznerReleaseGateway/.github/workflows/release.yml@c6079616813545bb0c0da1f649e04de6d89dc366" in deploy_workflow
+    assert "id-token: write" in deploy_workflow
+    assert "app: planora" in deploy_workflow
+    assert "secrets: inherit" not in deploy_workflow
+    assert "HETZNER_" not in deploy_workflow
+    assert "SSH_PRIVATE_KEY" not in deploy_workflow
 
 
 def test_web_client_uses_root_application_logo():

@@ -1,41 +1,25 @@
-name: Deploy Production
+name: Deploy Planora Production
 
 on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
     branches: [main]
-  workflow_dispatch:
 
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
+permissions:
+  actions: read
+  contents: read
+  id-token: write
 
 jobs:
-  deploy:
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: production
-
-    steps:
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.PLANORA_DEPLOY_HOST }}
-          username: ${{ secrets.PLANORA_DEPLOY_USER }}
-          key: ${{ secrets.PLANORA_DEPLOY_SSH_KEY }}
-          port: ${{ secrets.PLANORA_DEPLOY_PORT || 22 }}
-          script: |
-            set -e
-            export PLANORA_APP_DIR="${PLANORA_APP_DIR:-/opt/planora}"
-            export PLANORA_DEPLOY_BRANCH="${PLANORA_DEPLOY_BRANCH:-main}"
-            export PLANORA_HEALTH_URL="${PLANORA_HEALTH_URL:-https://planora.elfeel.me/api/ready}"
-            export PLANORA_FRONTEND_URL="${PLANORA_FRONTEND_URL:-https://planora.elfeel.me}"
-            cd "$PLANORA_APP_DIR"
-            git fetch --prune origin "$PLANORA_DEPLOY_BRANCH"
-            tmp_script="$(mktemp)"
-            git show "origin/$PLANORA_DEPLOY_BRANCH:scripts/deploy_prod.sh" > "$tmp_script"
-            bash "$tmp_script"
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    uses: mahmoudelfeelig/HetznerReleaseGateway/.github/workflows/release.yml@c6079616813545bb0c0da1f649e04de6d89dc366
+    with:
+      app: planora
+      source_sha: ${{ github.event.workflow_run.head_sha }}
+      ci_run_id: ${{ github.event.workflow_run.id }}

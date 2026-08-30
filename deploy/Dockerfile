@@ -9,7 +9,14 @@ WORKDIR /app
 COPY requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY api api
+COPY benchmarks benchmarks
+COPY connectors connectors
+COPY core core
+COPY product product
+COPY services services
+COPY scripts scripts
+COPY utils utils
 
 RUN addgroup --system planora && adduser --system --ingroup planora planora \
     && mkdir -p /app/data /backups \

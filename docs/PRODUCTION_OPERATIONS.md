@@ -11,7 +11,14 @@
 
 ## SQLite Data
 
-Production SQLite data lives in the Docker volume named `deploy_planora-data` unless `PLANORA_DB_PATH` points somewhere else inside the container. Backups are written by the backup service to `deploy_planora-backups`.
+The official production cutover intentionally starts with an empty database in
+new controller-owned data and backup volumes. Legacy Planora volumes are not
+attached, imported, renamed, or deleted. The generic volume names in the
+source Compose file apply only to local or independent self-hosting; they are
+not the production state identity.
+
+Inside the containers, the SQLite database remains at
+`/app/data/planora.sqlite3` and verified snapshots remain under `/backups`.
 
 Useful commands:
 
@@ -71,26 +78,11 @@ For Brevo or another SMTP provider:
 
 ## Upgrade And Rollback
 
-```bash
-git pull
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml build
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml up -d --force-recreate
-curl -fsS https://planora.elfeel.me/api/ready
-```
-
-Automated deployments additionally compare the hashed JavaScript asset inside
-`planora-web` with the asset served by the public domain. A healthy API is not
-enough to pass deployment when the external proxy still routes to stale web
-content. Set `PLANORA_FRONTEND_URL` only when the public frontend URL differs
-from the origin of `PLANORA_HEALTH_URL`.
-
-Rollback:
-
-```bash
-git checkout <previous-good-commit>
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml build
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml up -d
-```
+Production upgrades are published only by the repository's small OIDC caller
+after a successful `main` CI run. The private deployment controller pulls the
+tested digest, runs readiness gates, records a signed receipt, and owns runtime
+rollback. Do not add repository SSH credentials or perform direct host-side
+Git and Compose deployment from this repository.
 
 ## Observability
 
