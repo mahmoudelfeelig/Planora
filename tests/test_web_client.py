@@ -180,7 +180,7 @@ def test_deployment_scaffold_exists():
     assert "PLANORA_SMTP_PASSWORD" in env_example
     assert "PLANORA_AUTH_SECRET_FILE" not in prod_compose
     assert "method='HEAD'" in prod_compose
-    assert "HetznerReleaseGateway/.github/workflows/release.yml@1d0be0bb3b6ac26ce749e382081d320855d5bcba" in deploy_workflow
+    assert "HetznerReleaseGateway/.github/workflows/release.yml@f6319b2dbaf4c1f10230c6425967f34553acd61d" in deploy_workflow
     assert "id-token: write" in deploy_workflow
     assert "app: planora" in deploy_workflow
     assert "secrets: inherit" not in deploy_workflow
