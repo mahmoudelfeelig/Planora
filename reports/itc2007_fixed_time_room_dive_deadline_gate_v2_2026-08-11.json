@@ -1,0 +1,373 @@
+{
+  "artifacts": {
+    "failed_v1": {
+      "directory": "output/itc2007-room-dive-deadline-admission-gate-7-on-seed17-10s-v1",
+      "manifest_sha256": "cb19363fbbdba45fd84856c06a03fc12e5438728a6380a880b72e1641ec700c2",
+      "results_sha256": "9d1a7e9e73fca900d298c144c47606904121c6873e9cb48e3e45527b94663aed",
+      "summary_sha256": "edbcb691e4953bd127579e50c7f16bcc0d86c4e0f87ffe12dad2b1023c5c2ec6"
+    },
+    "passing_v2": {
+      "directory": "output/itc2007-room-dive-deadline-admission-gate-7-on-seed17-10s-v2",
+      "manifest_sha256": "fe999fd92f9abbd739d97a45d95087850bda49a46c7f34dbe5b539a207bcfeec",
+      "results_sha256": "e56b880e63b341cb88c29e7f592a3bdca07fd137000510681508304d29eefd63",
+      "summary_sha256": "7cdce33a85ba5b4e8f81e8e90cf513266b0637c626c6d6b0ae51897dc99a8ba3"
+    },
+    "preceding_negative_breadth_report": {
+      "path": "reports/itc2007_fixed_time_room_dive_breadth_seed17_2026-08-11.json",
+      "sha256": "43560980d667a5495dda0b597ae4942f4e355ed94ec041dbdb0fcd3cd2d912d7"
+    },
+    "report": "reports/itc2007_fixed_time_room_dive_deadline_gate_v2_2026-08-11.json"
+  },
+  "claim_boundary": "This targeted gate validates deadline accounting on the seven instances that overran in the 21-instance room-dive breadth ablation. Every v2 dive was safely skipped, so this evidence does not re-establish the room dive quality effect under the corrected allocation and does not authorize a superiority claim or default enablement.",
+  "correction": {
+    "adaptive_budget_invariant": "requested adaptive budget is bounded by shared remaining minus every later-phase reserve",
+    "admission_invariant": "room setup, search, and validation start only when shared remaining covers the full room-dive reserve plus the outer completion reserve",
+    "default_enabled": false,
+    "effective_deadline_invariant": "room-dive deadline is the earlier of start plus room budget and total deadline minus completion reserve",
+    "outer_completion_reserve_formula": "min(0.25 seconds, max(0.05 seconds, 2.5 percent of total budget))",
+    "room_dive_reserve_formula": "min(0.50 seconds, max(0.05 seconds, 5 percent of total budget))",
+    "score_reuse": "post-dive adaptive final_score reuses exact returned_score when present; score_fn is only a fallback when telemetry lacks it",
+    "ten_second_allocation": {
+      "combined_seconds": 0.75,
+      "outer_completion_seconds": 0.25,
+      "room_dive_seconds": 0.5
+    }
+  },
+  "evaluated_on": "2026-08-11",
+  "evidence_status": "targeted_seven_instance_deadline_gate_passed",
+  "failed_v1": {
+    "diagnosis": "comp06, comp10, and comp16 retained slightly more than the 0.50-second room reserve, ran the dive, and then overran while building final quality/result metadata because no separate completion reserve existed.",
+    "hard_zero": 7,
+    "internal_external_matches": 7,
+    "officially_feasible": 7,
+    "overrun_instances": [
+      {
+        "instance": "comp06",
+        "seconds": 0.10447707399725914
+      },
+      {
+        "instance": "comp10",
+        "seconds": 0.08317138900747523
+      },
+      {
+        "instance": "comp16",
+        "seconds": 0.10064068000065163
+      }
+    ],
+    "source_sha256": "6ba9479b7632d5ebdabedfa4fd17230c8868a3905773fba2dbcc6abc9e6226eb",
+    "source_stable": true,
+    "total_overrun_runs": 3,
+    "total_overrun_seconds": {
+      "maximum": 0.10447707399725914,
+      "mean": 0.041184163286483715,
+      "median": 0.0,
+      "minimum": 0.0,
+      "sum": 0.288289143005386
+    }
+  },
+  "headline": "A full-reserve admission guard alone reduced seven total-deadline failures to three. Adding a separate 0.25-second outer completion reserve then produced official, source-stable schedules with zero total overrun on all seven former failures.",
+  "passing_v2": {
+    "admission_passed_runs": 0,
+    "admission_shortfall_seconds": {
+      "maximum": 0.10578528200858273,
+      "mean": 0.041404810430581813,
+      "median": 0.029266994999488816,
+      "minimum": 0.024252828996395692,
+      "sum": 0.2898336730140727
+    },
+    "dive_attempted_runs": 0,
+    "dive_local_overrun_runs": 0,
+    "dive_skipped_runs": 7,
+    "fresh_process_cpu_seconds": {
+      "maximum": 10.732254000000005,
+      "mean": 10.589300000000001,
+      "median": 10.583433999999999,
+      "minimum": 10.446235,
+      "sum": 74.1251
+    },
+    "fresh_process_wall_seconds": {
+      "maximum": 14.570659236007486,
+      "mean": 14.37828042442977,
+      "median": 14.403378542003338,
+      "minimum": 14.142061831997125,
+      "sum": 100.64796297100838
+    },
+    "hard_zero": 7,
+    "internal_external_matches": 7,
+    "official_objective_sum": 7578,
+    "officially_feasible": 7,
+    "per_instance": [
+      {
+        "adaptive_budget_seconds_granted": 6.766996968988678,
+        "admission_passed": false,
+        "admission_required_seconds": 0.75,
+        "admission_shortfall_seconds": 0.029067355004372075,
+        "completion_reserve_seconds": 0.25,
+        "dive_attempted": false,
+        "dive_deadline_overrun_seconds": 0.0,
+        "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+        "effective_room_dive_window_seconds": 0.4709326449956279,
+        "feasible": true,
+        "hard_violations": 0,
+        "instance": "comp06",
+        "internal_external_match": true,
+        "official_components": {
+          "curriculum_compactness": 178,
+          "minimum_working_days": 620,
+          "room_capacity": 349,
+          "room_stability": 25,
+          "total": 1172
+        },
+        "official_objective": 1172,
+        "room_dive_reserve_seconds": 0.5,
+        "shared_deadline_remaining_at_start_seconds": 0.7209326449956279,
+        "skip_reason": "full_finalization_and_completion_reserve_unavailable",
+        "solve_elapsed_seconds": 9.514290377002908,
+        "total_deadline_overrun_seconds": 0.0,
+        "total_reserved_after_adaptive_seconds": 0.75
+      },
+      {
+        "adaptive_budget_seconds_granted": 2.1896538410073845,
+        "admission_passed": false,
+        "admission_required_seconds": 0.75,
+        "admission_shortfall_seconds": 0.041618834002292715,
+        "completion_reserve_seconds": 0.25,
+        "dive_attempted": false,
+        "dive_deadline_overrun_seconds": 0.0,
+        "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+        "effective_room_dive_window_seconds": 0.4583811659977073,
+        "feasible": true,
+        "hard_violations": 0,
+        "instance": "comp07",
+        "internal_external_match": true,
+        "official_components": {
+          "curriculum_compactness": 432,
+          "minimum_working_days": 535,
+          "room_capacity": 294,
+          "room_stability": 43,
+          "total": 1304
+        },
+        "official_objective": 1304,
+        "room_dive_reserve_seconds": 0.5,
+        "shared_deadline_remaining_at_start_seconds": 0.7083811659977073,
+        "skip_reason": "full_finalization_and_completion_reserve_unavailable",
+        "solve_elapsed_seconds": 9.596207797992975,
+        "total_deadline_overrun_seconds": 0.0,
+        "total_reserved_after_adaptive_seconds": 0.75
+      },
+      {
+        "adaptive_budget_seconds_granted": 6.691906998996274,
+        "admission_passed": false,
+        "admission_required_seconds": 0.75,
+        "admission_shortfall_seconds": 0.03520822600694373,
+        "completion_reserve_seconds": 0.25,
+        "dive_attempted": false,
+        "dive_deadline_overrun_seconds": 0.0,
+        "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+        "effective_room_dive_window_seconds": 0.46479177399305627,
+        "feasible": true,
+        "hard_violations": 0,
+        "instance": "comp10",
+        "internal_external_match": true,
+        "official_components": {
+          "curriculum_compactness": 448,
+          "minimum_working_days": 295,
+          "room_capacity": 24,
+          "room_stability": 59,
+          "total": 826
+        },
+        "official_objective": 826,
+        "room_dive_reserve_seconds": 0.5,
+        "shared_deadline_remaining_at_start_seconds": 0.7147917739930563,
+        "skip_reason": "full_finalization_and_completion_reserve_unavailable",
+        "solve_elapsed_seconds": 9.503785476001212,
+        "total_deadline_overrun_seconds": 0.0,
+        "total_reserved_after_adaptive_seconds": 0.75
+      },
+      {
+        "adaptive_budget_seconds_granted": 6.486732987003052,
+        "admission_passed": false,
+        "admission_required_seconds": 0.75,
+        "admission_shortfall_seconds": 0.024252828996395692,
+        "completion_reserve_seconds": 0.25,
+        "dive_attempted": false,
+        "dive_deadline_overrun_seconds": 0.0,
+        "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+        "effective_room_dive_window_seconds": 0.4757471710036043,
+        "feasible": true,
+        "hard_violations": 0,
+        "instance": "comp16",
+        "internal_external_match": true,
+        "official_components": {
+          "curriculum_compactness": 576,
+          "minimum_working_days": 250,
+          "room_capacity": 32,
+          "room_stability": 37,
+          "total": 895
+        },
+        "official_objective": 895,
+        "room_dive_reserve_seconds": 0.5,
+        "shared_deadline_remaining_at_start_seconds": 0.7257471710036043,
+        "skip_reason": "full_finalization_and_completion_reserve_unavailable",
+        "solve_elapsed_seconds": 9.545709935991908,
+        "total_deadline_overrun_seconds": 0.0,
+        "total_reserved_after_adaptive_seconds": 0.75
+      },
+      {
+        "adaptive_budget_seconds_granted": 3.9432164909958374,
+        "admission_passed": false,
+        "admission_required_seconds": 0.75,
+        "admission_shortfall_seconds": 0.029266994999488816,
+        "completion_reserve_seconds": 0.25,
+        "dive_attempted": false,
+        "dive_deadline_overrun_seconds": 0.0,
+        "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+        "effective_room_dive_window_seconds": 0.4707330050005112,
+        "feasible": true,
+        "hard_violations": 0,
+        "instance": "comp19",
+        "internal_external_match": true,
+        "official_components": {
+          "curriculum_compactness": 452,
+          "minimum_working_days": 165,
+          "room_capacity": 10,
+          "room_stability": 33,
+          "total": 660
+        },
+        "official_objective": 660,
+        "room_dive_reserve_seconds": 0.5,
+        "shared_deadline_remaining_at_start_seconds": 0.7207330050005112,
+        "skip_reason": "full_finalization_and_completion_reserve_unavailable",
+        "solve_elapsed_seconds": 9.463003823999316,
+        "total_deadline_overrun_seconds": 0.0,
+        "total_reserved_after_adaptive_seconds": 0.75
+      },
+      {
+        "adaptive_budget_seconds_granted": 3.587552319004317,
+        "admission_passed": false,
+        "admission_required_seconds": 0.75,
+        "admission_shortfall_seconds": 0.10578528200858273,
+        "completion_reserve_seconds": 0.25,
+        "dive_attempted": false,
+        "dive_deadline_overrun_seconds": 0.0,
+        "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+        "effective_room_dive_window_seconds": 0.3942147179914173,
+        "feasible": true,
+        "hard_violations": 0,
+        "instance": "comp20",
+        "internal_external_match": true,
+        "official_components": {
+          "curriculum_compactness": 372,
+          "minimum_working_days": 495,
+          "room_capacity": 714,
+          "room_stability": 56,
+          "total": 1637
+        },
+        "official_objective": 1637,
+        "room_dive_reserve_seconds": 0.5,
+        "shared_deadline_remaining_at_start_seconds": 0.6442147179914173,
+        "skip_reason": "full_finalization_and_completion_reserve_unavailable",
+        "solve_elapsed_seconds": 9.607813536000322,
+        "total_deadline_overrun_seconds": 0.0,
+        "total_reserved_after_adaptive_seconds": 0.75
+      },
+      {
+        "adaptive_budget_seconds_granted": 4.157317737000994,
+        "admission_passed": false,
+        "admission_required_seconds": 0.75,
+        "admission_shortfall_seconds": 0.024634151995996945,
+        "completion_reserve_seconds": 0.25,
+        "dive_attempted": false,
+        "dive_deadline_overrun_seconds": 0.0,
+        "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+        "effective_room_dive_window_seconds": 0.47536584800400306,
+        "feasible": true,
+        "hard_violations": 0,
+        "instance": "comp21",
+        "internal_external_match": true,
+        "official_components": {
+          "curriculum_compactness": 444,
+          "minimum_working_days": 390,
+          "room_capacity": 212,
+          "room_stability": 38,
+          "total": 1084
+        },
+        "official_objective": 1084,
+        "room_dive_reserve_seconds": 0.5,
+        "shared_deadline_remaining_at_start_seconds": 0.725365848004003,
+        "skip_reason": "full_finalization_and_completion_reserve_unavailable",
+        "solve_elapsed_seconds": 9.461946936004097,
+        "total_deadline_overrun_seconds": 0.0,
+        "total_reserved_after_adaptive_seconds": 0.75
+      }
+    ],
+    "solve_elapsed_seconds": {
+      "maximum": 9.607813536000322,
+      "mean": 9.527536840427533,
+      "median": 9.514290377002908,
+      "minimum": 9.461946936004097,
+      "sum": 66.69275788299274
+    },
+    "source_sha256": "a63732de42d9e0053ea196f46a410024b85c006e4cc6d7f91e5529f3bd1294cb",
+    "source_stable": true,
+    "total_overrun_runs": 0,
+    "total_overrun_seconds": {
+      "maximum": 0.0,
+      "mean": 0.0,
+      "median": 0.0,
+      "minimum": 0.0,
+      "sum": 0.0
+    },
+    "validator_errors": 0
+  },
+  "protocol": {
+    "adaptive_seeding": true,
+    "configured_solver_seconds": 10.0,
+    "course_symmetry": false,
+    "cpu_affinity": 0,
+    "cpu_model": "AMD Ryzen 7 5800H with Radeon Graphics",
+    "fixed_time_room_dive": true,
+    "instances": [
+      "comp06",
+      "comp07",
+      "comp10",
+      "comp16",
+      "comp19",
+      "comp20",
+      "comp21"
+    ],
+    "official_validator_sha256": "6b991efa2195ed59f9e514532d9add65b4790791bd6de054ce6f5cbdc19546b3",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "seed": 17,
+    "strategy": "research_adaptive",
+    "workers": 1
+  },
+  "reproduction": {
+    "command": ".venv/bin/python scripts/benchmark_itc2007.py run --instances /tmp/planora-itc2007-cpsolver/data/ctt/comp06.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp07.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp10.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp16.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp19.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp20.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp21.ctt --seeds 17 --time-limit-seconds 10 --validator /tmp/planora-itc2007-validator --cpsolver-root /tmp/planora-itc2007-cpsolver --classes /tmp/planora-itc2007-build/classes --output-directory output/itc2007-room-dive-deadline-admission-gate-7-on-seed17-10s-v2 --repo-root /mnt/d/Stuff/Projects/Sites/Planora --python-command /mnt/d/Stuff/Projects/Sites/Planora/.venv/bin/python --workers 1 --cpu 0 --strategy research_adaptive --itc2007-course-symmetry off --itc2007-adaptive-seeding on --itc2007-fixed-time-room-dive on --solvers planora"
+  },
+  "schema_version": "planora.itc2007-room-dive-deadline-correction-gate.v1",
+  "verdict": {
+    "enable_by_default": false,
+    "next_gate": "Do not run another 42-row breadth matrix until explicitly released. A corrected-source counterbalanced breadth rerun is needed to measure quality and admission frequency.",
+    "official_validation_gate": "passed",
+    "quality_breadth_gate": "not_run_on_corrected_source",
+    "source_stability_gate": "passed",
+    "superiority_claim": "not_supported",
+    "supported_statement": "Under the disclosed seven-instance seed17 CPU0 gate, the corrected ON path returned 7/7 officially feasible schedules with exact internal/external scores and zero total solve_instance deadline overrun; all room dives were skipped before setup because the combined 0.75-second reserve was unavailable.",
+    "targeted_deadline_gate": "passed"
+  },
+  "verification": {
+    "focused_selection": {
+      "deselected": 17,
+      "passed": 8,
+      "seconds": 7.25
+    },
+    "full_affected_suite": {
+      "passed": 35,
+      "seconds": 14.31
+    },
+    "reserve_arithmetic_regression": "8.0 requested with 7.75 remaining and 0.50 plus 0.25 reserved grants exactly 7.0",
+    "ruff": "all checks passed",
+    "simulated_upstream_overrun_regression": "when remaining exceeds the room reserve but not the combined reserve, scoring/setup/search/validation do not start and solve_instance retains zero total overrun"
+  }
+}

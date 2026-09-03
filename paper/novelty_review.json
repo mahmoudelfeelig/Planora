@@ -1,0 +1,521 @@
+{
+  "schema_version": 4,
+  "searched_at": "2026-08-13",
+  "implementation_reassessed_at": "2026-08-13",
+  "status": "broad_claims_falsified_narrow_verification_aware_systems_hypothesis_unestablished",
+  "scope": [
+    "university_course_timetabling",
+    "time_room_decomposition",
+    "fixed_time_room_assignment",
+    "room_stability_complexity",
+    "hall_and_benders_cuts",
+    "matching_optimality_certificates",
+    "exact_conditional_room_neighborhoods",
+    "exact_repair_large_neighborhood_search",
+    "instance_feature_solver_tuning",
+    "adaptive_neighborhood_selection_and_size",
+    "recent_2024_2026_cbctt_local_search"
+  ],
+  "search_protocol": {
+    "review_type": "adversarial_claim_falsification",
+    "cutoff_date": "2026-08-11",
+    "included_source_types": [
+      "primary_research_paper",
+      "official_competition_description",
+      "official_solver_or_proof_system_documentation"
+    ],
+    "exclusion_rules": [
+      "survey_used_only_for_discovery",
+      "duplicate_preprint_and_version_of_record_collapsed",
+      "different_timetabling_variant_without_method_overlap",
+      "interface_only_or_vendor_claim",
+      "insufficient_primary_text_for_method_claim"
+    ],
+    "databases_and_sources": [
+      {
+        "name": "DBLP publication API",
+        "query": "exact phrase curriculum-based course timetabling",
+        "screen": "all 39 returned records; years 2024 through 2026 manually screened",
+        "direct_recent_overlaps": [
+          "10.5220/0014437700004052"
+        ]
+      },
+      {
+        "name": "Crossref REST API",
+        "query": "title query curriculum-based course timetabling local search; 2024-01-01 through 2026-08-11",
+        "screen": "first 100 relevance-ranked records manually screened; low-precision total not treated as corpus size",
+        "direct_recent_overlaps": [
+          "10.2139/ssrn.6485691",
+          "10.5220/0014437700004052"
+        ]
+      },
+      {
+        "name": "SSRN",
+        "query": "exact title, DOI 6485691, and LectureKick",
+        "screen": "primary record and abstract; full PDF bot-blocked",
+        "limitations": [
+          "preprint_not_peer_reviewed",
+          "claims_limited_to_primary_abstract"
+        ]
+      },
+      {
+        "name": "publisher_PATAT_author_repository_arxiv_official_ITC",
+        "query": "exact titles and DOIs plus targeted mechanism queries",
+        "screen": "primary manuscript or official record inspected for every included method claim"
+      }
+    ],
+    "queries": [
+      "partial transversal polytope time varying eligibility",
+      "start dependent room eligibility Hall inequality scheduling",
+      "course timetabling fixed periods exact room assignment bipartite matching",
+      "room stability bipartite matching course timetabling complexity",
+      "classroom assignment room stability NP-hard weighted bipartite matching",
+      "course room stability one period matching timetabling",
+      "Benders cuts large neighborhood search certificate neighborhood",
+      "assignment problem primal dual certificate Hungarian algorithm potentials",
+      "verifiable integer programming proof certificates VIPR",
+      "adaptive large neighborhood search curriculum based course timetabling",
+      "curriculum based course timetabling neighborhood size adaptive",
+      "curriculum-based course timetabling 2024 local search",
+      "curriculum-based course timetabling 2025 local search",
+      "curriculum-based course timetabling 2026 local search",
+      "Revisiting Local Search for Curriculum-Based Course Timetabling LectureKick"
+    ],
+    "coverage_limitations": [
+      "no_subscription_scopus_search",
+      "no_subscription_web_of_science_search",
+      "single_reviewer_screening",
+      "crossref_relevance_ranked_not_exhaustive",
+      "ssrn_full_text_unavailable",
+      "recent_preprints_may_not_be_indexed"
+    ]
+  },
+  "claims_ruled_out": [
+    "time_room_decomposition_is_novel",
+    "hall_room_cuts_are_novel",
+    "contextual_start_dependent_formula_is_a_new_inequality_family",
+    "fixed_time_unit_period_room_assignment_is_a_new_polynomial_oracle",
+    "room_stability_is_globally_solved_by_independent_period_matching",
+    "primal_dual_assignment_certificate_is_new_mathematics",
+    "exact_room_recovery_inside_time_neighborhoods_is_novel",
+    "fixed_time_room_reoptimization_or_diving_is_novel",
+    "benders_course_timetabling_is_novel",
+    "cp_exact_repair_lns_is_novel",
+    "benders_or_certificate_guided_lns_is_novel",
+    "conflict_or_assumption_core_guided_relaxation_is_novel",
+    "adaptive_neighborhood_size_is_novel",
+    "adaptive_operator_selection_for_cbctt_is_novel",
+    "corpus_conditioned_parameter_tuning_is_novel",
+    "compact_itc2007_arm_set_is_an_adaptive_learned_policy",
+    "cp_sat_plus_adaptive_local_search_plus_exact_room_assignment_is_novel",
+    "end_to_end_search_trace_is_a_machine_checkable_proof"
+  ],
+  "adversarial_findings": [
+    {
+      "claim": "contextual_domain_monotone_hall_cut",
+      "verdict": "falsified_as_new_mathematical_inequality_family",
+      "reason": "On the option-expanded graph, x(U) <= |Gamma(U)| is the established partial-transversal Hall system. Exact start-dependent domain reconstruction and safe fallback are engineering details, not a new polytope.",
+      "closest_primary_sources": [
+        {
+          "title": "Optimal University Course Timetables and the Partial Transversal Polytope",
+          "doi": "10.1007/978-3-540-68552-4_18",
+          "primary_url": "https://page.math.tu-berlin.de/~lach/publications/wea08.pdf"
+        },
+        {
+          "title": "Benders' Decomposition for Curriculum-Based Course Timetabling",
+          "doi": "10.1016/j.cor.2017.10.009",
+          "primary_url": "https://orbit.dtu.dk/files/138514884/BendersDecomposition.pdf"
+        }
+      ]
+    },
+    {
+      "claim": "fixed_time_room_oracle",
+      "verdict": "falsified_as_new_algorithm_or_complexity_result",
+      "reason": "Fixed-time unit-period additive room assignment decomposes into polynomial weighted bipartite matching. Cross-period room stability is NP-hard in general, so repeated exact one-period blocks establish at most coordinatewise local optimality unless a valid lower bound is met.",
+      "closest_primary_sources": [
+        {
+          "title": "When Is the Classroom Assignment Problem Hard?",
+          "doi": "10.1287/opre.40.1.S28",
+          "primary_url": "https://pubsonline.informs.org/doi/abs/10.1287/opre.40.1.S28"
+        },
+        {
+          "title": "Integer Programming Methods for Large-Scale Practical Classroom Assignment Problems",
+          "doi": "10.1016/j.cor.2014.07.012",
+          "primary_url": "https://eprints.lancs.ac.uk/id/eprint/75294/1/roomAssignmentv13.pdf"
+        },
+        {
+          "title": "Decomposition, Reformulation, and Diving in University Course Timetabling",
+          "doi": "10.1016/j.cor.2009.02.023",
+          "primary_url": "https://arxiv.org/abs/0903.1095"
+        }
+      ],
+      "permitted_proof_scope": "admitted_fixed_time_room_subproblem_only",
+      "prohibited_interpretations": [
+        "full_timetable_global_optimality",
+        "stability_coupled_global_optimality_without_bound_equality",
+        "new_matching_algorithm",
+        "new_complexity_theorem"
+      ]
+    },
+    {
+      "claim": "exact_conditional_room_neighborhood",
+      "verdict": "falsified_as_new_algorithmic_primitive",
+      "reason": "Prior CB-CTT local search restores room assignments exactly by bipartite matching after period and Kempe moves. Conditional on all other periods, Planora's one-period stability contribution is an additive edge cost and the exact block again reduces to weighted assignment. The bounded search did not locate the identical sweep order and evidence envelope.",
+      "closest_primary_sources": [
+        {
+          "title": "Solving the Course Timetabling Problem with a Hybrid Heuristic Algorithm",
+          "doi": "10.1007/978-3-540-85776-1_22",
+          "primary_url": "https://leria-info.univ-angers.fr/~jinkao.hao/papers/AIMSA08.pdf"
+        },
+        {
+          "title": "Neighborhood Analysis: a Case Study on Curriculum-Based Course Timetabling",
+          "doi": "10.1007/s10732-010-9128-0",
+          "primary_url": "https://leria-info.univ-angers.fr/~jinkao.hao/papers/JoH2010.pdf"
+        }
+      ]
+    },
+    {
+      "claim": "benders_or_explanation_guided_large_neighborhood_search",
+      "verdict": "falsified_as_general_mechanism_claim",
+      "reason": "Benders cuts already guide large-neighborhood selection in adjacent optimization domains, and explanation-based LNS plus CP/local-search course-timetabling hybrids predate Planora. A CB-CTT-specific typed-evidence integration remains an empirical systems question rather than a new general search principle.",
+      "closest_primary_sources": [
+        {
+          "title": "Benders' Cuts Guided Large Neighborhood Search for the Traveling Umpire Problem",
+          "doi": "10.1002/nav.20482",
+          "primary_url": "https://doi.org/10.1002/nav.20482",
+          "scope_note": "adjacent_optimization_domain_not_cbctt"
+        },
+        {
+          "title": "Enhancing Large Neighbourhood Search Heuristics for Benders' Decomposition",
+          "doi": "10.1007/s10732-021-09467-z",
+          "primary_url": "https://doi.org/10.1007/s10732-021-09467-z",
+          "scope_note": "generic_benders_lns"
+        },
+        {
+          "title": "Explanation-Based Large Neighborhood Search",
+          "doi": "10.1007/s10601-014-9166-6",
+          "primary_url": "https://doi.org/10.1007/s10601-014-9166-6"
+        },
+        {
+          "title": "Local Search and Constraint Programming for the Post Enrolment-Based Course Timetabling Problem",
+          "doi": "10.1007/s10479-010-0737-7",
+          "primary_url": "https://doi.org/10.1007/s10479-010-0737-7"
+        }
+      ]
+    },
+    {
+      "claim": "primal_dual_room_matching_certificate",
+      "verdict": "falsified_as_new_certificate_mathematics",
+      "reason": "A feasible assignment and dual-feasible potentials with equal objectives are a standard primal-dual optimality witness for the assignment problem. Planora's adversarial review passed only a precisely scoped separate-replay claim for the serialized mathematical certificate.",
+      "closest_primary_sources": [
+        {
+          "title": "The Hungarian Method for the Assignment Problem",
+          "doi": "10.1002/nav.3800020109",
+          "primary_url": "https://doi.org/10.1002/nav.3800020109"
+        },
+        {
+          "title": "Primal-dual Algorithms for the Assignment Problem",
+          "doi": "10.1016/0166-218X(87)90016-3",
+          "primary_url": "https://doi.org/10.1016/0166-218X(87)90016-3"
+        },
+        {
+          "title": "Verifying Integer Programming Results",
+          "doi": "10.1007/978-3-319-59250-3_13",
+          "primary_url": "https://arxiv.org/abs/1611.08832"
+        },
+        {
+          "title": "VIPR Certificate Construction from Black-Box ILP Solvers",
+          "doi": "10.4230/LIPIcs.CP.2026.52",
+          "primary_url": "https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.CP.2026.52"
+        }
+      ],
+      "mathematical_certificate_replay_claim_status": "passed_narrow_scope_unqualified_independent_replay_prohibited"
+    },
+    {
+      "claim": "compact_itc2007_adaptive_arm_policy",
+      "verdict": "not_novel_and_not_currently_adaptive",
+      "reason": "The implementation chooses a fixed compact size set from metadata and an explicit flag. It does not update sizes online or learn a transferable policy. Stronger adaptive operator, size, feature-conditioned tuning, and recent neighborhood-tuning methods already exist.",
+      "current_evidence_boundary": "default_off_four_instance_hypothesis_generation_only",
+      "closest_primary_sources": [
+        {
+          "title": "Adaptive Large Neighborhood Search for the Curriculum-Based Course Timetabling Problem",
+          "doi": "10.1007/s10479-016-2151-2",
+          "primary_url": "https://doi.org/10.1007/s10479-016-2151-2"
+        },
+        {
+          "title": "Random Partial Neighborhood Search for the Post-Enrollment Course Timetabling Problem",
+          "doi": "10.1016/j.cor.2017.09.014",
+          "primary_url": "https://doi.org/10.1016/j.cor.2017.09.014"
+        },
+        {
+          "title": "Feature-based Tuning of Simulated Annealing Applied to the Curriculum-based Course Timetabling Problem",
+          "doi": "10.1016/j.cor.2015.07.002",
+          "primary_url": "https://arxiv.org/abs/1409.7186"
+        },
+        {
+          "title": "Revisiting Local Search for Curriculum-Based Course Timetabling",
+          "doi": "10.2139/ssrn.6485691",
+          "primary_url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6485691",
+          "publication_status": "preprint_not_peer_reviewed"
+        }
+      ],
+      "adjacent_primary_sources": [
+        {
+          "title": "An Adaptive Large Neighborhood Search Heuristic for the Pickup and Delivery Problem with Time Windows",
+          "doi": "10.1287/trsc.1050.0135",
+          "primary_url": "https://doi.org/10.1287/trsc.1050.0135",
+          "scope_note": "foundational_alns_outside_timetabling"
+        },
+        {
+          "title": "Adaptive Large Neighborhood Search for Mixed Integer Programming",
+          "doi": "10.1007/s12532-021-00209-7",
+          "primary_url": "https://doi.org/10.1007/s12532-021-00209-7",
+          "scope_note": "generic_mip_adaptive_lns"
+        },
+        {
+          "title": "BALANS: Multi-Armed Bandits-Based Adaptive Large Neighborhood Search for Mixed-Integer Programming Problems",
+          "doi": "10.24963/ijcai.2025/286",
+          "primary_url": "https://doi.org/10.24963/ijcai.2025/286",
+          "scope_note": "recent_bandit_selection_outside_timetabling"
+        }
+      ]
+    },
+    {
+      "claim": "cp_sat_adaptive_local_search_exact_room_hybrid",
+      "verdict": "established_by_recent_primary_overlap",
+      "reason": "A 2026 conference paper combines CP-SAT initialization, adaptive penalty-guided VND, Kempe moves, and min-cost max-flow room assignment for ITC-2007.",
+      "closest_primary_source": {
+        "title": "Adaptive Penalty-Guided VND with CP-SAT for Curriculum-Based Course Timetabling",
+        "doi": "10.5220/0014437700004052",
+        "primary_url": "https://www.scitepress.org/PublishedPapers/2026/144377/"
+      }
+    }
+  ],
+  "candidate_contributions": [
+    {
+      "id": "exact_effective_domain_hall_instantiation_with_safe_fallback",
+      "status": "implemented_engineering_variant_not_mathematical_novelty",
+      "description": "Dynamic construction of an option-expanded room graph from duration, closures, aggregate demand, locks, and linked activities; standard |Gamma(U)| separation; exact-incumbent fallback when reconstruction is uncertain."
+    },
+    {
+      "id": "verification_aware_fixed_time_room_structural_dispatch",
+      "status": "implemented_systems_hypothesis_scoped_mathematical_certificate_replay_passed_empirical_value_pending",
+      "description": "Detect an admitted fixed-time room structure, compute exact additive assignment projections and witnesses, perform stability-aware exact conditional blocks, bind evidence to fixed starts and objective semantics, and accept only after deadline, parity, and full-schedule checks.",
+      "permitted_label_now": "structurally_gated_fixed_time_room_optimizer_with_separately_replayed_scoped_mathematical_certificate",
+      "prohibited_claims": [
+        "novel_room_oracle",
+        "general_proof_carrying_optimizer",
+        "formally_verified_optimizer",
+        "full_timetable_global_optimality",
+        "unqualified_independently_replayed_result",
+        "state_of_the_art_performance"
+      ]
+    },
+    {
+      "id": "typed_certificate_support_search_integration",
+      "status": "implemented_systems_hypothesis_empirically_unestablished",
+      "description": "Integration of scoped room evidence, content-addressed lineage, semantic hypergraph closure, reusable exact CP-SAT repair, assumption-core signals, and structured telemetry.",
+      "prohibited_claims": [
+        "novel_proof_carrying_pipeline",
+        "digitally_signed_or_authenticated_proof",
+        "same_full_proof_object_proves_all_search_stages",
+        "end_to_end_machine_checked_search_trace"
+      ]
+    },
+    {
+      "id": "itc2007_compact_neighborhood_set",
+      "status": "default_off_empirical_candidate_not_research_contribution",
+      "description": "For imported ITC-2007 instances and only under an explicit flag, use fixed sizes 12 and 24 instead of 12, 24, and 48 while preserving explicit user settings.",
+      "permitted_label": "corpus_conditioned_compact_neighborhood_set_candidate",
+      "prohibited_claims": [
+        "adaptive_policy",
+        "learned_policy",
+        "novel_neighborhood_selection",
+        "generalizable_speedup",
+        "production_default"
+      ]
+    },
+    {
+      "id": "itc2007_distinct_course_room_support_proxy",
+      "status": "opt_in_empirical_selection_hypothesis_not_new_neighborhood",
+      "description": "Count distinct courses displaced from incumbent-majority room support after deterministic period-room collision projection; use the value for candidate selection only and retain independent official scoring for acceptance.",
+      "permitted_label": "distinct_course_room_support_proxy_ablation",
+      "prohibited_claims": [
+        "new_room_stability_objective",
+        "exact_room_stability_proxy",
+        "new_neighborhood_family",
+        "learned_policy",
+        "end_to_end_superiority"
+      ]
+    }
+  ],
+  "implementation_evidence_boundaries": [
+    "fixed_time_oracle_is_not_full_timetable_optimization",
+    "capacity_only_independent_period_projection_is_exact_for_the_admitted_structure",
+    "room_stability_coordinate_sweeps_are_not_global_without_valid_lower_bound_equality",
+    "multiple_coordinate_starts_do_not_strengthen_the_proof_scope",
+    "unsigned_content_digests_are_integrity_links_not_signatures_authentication_or_timestamps",
+    "separate_fixed_time_checker_replays_the_scoped_mathematical_certificate_for_claim_bearing_statuses",
+    "checker_does_not_independently_establish_timing_trajectory_provenance_source_identity_or_nonclaim_status_causality",
+    "repository_checker_is_not_an_official_ITC_validator",
+    "compact_arm_diagnostic_has_four_instances_and_is_hypothesis_generation_only",
+    "no_end_to_end_proof_of_the_entire_search_is_claimed",
+    "fragmented_course_support_results_are_post_incumbent_mechanism_evidence_only",
+    "selected_comparator_wins_exclude_incumbent_construction_use_diagnostic_case_selection_and_are_not_an_equal_budget_matrix"
+  ],
+  "checker_review": {
+    "status": "passed_narrow_mathematical_certificate_replay_scope",
+    "approved_wording": "For eligible fixed-time room-assignment results with status improved or no_improvement, the serialized mathematical certificate was JSON-round-tripped and replayed by a separate checker implementation.",
+    "replayed_scope": [
+      "reconstructed_candidate",
+      "fixed_starts",
+      "eligibility_for_claim_bearing_paths",
+      "room_domains_and_costs",
+      "canonical_objective_parity",
+      "per_period_hungarian_primal_dual_edge_and_digest_certificates",
+      "capacity_and_stability_lower_bounds",
+      "global_optimality_equality",
+      "one_period_local_optimality_reconstruction",
+      "no_worsening_and_status_flags",
+      "hall_witnesses"
+    ],
+    "not_independently_established": [
+      "deadline_or_timing",
+      "selected_start_sweeps_or_accepted_block_trajectory",
+      "method_or_complexity_provenance",
+      "source_identity",
+      "nonclaim_status_causality"
+    ],
+    "boundaries": [
+      "payload_is_unsigned",
+      "not_formal_verification",
+      "not_full_search_solver_independent_proof",
+      "not_official_validator_substitute",
+      "unqualified_independently_replayed_is_prohibited"
+    ],
+    "adversarial_result": "mathematical_tamper_fuzz_found_no_false_accepts"
+  },
+  "wording": {
+    "allowed_now": [
+      "We implement a structurally gated fixed-time room optimizer using exact per-period assignment projections, stability-aware exact conditional blocks, unsigned replay-oriented evidence, and fail-closed acceptance.",
+      "For eligible fixed-time room-assignment results with status improved or no_improvement, the serialized mathematical certificate was JSON-round-tripped and replayed by a separate checker implementation.",
+      "The compact ITC-2007 size set is a default-off corpus-conditioned ablation candidate.",
+      "We implement and evaluate a verification-aware integration of established optimization primitives.",
+      "Selected post-incumbent portfolios produced lower independently validated scores than retained comparator artifacts on five diagnosed cases; this is mechanism evidence, not an end-to-end or equal-budget matrix."
+    ],
+    "avoid": [
+      "novel_contextual_hall_inequality",
+      "first_start_dependent_hall_cut",
+      "novel_fixed_time_room_oracle",
+      "globally_optimal_schedule_from_room_oracle",
+      "proof_carrying_room_optimizer",
+      "formally_verified_room_optimizer",
+      "unqualified_independently_replayed_result",
+      "whole_result_independently_verified",
+      "adaptive_compact_arm_policy",
+      "learned_compact_arm_policy",
+      "generalizable_compact_arm_speedup",
+      "novel_cp_sat_adaptive_local_search_room_matching_hybrid",
+      "state_of_the_art_or_competitor_superiority_without_comparable_evidence"
+    ]
+  },
+  "operator_provenance_control": {
+    "schema": "planora.research-operator-provenance.v1",
+    "ledger": "config/research_operator_provenance.json",
+    "checker": "scripts/check_research_provenance.py",
+    "status": "focused_checker_passed_operator_hypotheses_remain_unestablished",
+    "native_result_rules": [
+      "competitor_source_bytecode_control_flow_assignments_and_move_traces_are_forbidden_inputs",
+      "comparator_seeded_results_are_diagnostic_not_planora_native",
+      "retained_planora_incumbents_can_support_post_incumbent_quality_not_end_to_end_runtime",
+      "selectors_must_be_representation_derived_without_instance_ids_comparator_scores_or_target_thresholds",
+      "independent_hard_validation_canonical_rescore_deadline_and_rollback_are_required"
+    ],
+    "hypothesis_scope": [
+      "representation_derived_residual_diagnosis",
+      "cross_component_root_ordering",
+      "rebuild_after_acceptance",
+      "official_total_tradeoff_acceptance",
+      "single_fail_closed_validation_and_deadline_boundary"
+    ],
+    "priority_claim": false
+  },
+  "publication_gates": {
+    "unique_effective_external_instances_per_condition": 30,
+    "seeds_count_as_repeated_trials_not_unique_instances": true,
+    "held_out_or_nested_calibration_evaluation_split": true,
+    "compare_standard_hall_against_exact_nogood_and_historical_rhs": true,
+    "compare_no_postoptimizer_additive_matching_coordinate_matching_full_cp_and_dispatcher": true,
+    "official_validator_required_for_every_itc2007_output": true,
+    "official_validator_required_for_itc2019_claims": true,
+    "fixed_time_checker_adversarial_review_status": "passed_narrow_scope",
+    "unqualified_independent_replay_wording_prohibited": true,
+    "room_oracle_requires_multiple_solver_seeds": true,
+    "compact_arm_requires_baseline_compact_paired_ablation": true,
+    "compact_arm_remains_default_off_without_held_out_evidence": true,
+    "include_2026_lecturekick_and_cp_sat_vnd_flow_comparators": true,
+    "report_timeouts_invalid_outputs_and_deadline_overruns": true,
+    "report_confidence_intervals_paired_effects_and_unique_hashes": true,
+    "separate_domain_certificate_hash_check_model_search_score_and_validation_timing": true,
+    "support_proxy_requires_collision_fragmentation_and_weight_ablations": true,
+    "support_proxy_requires_official_component_and_validator_parity": true,
+    "selected_post_incumbent_results_require_a_preregistered_fresh_paired_matrix_before_any_general_superiority_claim": true
+  },
+  "recent_2024_2026_screen": [
+    {
+      "title": "Revisiting Local Search for Curriculum-Based Course Timetabling",
+      "year": 2026,
+      "doi": "10.2139/ssrn.6485691",
+      "status": "included_direct_overlap_preprint",
+      "overlap": [
+        "neighborhood_review",
+        "LectureKick",
+        "soft_constraint_sampling_bias",
+        "cooling_cutoff",
+        "parameter_tuning",
+        "ITC2007_competition_budget_evaluation"
+      ],
+      "full_text_access": "bot_blocked_primary_abstract_only"
+    },
+    {
+      "title": "Adaptive Penalty-Guided VND with CP-SAT for Curriculum-Based Course Timetabling",
+      "year": 2026,
+      "doi": "10.5220/0014437700004052",
+      "status": "included_direct_overlap_peer_reviewed_conference",
+      "overlap": [
+        "CP_SAT_initialization",
+        "adaptive_penalty_VND",
+        "Kempe_neighborhood",
+        "min_cost_max_flow_room_assignment",
+        "ITC2007"
+      ]
+    },
+    {
+      "title": "Curriculum-based University Course Timetabling Considering Individual Course of Studies",
+      "year": 2025,
+      "doi": "10.1007/s10100-024-00923-2",
+      "status": "excluded_from_local_search_claim_different_exact_institutional_model"
+    }
+  ],
+  "anchor_dois": [
+    "10.1007/978-3-540-68552-4_18",
+    "10.1016/j.cor.2017.10.009",
+    "10.1287/opre.40.1.S28",
+    "10.1016/j.cor.2014.07.012",
+    "10.1016/j.cor.2009.02.023",
+    "10.1007/978-3-540-85776-1_22",
+    "10.1007/s10732-010-9128-0",
+    "10.1002/nav.3800020109",
+    "10.1016/0166-218X(87)90016-3",
+    "10.1007/978-3-319-59250-3_13",
+    "10.4230/LIPIcs.CP.2026.52",
+    "10.1016/j.cor.2015.07.002",
+    "10.1007/s10479-016-2151-2",
+    "10.1016/j.cor.2017.09.014",
+    "10.2139/ssrn.6485691",
+    "10.5220/0014437700004052",
+    "10.1002/nav.20482",
+    "10.1007/s10732-021-09467-z",
+    "10.1007/s10601-014-9166-6"
+  ]
+}

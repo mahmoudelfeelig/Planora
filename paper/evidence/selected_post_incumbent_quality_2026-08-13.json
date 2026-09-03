@@ -1,0 +1,72 @@
+{
+  "schema_version": "planora.selected-post-incumbent-quality.v1",
+  "date": "2026-08-13",
+  "claim_boundary": {
+    "supported": "Selected retained Planora-native incumbents can be improved by bounded, representation-derived post-incumbent portfolios to scores below retained independently validated CPSolver artifacts on the same instances.",
+    "not_supported": [
+      "an end-to-end equal-budget comparison",
+      "a fresh paired benchmark matrix",
+      "runtime superiority over CPSolver",
+      "general superiority across ITC-2007",
+      "a claim that the established move families are novel"
+    ],
+    "timing": "Each Planora time is the bounded post-incumbent call after the retained incumbent and parsed instance are available. Comparator runtime is not compared.",
+    "source_status": "proof_source_matches_current_checkout is explicit per row; false denotes an immutable historical source-hash result after a later default-preserving API extension."
+  },
+  "component_order": {
+    "itc2007-ctt": ["room_capacity", "minimum_working_days", "curriculum_compactness", "room_stability"],
+    "itc2007-exam": ["two_in_a_row", "two_in_a_day", "period_spread", "mixed_durations", "frontload", "room_penalty", "period_penalty"]
+  },
+  "results": [
+    {
+      "family": "itc2007-ctt",
+      "instance": "comp02",
+      "instance_sha256": "1f9242e694e96aef7621b18c8781cc94515557fcce1b4d9ab7ff4522d451fb5a",
+      "initial_planora": {"score": 159, "sha256": "564bd1c62dc6bb790af17c20c3ef265453e58b053479f687a760468b6d834df0"},
+      "post_incumbent": {"score": 133, "components": [0, 35, 94, 4], "hard_violations": 0, "wall_seconds": 4.075971149999532, "budget_seconds": 5.0, "deadline_overrun_seconds": 0.0, "sha256": "b8d7670c69fbc01970b0779b49126888b562d871056857d13679ac064379e27f"},
+      "retained_cpsolver": {"score": 137, "sha256": "121b4d41f54424ee50349781ac4a84bc0d664b34911b7cc655de015bf534d6e4"},
+      "implementation": {"path": "core/itc2007_room_stability_dispatcher.py", "proof_sha256": "289dff4d0ed22d5b91787adef7e12cfa955d23417b43ebd0259e339eac4a3db4", "current_sha256": "289dff4d0ed22d5b91787adef7e12cfa955d23417b43ebd0259e339eac4a3db4", "proof_source_matches_current_checkout": true},
+      "proof_report_sha256": "104ac879c6aa41f259b5770236faa722734bdd7cc022c6d16ac64aad826fd2b6"
+    },
+    {
+      "family": "itc2007-ctt",
+      "instance": "comp03",
+      "instance_sha256": "b57680c3af18b168a7564d8a795917e2e7dda12998a0b90fa2ba40b1ae710021",
+      "initial_planora": {"score": 191, "sha256": "1c86549713aca2ce50567436f33c93d0a205a606005d7f9abd95676afccb3195"},
+      "post_incumbent": {"score": 162, "components": [0, 60, 90, 12], "hard_violations": 0, "wall_seconds": 1.9470338440005435, "budget_seconds": 2.25, "deadline_overrun_seconds": 0.0, "sha256": "f5a6c173006abe2395654360a7b0e4718d241224e7c126dca9f25589917505df"},
+      "retained_cpsolver": {"score": 167, "sha256": "d05cc1bd6095abba405697becb6744cf10874975bba2aeebdf36fdffb5fd3185"},
+      "implementation": {"path": "core/itc2007_mwd_batch_chain.py", "proof_sha256": "91a98b267c78ab9c6f462a7c8bf4d1b5a79ca39029124b8537aec42c70f2ed9a", "current_sha256": "91a98b267c78ab9c6f462a7c8bf4d1b5a79ca39029124b8537aec42c70f2ed9a", "proof_source_matches_current_checkout": true},
+      "proof_report_sha256": "77db60f626756ea7bff0e12bc7eb214369cfa53299cfe1ccde935347d7ed8995"
+    },
+    {
+      "family": "itc2007-ctt",
+      "instance": "comp19",
+      "instance_sha256": "e09401452e8418b0eeda25d387e824f35c23ab97acc21fb5471e71bb3225266a",
+      "initial_planora": {"score": 647, "sha256": "e991185129033a0a768e70a17203f9312e2645f75a9d1566868d75728f4b5914"},
+      "post_incumbent": {"score": 154, "components": [0, 40, 92, 22], "hard_violations": 0, "wall_seconds": 2.2396373999999923, "budget_seconds": 2.25, "deadline_overrun_seconds": 0.0, "sha256": "c7591793848196986577e294e42e576d4e96dcdd2c2cfcc9da84313690c64987"},
+      "retained_cpsolver": {"score": 156, "sha256": "e1ac31530fac4476b1b3b7d7e6738b25ec1baa797f9a9639cf130650c4be4710"},
+      "implementation": {"path": "core/itc2007_iterative_feedback_dispatcher.py", "proof_sha256": "f9a0552f5531ed6722041a4ddc252d0b4cad8d8c8851b6102bd1881d28fae4df", "current_sha256": "8ac69e123a0f671c88e16c77a9dfc372918cf286928977e45190de0188bc0acc", "proof_source_matches_current_checkout": false},
+      "proof_report_sha256": "9635f239a830497176c11ca89fc6e3fe27346bba42bc2839e305c33df66e725a"
+    },
+    {
+      "family": "itc2007-ctt",
+      "instance": "comp21",
+      "instance_sha256": "304a88f77d7620d521a123b49ada4459e533cce3a1398be40af47076d250f45a",
+      "initial_planora": {"score": 219, "sha256": "fe41e2a02f4ad14e7b4270c06eb7c4d4fbd13c9dd4f68864dcea2805d4f9a227"},
+      "post_incumbent": {"score": 193, "components": [0, 65, 112, 16], "hard_violations": 0, "wall_seconds": 2.142512964001071, "budget_seconds": 2.2, "deadline_overrun_seconds": 0.0, "sha256": "34932af55dfeff61f8c539ac50ff2c1e59c8fb4fb83505d5dd2968f591683b97"},
+      "retained_cpsolver": {"score": 194, "sha256": "55f11c8f0a3f61e57c0ae207f2059eb8e945dab95498c106ebed447900896d10"},
+      "implementation": {"path": "core/itc2007_feedback_rooted_dispatcher.py", "proof_sha256": "a113a5184bec84bc5218c9557f85f96c3d0a60a1f90fe604265a7ee8f7be947c", "current_sha256": "fa0a814bf0f3ed695ad8e6649ad2a40c1f1a17d10264ccd13289a65d9195435d", "proof_source_matches_current_checkout": false},
+      "proof_report_sha256": "42485356e241577cc8c294faae8f5d4fa762e0f9854c4fadcd7718e1ef6f2405"
+    },
+    {
+      "family": "itc2007-exam",
+      "instance": "exam_comp_set1",
+      "instance_sha256": "275024f844ada4e01415f7688ccacf3c0711c08822c8d9f2fa9ca69febf51629",
+      "initial_planora": {"score": 6780, "sha256": "f1a26dcee003b1602247e9920a0e0c42d9d0d7800604cc232f36f67513a35b7e"},
+      "post_incumbent": {"score": 5790, "components": [245, 0, 3140, 490, 275, 1300, 340], "hard_violations": 0, "wall_seconds": 4.948257429998193, "budget_seconds": 5.0, "deadline_overrun_seconds": 0.0, "sha256": "4b090d26f76cfc54b0451b44d320b982cb8ced6bebdd7ef3a6a5ed3ffec2675d"},
+      "retained_cpsolver": {"score": 5824, "sha256": "2c16df4960c1e4ec64bbe3355b3b2c4e187830be4a253d0c5fd2fe10fa291c0c"},
+      "implementation": {"path": "benchmarks/itc2007_exam.py", "proof_sha256": "72e59b375f4528bac82b6e97f9d5642ab22f85bb71423c384943493c5d69af16", "current_sha256": "72e59b375f4528bac82b6e97f9d5642ab22f85bb71423c384943493c5d69af16", "proof_source_matches_current_checkout": true},
+      "proof_report_sha256": "941aa7403bdaf5e9047232a0ccd7731d18b96f26944117d7f4f79691100882ed"
+    }
+  ]
+}

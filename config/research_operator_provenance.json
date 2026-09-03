@@ -1,0 +1,341 @@
+{
+  "schema_version": "planora.research-operator-provenance.v1",
+  "last_reviewed": "2026-08-13",
+  "claim_boundary": "verification_aware_representation_driven_orchestration_hypothesis",
+  "clean_room_policy": {
+    "allowed_inputs": [
+      "public primary papers and official benchmark specifications",
+      "official validator and scorer behavior",
+      "aggregate component scores and structural statistics from comparator outputs",
+      "black-box runtime outcomes used only for evaluation or diagnostic ablation"
+    ],
+    "forbidden_inputs": [
+      "competitor source code, bytecode, decompilation, or translated control flow",
+      "competitor move traces or entity-level assignments used to construct a Planora-native result",
+      "benchmark instance identifiers, comparator scores, or target thresholds in operator decisions",
+      "claims that a postprocessor starting from a competitor solution is a Planora-native win"
+    ],
+    "implementation_rules": [
+      "derive selectors from the current problem representation and independently scored incumbent",
+      "accept candidates only after independent hard validation and canonical objective rescoring",
+      "fail closed on deadline, mutation, malformed collaborator output, or score disagreement",
+      "label established primitives as prior art and test Planora-specific composition separately",
+      "retain comparator-seeded experiments as diagnostic_unverified_for_native_superiority"
+    ]
+  },
+  "sources": [
+    {
+      "id": "itc2007_exam_spec",
+      "kind": "official_specification",
+      "title": "Second International Timetabling Competition: Examination Timetabling Track",
+      "url": "https://www.eeecs.qub.ac.uk/itc2007/examtrack/report/Exam_Track_TechReportv4.0.pdf"
+    },
+    {
+      "id": "muller_2008_hybrid",
+      "kind": "primary_paper",
+      "title": "ITC2007 Solver Description: A Hybrid Approach",
+      "url": "https://muller.unitime.org/itc2007.pdf"
+    },
+    {
+      "id": "lach_luebbecke_2008",
+      "kind": "primary_paper",
+      "title": "Optimal University Course Timetables and the Partial Transversal Polytope",
+      "doi": "10.1007/978-3-540-68552-4_18",
+      "url": "https://page.math.tu-berlin.de/~lach/publications/wea08.pdf"
+    },
+    {
+      "id": "bagger_et_al_2018",
+      "kind": "primary_paper",
+      "title": "Benders' Decomposition for Curriculum-Based Course Timetabling",
+      "doi": "10.1016/j.cor.2017.10.009",
+      "url": "https://orbit.dtu.dk/files/138514884/BendersDecomposition.pdf"
+    },
+    {
+      "id": "burke_et_al_2010",
+      "kind": "primary_paper",
+      "title": "Decomposition, Reformulation, and Diving in University Course Timetabling",
+      "doi": "10.1016/j.cor.2009.02.023",
+      "url": "https://arxiv.org/abs/0903.1095"
+    },
+    {
+      "id": "lu_hao_2008",
+      "kind": "primary_paper",
+      "title": "Solving the Course Timetabling Problem with a Hybrid Heuristic Algorithm",
+      "doi": "10.1007/978-3-540-85776-1_22",
+      "url": "https://leria-info.univ-angers.fr/~jinkao.hao/papers/AIMSA08.pdf"
+    },
+    {
+      "id": "lu_hao_glover_2010",
+      "kind": "primary_paper",
+      "title": "Neighborhood Analysis: a Case Study on Curriculum-Based Course Timetabling",
+      "doi": "10.1007/s10732-010-9128-0",
+      "url": "https://leria-info.univ-angers.fr/~jinkao.hao/papers/JoH2010.pdf"
+    },
+    {
+      "id": "cambazard_et_al_2012",
+      "kind": "primary_paper",
+      "title": "Local Search and Constraint Programming for the Post Enrolment-Based Course Timetabling Problem",
+      "doi": "10.1007/s10479-010-0737-7",
+      "url": "https://doi.org/10.1007/s10479-010-0737-7"
+    },
+    {
+      "id": "prudhomme_et_al_2014",
+      "kind": "primary_paper",
+      "title": "Explanation-Based Large Neighborhood Search",
+      "doi": "10.1007/s10601-014-9166-6",
+      "url": "https://doi.org/10.1007/s10601-014-9166-6"
+    },
+    {
+      "id": "kiefer_et_al_2016",
+      "kind": "primary_paper",
+      "title": "Adaptive Large Neighborhood Search for the Curriculum-Based Course Timetabling Problem",
+      "doi": "10.1007/s10479-016-2151-2",
+      "url": "https://doi.org/10.1007/s10479-016-2151-2"
+    },
+    {
+      "id": "bellio_et_al_2016",
+      "kind": "primary_paper",
+      "title": "Feature-based Tuning of Simulated Annealing Applied to the Curriculum-based Course Timetabling Problem",
+      "doi": "10.1016/j.cor.2015.07.002",
+      "url": "https://arxiv.org/abs/1409.7186"
+    },
+    {
+      "id": "nagata_2018",
+      "kind": "primary_paper",
+      "title": "Random Partial Neighborhood Search for the Post-Enrollment Course Timetabling Problem",
+      "doi": "10.1016/j.cor.2017.09.014",
+      "url": "https://doi.org/10.1016/j.cor.2017.09.014"
+    },
+    {
+      "id": "nguyen_2026",
+      "kind": "primary_paper",
+      "title": "Adaptive Penalty-Guided VND with CP-SAT for Curriculum-Based Course Timetabling",
+      "doi": "10.5220/0014437700004052",
+      "url": "https://www.scitepress.org/PublishedPapers/2026/144377/"
+    },
+    {
+      "id": "ceschia_et_al_2026",
+      "kind": "primary_preprint",
+      "title": "Revisiting Local Search for Curriculum-Based Course Timetabling",
+      "doi": "10.2139/ssrn.6485691",
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6485691"
+    },
+    {
+      "id": "carter_tovey_1992",
+      "kind": "primary_paper",
+      "title": "When Is the Classroom Assignment Problem Hard?",
+      "doi": "10.1287/opre.40.1.S28",
+      "url": "https://doi.org/10.1287/opre.40.1.S28"
+    },
+    {
+      "id": "phillips_et_al_2015",
+      "kind": "primary_paper",
+      "title": "Integer Programming Methods for Large-Scale Practical Classroom Assignment Problems",
+      "doi": "10.1016/j.cor.2014.07.012",
+      "url": "https://eprints.lancs.ac.uk/id/eprint/75294/1/roomAssignmentv13.pdf"
+    },
+    {
+      "id": "kuhn_1955",
+      "kind": "primary_paper",
+      "title": "The Hungarian Method for the Assignment Problem",
+      "doi": "10.1002/nav.3800020109",
+      "url": "https://doi.org/10.1002/nav.3800020109"
+    },
+    {
+      "id": "gogos_et_al_2023",
+      "kind": "primary_paper",
+      "title": "Multi-neighbourhood simulated annealing for the ITC-2007 capacitated examination timetabling problem",
+      "doi": "10.1007/s10951-023-00799-1",
+      "url": "https://doi.org/10.1007/s10951-023-00799-1"
+    }
+  ],
+  "operators": [
+    {
+      "id": "ctt_compound_search",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_compound_search.py"],
+      "established_primitives": ["single relocation", "swap", "Kempe-chain local search", "room reassignment"],
+      "source_ids": ["muller_2008_hybrid", "lu_hao_glover_2010", "nguyen_2026"],
+      "planora_specific_contribution": "One independently implemented state representation and exact official-component delta layer shared by bounded Planora repair paths.",
+      "novelty_status": "established_primitives_planora_systems_composition",
+      "prohibited_claims": ["new Kempe-chain method", "new VND class"],
+      "required_ablations": ["state cache versus full rescore parity", "move-family contribution", "deadline rollback"]
+    },
+    {
+      "id": "ctt_feedback_search",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_feedback_search.py"],
+      "established_primitives": ["adaptive local search", "penalty-guided perturbation", "room reassignment", "course room-stability penalty"],
+      "source_ids": ["kiefer_et_al_2016", "bellio_et_al_2016", "nguyen_2026"],
+      "planora_specific_contribution": "Incumbent-majority room support is exposed through two deterministic secondary signals: the compatibility event-collision proxy and an opt-in distinct-fragmented-course proxy. Official score remains the sole acceptance authority.",
+      "novelty_status": "unestablished_planora_selection_hypothesis",
+      "prohibited_claims": ["first adaptive timetabling search", "learned policy", "exact room-stability objective", "new neighborhood family"],
+      "required_ablations": ["event collision versus fragmented-course proxy", "collision weight one versus higher weights", "majority signal on versus off", "fixed work checkpoints", "hash-seed invariance", "official component and validator parity"]
+    },
+    {
+      "id": "ctt_stability_ejection",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_stability_ejection.py"],
+      "established_primitives": ["ejection chain", "exact CP repair", "room-stability local search"],
+      "source_ids": ["muller_2008_hybrid", "cambazard_et_al_2012", "prudhomme_et_al_2014"],
+      "planora_specific_contribution": "Representation-derived fragmented-course roots define bounded exact frontiers with strict full-schedule acceptance.",
+      "novelty_status": "unestablished_planora_root_selection_hypothesis",
+      "prohibited_claims": ["new ejection-chain method", "new exact-repair principle"],
+      "required_ablations": ["root ranking versus neutral ordering", "frontier depth", "exact model versus cheap moves"]
+    },
+    {
+      "id": "ctt_capacity_frontier",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_capacity_frontier.py"],
+      "established_primitives": ["course coloring", "conflict closure", "exact CP neighborhood"],
+      "source_ids": ["lach_luebbecke_2008", "cambazard_et_al_2012", "nguyen_2026"],
+      "planora_specific_contribution": "Room-color pressure proposes a bounded movable frontier whose candidate survives only exact validation and official rescoring.",
+      "novelty_status": "unestablished_planora_frontier_construction_hypothesis",
+      "prohibited_claims": ["new graph-coloring method", "new CP neighborhood class"],
+      "required_ablations": ["pressure ranking", "frontier closure", "capacity-only versus total-objective acceptance"]
+    },
+    {
+      "id": "ctt_compactness_frontier",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_compactness_frontier.py"],
+      "established_primitives": ["curriculum compactness move", "ejection chain", "exact CP neighborhood"],
+      "source_ids": ["muller_2008_hybrid", "lu_hao_glover_2010", "cambazard_et_al_2012"],
+      "planora_specific_contribution": "Isolated curriculum occurrences are ranked by representation-derived affected-cost density before a bounded exact frontier solve.",
+      "novelty_status": "unestablished_planora_root_ordering_hypothesis",
+      "prohibited_claims": ["new compactness neighborhood", "new ejection-chain method"],
+      "required_ablations": ["density ranking versus stable neutral order", "frontier caps", "single versus iterated acceptance"]
+    },
+    {
+      "id": "ctt_mwd_conflict_frontier",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_mwd_conflict_frontier.py"],
+      "established_primitives": ["minimum-working-days repair", "conflict-graph neighborhood", "exact CP repair"],
+      "source_ids": ["muller_2008_hybrid", "cambazard_et_al_2012", "nguyen_2026"],
+      "planora_specific_contribution": "Deficient roots are ordered by modeled cross-component leverage and conflict closure rather than by instance identity or target score.",
+      "novelty_status": "unestablished_planora_cross_component_ranking_hypothesis",
+      "prohibited_claims": ["new MWD neighborhood", "new CP repair method"],
+      "required_ablations": ["cross-component ranking", "conflict closure width", "per-root solve quota"]
+    },
+    {
+      "id": "ctt_rooted_adjacency",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_rooted_adjacency.py"],
+      "established_primitives": ["curriculum compactness move", "minimum-working-days relocation", "exact room reassignment"],
+      "source_ids": ["muller_2008_hybrid", "lu_hao_2008", "nguyen_2026"],
+      "planora_specific_contribution": "A deterministic residual root joins isolated-curriculum adjacency and missing-day opportunities with incumbent-majority room support.",
+      "novelty_status": "unestablished_planora_residual_selector_hypothesis",
+      "prohibited_claims": ["new relocation move", "new room assignment method"],
+      "required_ablations": ["root families separately", "room-support secondary score", "complete-root checkpointing"]
+    },
+    {
+      "id": "ctt_frontier_alternation",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_frontier_alternation.py"],
+      "established_primitives": ["variable-neighborhood descent", "exact repair", "relocate and swap polish"],
+      "source_ids": ["lu_hao_glover_2010", "kiefer_et_al_2016", "nguyen_2026"],
+      "planora_specific_contribution": "Exact residual frontiers and cheap deterministic polish alternate under one validation boundary, permitting component regressions only when official total strictly improves.",
+      "novelty_status": "unestablished_planora_orchestration_hypothesis",
+      "prohibited_claims": ["new VND class", "first exact-local alternation"],
+      "required_ablations": ["exact-only", "polish-only", "alternation order", "component-monotone versus total-only acceptance"]
+    },
+    {
+      "id": "ctt_iterative_feedback_dispatcher",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_iterative_feedback_dispatcher.py"],
+      "established_primitives": ["adaptive local search", "iterated local search", "variable-neighborhood descent"],
+      "source_ids": ["kiefer_et_al_2016", "nagata_2018", "nguyen_2026", "ceschia_et_al_2026"],
+      "planora_specific_contribution": "Representation roots are rebuilt after fixed deterministic work checkpoints, with an explicit room-support proxy policy and exact incumbent preservation across every deadline and mutation boundary.",
+      "novelty_status": "unestablished_verification_aware_dispatch_hypothesis",
+      "prohibited_claims": ["new adaptive LNS", "learned online controller"],
+      "required_ablations": ["rebuild frequency", "event collision versus fragmented-course proxy", "fixed checkpoints versus wall truncation", "validation boundary overhead"]
+    },
+    {
+      "id": "ctt_feedback_rooted_dispatcher",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_feedback_rooted_dispatcher.py"],
+      "established_primitives": ["iterated local search", "penalty-guided VND", "rooted relocation"],
+      "source_ids": ["kiefer_et_al_2016", "nguyen_2026", "ceschia_et_al_2026"],
+      "planora_specific_contribution": "Fixed feedback checkpoints bracket a representation-derived rooted residual descent under a single fail-closed absolute deadline.",
+      "novelty_status": "unestablished_verification_aware_orchestration_hypothesis",
+      "prohibited_claims": ["new local-search family", "first penalty-guided VND"],
+      "required_ablations": ["feedback-only", "rooted-only", "stage order", "shared deadline reserves"]
+    },
+    {
+      "id": "ctt_mwd_batch_chain",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_mwd_batch_chain.py"],
+      "established_primitives": ["MWD repair", "exact CP neighborhood", "room ejection"],
+      "source_ids": ["muller_2008_hybrid", "cambazard_et_al_2012", "nguyen_2026"],
+      "planora_specific_contribution": "The conflict-root batch is rebuilt after each accepted exact repair and followed by deterministic room ejection under official-total acceptance.",
+      "novelty_status": "unestablished_planora_rebuild_and_handoff_hypothesis",
+      "prohibited_claims": ["new MWD repair primitive", "new room ejection method"],
+      "required_ablations": ["one batch versus rebuilt batches", "room ejection contribution", "root width"]
+    },
+    {
+      "id": "ctt_room_stability_dispatcher",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_room_stability_dispatcher.py"],
+      "established_primitives": ["fixed-time room reoptimization", "room-stability ejection", "exact matching or CP repair"],
+      "source_ids": ["carter_tovey_1992", "phillips_et_al_2015", "burke_et_al_2010", "lu_hao_2008"],
+      "planora_specific_contribution": "Room-first block descent is followed by freshly rebuilt stability frontiers with canonical handoffs and full-chain rollback.",
+      "novelty_status": "unestablished_verification_aware_room_dispatch_hypothesis",
+      "prohibited_claims": ["new room assignment algorithm", "global room-stability optimum"],
+      "required_ablations": ["room-only", "stability-only", "number of rebuilds", "chain rollback"]
+    },
+    {
+      "id": "ctt_room_load_certificate",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_room_load_certificate.py"],
+      "established_primitives": ["assignment lower bound", "CP-SAT optimality", "independent certificate replay"],
+      "source_ids": ["carter_tovey_1992", "phillips_et_al_2015", "kuhn_1955"],
+      "planora_specific_contribution": "A fail-closed aggregate room-load relaxation is replayed independently to terminate futile residual search at a certified lower boundary.",
+      "novelty_status": "established_mathematics_planora_certificate_integration",
+      "prohibited_claims": ["new lower-bound mathematics", "proof of full timetable optimality"],
+      "required_ablations": ["certificate replay tampering", "search saved after certified equality", "relaxation gap across instances"]
+    },
+    {
+      "id": "ctt_quality_tail",
+      "family": "curriculum_course_timetabling",
+      "implementation_paths": ["core/itc2007_quality_tail.py"],
+      "established_primitives": ["multi-neighborhood local search", "exact room repair", "ejection chain"],
+      "source_ids": ["muller_2008_hybrid", "lu_hao_glover_2010", "kiefer_et_al_2016", "nguyen_2026"],
+      "planora_specific_contribution": "A bounded portfolio reserves completion and independent validation time while composing individually fail-closed operators.",
+      "novelty_status": "unestablished_verification_aware_portfolio_hypothesis",
+      "prohibited_claims": ["new portfolio-search class", "general superiority"],
+      "required_ablations": ["stage contribution", "stage order", "reserve sensitivity", "cold-basin transfer"]
+    },
+    {
+      "id": "exam_period_and_room_polish",
+      "family": "examination_timetabling",
+      "implementation_paths": ["benchmarks/itc2007_exam.py"],
+      "established_primitives": ["single move", "pair interchange", "multi-neighborhood local search", "exact room repair"],
+      "source_ids": ["itc2007_exam_spec", "muller_2008_hybrid", "gogos_et_al_2023"],
+      "planora_specific_contribution": "Cached exact temporal deltas and representation-derived room-pressure ordering feed atomic affected-period repacking with full independent acceptance.",
+      "novelty_status": "unestablished_planora_pressure_ordering_hypothesis",
+      "prohibited_claims": ["new single-move neighborhood", "new pair-swap neighborhood", "new room packing primitive"],
+      "required_ablations": ["temporal-only stream", "room-pressure stream", "exact repack contribution", "candidate ordering"]
+    },
+    {
+      "id": "exam_pressure_blocks",
+      "family": "examination_timetabling",
+      "implementation_paths": ["benchmarks/itc2007_exam.py"],
+      "established_primitives": ["large neighborhood search", "exact CP repair", "room-aware examination local search"],
+      "source_ids": ["itc2007_exam_spec", "muller_2008_hybrid", "gogos_et_al_2023"],
+      "planora_specific_contribution": "Room-penalty coincidence units and mixed-duration outliers define small exact blocks whose domains are derived from incumbent pressure and boundary cost.",
+      "novelty_status": "unestablished_planora_block_selection_hypothesis",
+      "prohibited_claims": ["first CP examination LNS", "new room-penalty objective"],
+      "required_ablations": ["pressure root families", "block width", "relief-period selection", "shared-state portfolio"]
+    },
+    {
+      "id": "exam_post_incumbent_portfolio",
+      "family": "examination_timetabling",
+      "implementation_paths": ["benchmarks/itc2007_exam.py"],
+      "established_primitives": ["multi-neighborhood local search", "single and pair interchange", "fixed-period room reassignment", "coupled period-room exact repair"],
+      "source_ids": ["itc2007_exam_spec", "muller_2008_hybrid", "gogos_et_al_2023"],
+      "planora_specific_contribution": "An explicit post-incumbent API schedules representation-derived pressure, temporal, room-quota, and coupled stages under one immutable fail-closed deadline and labels operator versus selection provenance in telemetry.",
+      "novelty_status": "unestablished_verification_aware_portfolio_hypothesis",
+      "prohibited_claims": ["new examination neighborhood family", "end-to-end cold runtime from a retained incumbent", "Planora-native result from a comparator incumbent"],
+      "required_ablations": ["each stage removed in turn", "stage order", "shared versus rebuilt state", "post-incumbent versus complete solver timing"]
+    }
+  ]
+}

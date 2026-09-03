@@ -6,11 +6,15 @@ For each week, index time within the week by $t \in \{0,\dots,|\mathcal{D}|S-1\}
 $t = \mathrm{dayIndex}(d)\cdot S + s$.
 
 Each activity $a$ has a set of allowed start indices $T_a$ derived from staff
-day/week availability, duration feasibility, and optional locks.
-Introduce binary variables $x_{a,t}\in\{0,1\}$ for $t\in T_a$ indicating that activity $a$ starts at time $t$.
+day/week availability, duration feasibility, institutional windows, generic-resource availability, and optional locks.
+The implementation uses one integer variable $s_a\in T_a$ rather than eagerly materializing a one-hot vector for every domain value.
+When a constraint, objective term, or decomposition cut requires a value literal, $x_{a,t}\Leftrightarrow(s_a=t)$ is created lazily.
+Objective-enabled models may create the full one-hot channeling once because many occupancy penalties reuse it:
 \begin{align}
-\sum_{t\in T_a} x_{a,t} &= 1 \qquad \forall a\in\mathcal{A}. \label{eq:oneStart}
+\sum_{t\in T_a} x_{a,t} &= 1, &
+s_a &= \sum_{t\in T_a}t x_{a,t}. \label{eq:oneStart}
 \end{align}
+Pure feasibility models therefore scale with one start integer per activity plus only the literals demanded by active rules and cuts.
 
 \paragraph{Staff week availability.}
 If $\mathrm{week}(a)\notin \mathrm{AvailWeeks}(\mathrm{staff}(a))$, then
@@ -48,13 +52,43 @@ The implementation rejects such instances during model construction.
 \paragraph{Load caps (optional).}
 If $\mathrm{MaxWeek}(p)$ is specified, enforce:
 \begin{align}
-\sum_{\substack{a:\,\mathrm{staff}(a)=p,\,\mathrm{week}(a)=w}} \mathrm{dur}(a) \le \mathrm{MaxWeek}(p) \qquad \forall p,w.
+\sum_{\substack{a:\,\mathrm{staff}(a)=p,\\\mathrm{week}(a)=w}}
+\mathrm{dur}(a) &\le \mathrm{MaxWeek}(p),
+\qquad \forall p,w.
 \end{align}
 Similarly, if $\mathrm{MaxDay}(p)$ is specified, enforce per-day caps.
 
 \paragraph{Block-only professors.}
 For staff with a \emph{block-only} flag, lectures for a given course in a given week must form a single contiguous block of length 2--3 on one day.
 The implementation encodes this via per-slot occupancy indicators and a ``single block-start'' constraint.
+
+\subsection{Institutional Distribution Constraints}
+An instance can carry typed relations over an ordered activity set.
+The shared evaluator implements \texttt{SameStart}, \texttt{SameTime}, \texttt{DifferentTime}, day/week equality and inequality, overlap/non-overlap, room equality and inequality, same attendees, precedence, work-day span, minimum gap, maximum days, maximum day load, maximum breaks, and maximum block.
+Hard pair relations are compiled as allowed-domain tables; room relations are compiled either into integrated room selectors or the exact room subproblem.
+Maximum-day and maximum-day-load rules use day-presence literals.
+Hard maximum-break and maximum-block rules currently fail at model construction because only their exact evaluator and soft scorer are implemented; this explicit capability boundary prevents an imported rule from being weakened silently.
+
+\subsection{Enrollment-Uncertainty Capacity}
+Let nominal demand for activity or cluster $J$ be $\bar d_J=\sum_{g\in G(J)}\bar d_g$.
+Named forecast scenario $\omega$ gives $d_J^\omega=\sum_g d_g^\omega$.
+Let $k=\lfloor\Gamma\rfloor$ and define budgeted demand as
+\begin{align}
+D_J^{\mathrm{bud}}
+=\bar d_J+\sum_{i=1}^{k}\hat d_{(i)}
++\left\lceil(\Gamma-k)\hat d_{(k+1)}\right\rceil .
+\end{align}
+The selectable room requirement is
+\begin{align}
+D_J = \begin{cases}
+\bar d_J & \text{nominal},\\
+\max_\omega d_J^\omega & \text{worst case},\\
+Q_q(\{d_J^\omega\}) & \text{empirical quantile }q,\\
+D_J^{\mathrm{bud}} & \text{budgeted},
+\end{cases}
+\end{align}
+where $\hat d_{(i)}$ are descending group deviations.
+The same $D_J$ is used by integrated room domains, exact room jobs, greedy eligibility, post-solve validation, feasibility diagnostics, and portable service metrics.
 
 \subsection{Clustering (Co-Location)}
 Certain activity sets are designated as clusters (e.g., shared lectures across groups, cross-major clusters).
@@ -64,15 +98,16 @@ For each cluster $C$ with leader $\ell$, enforce equal start times:
 \end{align}
 
 \subsection{Soft Objective (Optional)}
-When objective mode is enabled, the model minimizes
+When the balanced objective mode is enabled, the model minimizes
 \begin{align}
 \min_{x}\; F(x)
 &=
 w_{\mathrm{free}}\,P_{\mathrm{free}}(x)
-+w_{\mathrm{gap}}\,P_{\mathrm{gap}}(x)
-+w_{\mathrm{late}}\,P_{\mathrm{late}}(x)\nonumber\\
++w_{\mathrm{gap}}\,P_{\mathrm{gap}}(x)\nonumber\\
 &\quad
-+w_{\mathrm{stab}}\,P_{\mathrm{stab}}(x)
++w_{\mathrm{late}}\,P_{\mathrm{late}}(x)
++w_{\mathrm{stab}}\,P_{\mathrm{stab}}(x)\nonumber\\
+&\quad
 +w_{\mathrm{room}}\,P_{\mathrm{room}}(x)
 +w_{\mathrm{same}}\,P_{\mathrm{same}}(x),
 \label{eq:softobj}
@@ -84,15 +119,26 @@ of same-course LEC/TUT sessions for each group.
 All weights \(w_{\bullet}\ge 0\) are configurable at the instance level.
 
 For the concentration component, let
-\[
-N_{g,c,k,w}=\#\{a\in\mathcal{A}: g\in\mathcal{G}(a),\ \mathrm{course}(a)=c,\ \mathrm{kind}(a)=k,\ \mathrm{week}(a)=w\},
-\]
+\begin{align*}
+N_{g,c,k,w}=\#\{a\in\mathcal{A}:{}&g\in\mathcal{G}(a),\\
+&\mathrm{course}(a)=c,\ \mathrm{kind}(a)=k,\\
+&\mathrm{week}(a)=w\}.
+\end{align*}
 for \(k\in\{\mathrm{LEC},\mathrm{TUT}\}\), and define
 \[
 P_{\mathrm{same}}=\sum_{g,c,k,w}\max(0,N_{g,c,k,w}-1).
 \]
-In the current strict CP model, weeks are fixed per activity; therefore this term is
-mainly active in post-solve interactive edits where activities may be shifted across weeks.
+In the CP model, weeks are fixed per activity, so this term is constant.
+The implementation records the constant to keep CP and exact post-solve score scales aligned; it becomes decision-relevant only in editing procedures that permit week changes.
+
+\paragraph{Fairness-first profile.}
+Let $B_g(x)$ be the weighted group-specific portion of the soft penalty and let $U$ be a proven upper bound on all secondary penalties.
+The fairness profile minimizes
+\begin{align}
+(U+1)\max_{g\in\mathcal{G}}B_g(x)+F(x).
+\end{align}
+Because the multiplier exceeds the maximum possible secondary change, this scalarization exactly implements the lexicographic order ``minimum worst group burden, then minimum total penalty.''
+Reported fairness diagnostics also include the 90th percentile and total burden, Gini inequality, Jain equality, and burden per scheduled slot.
 
 If objective mode is disabled, the solver runs in pure feasibility mode:
 find any \(x\) satisfying all hard constraints.

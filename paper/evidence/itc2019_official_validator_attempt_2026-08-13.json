@@ -1,0 +1,22 @@
+{
+  "attempted_at": "2026-08-13",
+  "endpoint": "https://www.itc2019.org/server/validator/",
+  "method": "POST multipart/form-data field solution",
+  "official_validator_agreement": false,
+  "result_classification": "blocked_by_official_site_authentication",
+  "solution_path": "data/external/itc2019-mpp-c33d15797686/raw/data/output/ITCxml",
+  "solution_sha256": "0749476cf5df3c5cc995f001e8e5f502f42240533c932290b215a271981db610",
+  "response": {
+    "status": "200",
+    "message": "Solution validated",
+    "obj": {
+      "code": 401,
+      "message": "Authentication Failed: invalid hexadecimal representation of an ObjectId: [null]",
+      "parameters": {
+        "uid": "null",
+        "html": "1"
+      }
+    }
+  },
+  "required_external_action": "An authorized ITC-2019 website account must submit the pinned solution and retain the official report. Local validation cannot be substituted for that agreement."
+}

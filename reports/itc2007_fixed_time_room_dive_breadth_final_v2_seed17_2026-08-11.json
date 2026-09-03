@@ -1,0 +1,1353 @@
+{
+  "artifacts": {
+    "immutable_cpsolver_source": {
+      "directory": "output/itc2007-breadth-21-candidate-vs-cpsolver-10s-seed17",
+      "manifest_sha256": "1964dcfcb199efd9e8a21173a9ad61a1e4a1d3b8945547b276a1c2ff009473cc",
+      "results_sha256": "4043519ab9d42052ce0102d55fa34e44629431b529de0f3460b4a929fe921cd3",
+      "rows_reused": "Only the 21 solver_id=cpsolver-itc2007 rows.",
+      "summary_sha256": "eb230822923730b69f5de75d31ab0c1122e2b319f374e0524cedfd97275b67dc"
+    },
+    "matrix_index": "output/itc2007-room-dive-breadth-seed17-counterbalanced-final-v2/matrix_index.json",
+    "matrix_index_sha256": "aba9413209699d2eff0db431f90e971dea3dada0e675420f3d9cefeb6bc8f2f4",
+    "preceding_deadline_correction_gate": {
+      "directory": "output/itc2007-room-dive-deadline-admission-gate-7-on-seed17-10s-v2",
+      "report": "reports/itc2007_fixed_time_room_dive_deadline_gate_v2_2026-08-11.json",
+      "report_sha256": "d595fb73473c804e66eceba47301cc12fb4c7522ee17e1afb75c578bd624fcc2"
+    },
+    "preserved_failed_breadth_v1": {
+      "directory": "output/itc2007-room-dive-breadth-seed17-counterbalanced-v1",
+      "matrix_index_sha256": "ebf31d4067081012a729170478f2a618ce534a253ce81d8961abcff7994f311e",
+      "report": "reports/itc2007_fixed_time_room_dive_breadth_seed17_2026-08-11.json",
+      "report_sha256": "43560980d667a5495dda0b597ae4942f4e355ed94ec041dbdb0fcd3cd2d912d7",
+      "source_sha256": "0a72cc1e8a029720cf3536c4ee3401cd92b9c79f711322c4638dea8520bdc19d"
+    },
+    "raw_root": "output/itc2007-room-dive-breadth-seed17-counterbalanced-final-v2",
+    "report": "reports/itc2007_fixed_time_room_dive_breadth_final_v2_seed17_2026-08-11.json"
+  },
+  "claim_boundary": "This is a complete counterbalanced single-seed engineering ablation, not a replicated or statistical superiority study. OFF and ON ran as separate fresh processes, so paired differences can include time-limited upstream search divergence. Only one within-run room candidate improved its incumbent. CPSolver rows are immutable reuse after exact environment and instance compatibility checks, not an interleaved rerun.",
+  "configuration": {
+    "completion_reserve_seconds_on": 0.25,
+    "configured_solver_seconds": 10.0,
+    "course_symmetry": false,
+    "cpu_affinity": 0,
+    "execution_order": "odd instances OFF then ON; even instances ON then OFF",
+    "finalization_reserve_seconds_both_variants": 0.5,
+    "fixed_time_room_dive": [
+      "off",
+      "on"
+    ],
+    "instances": [
+      "comp01-comp21"
+    ],
+    "official_aware_adaptive_seeding": true,
+    "seed": 17,
+    "strategy": "research_adaptive",
+    "workers": 1
+  },
+  "dive_attribution": {
+    "accepted_improvement_runs": 1,
+    "admission_passed_runs": 13,
+    "attempted_runs": 13,
+    "direct_within_run_component_change": {
+      "curriculum_compactness": 0,
+      "minimum_working_days": 0,
+      "room_capacity": -261,
+      "room_stability": 15,
+      "total": -246
+    },
+    "direct_within_run_improvement_sum": 246,
+    "dive_local_deadline_overrun_seconds": {
+      "count": 21,
+      "maximum": 0.0,
+      "mean": 0.0,
+      "median": 0.0,
+      "minimum": 0.0,
+      "sum": 0.0
+    },
+    "rejected_attempts": 12,
+    "skipped_runs": 8,
+    "status_counts": {
+      "ACCEPTED_IMPROVEMENT": 1,
+      "NO_FEASIBLE_CANDIDATE": 10,
+      "REJECTED_NO_IMPROVEMENT": 2,
+      "SKIPPED_INSUFFICIENT_BUDGET": 8
+    },
+    "within_run_delta_distribution_for_attempted_runs": {
+      "count": 13,
+      "maximum": 0,
+      "mean": -18.923076923076923,
+      "median": 0,
+      "minimum": -246,
+      "sum": -246
+    }
+  },
+  "evaluated_on": "2026-08-11",
+  "evidence_status": "complete_counterbalanced_single_seed_strict_deadline_gate_passed",
+  "external_comparison": {
+    "compatibility_gate_passed": true,
+    "immutable_cpsolver_compatibility": {
+      "cpsolver_classes_sha256": true,
+      "cpsolver_git_head": true,
+      "cpu_affinity": true,
+      "cpu_model": true,
+      "instance_paths_and_sha256": true,
+      "logical_cpu_count": true,
+      "ortools_version": true,
+      "platform": true,
+      "processor": true,
+      "python_version": true,
+      "seeds": true,
+      "time_limit_seconds": true,
+      "validator_command": true,
+      "validator_sha256": true,
+      "workers": true
+    },
+    "objective_sums": {
+      "cpsolver": 3586,
+      "planora_on": 19870,
+      "planora_on_over_cpsolver": 5.540992749581707
+    },
+    "positive_denominator_score_ratios": {
+      "arithmetic_mean": 9.389940807989015,
+      "geometric_mean": 7.1550495062698465,
+      "maximum": 50.6,
+      "median": 7.490588758383045,
+      "minimum": 2.122670807453416,
+      "pairs": 20,
+      "undefined_or_infinite": [
+        "comp11: CPSolver 0, Planora ON 661"
+      ]
+    },
+    "ranking": {
+      "cpsolver_wins": 21,
+      "on_wins": 0,
+      "ties": 0
+    },
+    "weighted_component_sums": {
+      "cpsolver": {
+        "curriculum_compactness": 2268,
+        "minimum_working_days": 955,
+        "room_capacity": 135,
+        "room_stability": 228,
+        "total": 3586
+      },
+      "planora_on": {
+        "curriculum_compactness": 8180,
+        "minimum_working_days": 6405,
+        "room_capacity": 4576,
+        "room_stability": 709,
+        "total": 19870
+      },
+      "planora_on_over_cpsolver": {
+        "curriculum_compactness": 3.6067019400352733,
+        "minimum_working_days": 6.706806282722513,
+        "room_capacity": 33.8962962962963,
+        "room_stability": 3.1096491228070176,
+        "total": 5.540992749581707
+      }
+    }
+  },
+  "headline": "The corrected fixed-time room-dive path passed official validation and strict total-deadline accounting on all 42 OFF/ON cases. ON was better on 3/21, tied on 18/21, and worse on 0/21, reducing the score sum by 2.87 percent; however only comp01 was a direct accepted room-dive gain, and compatible CPSolver still won all 21 comparisons.",
+  "official_validation": {
+    "external_objective_total_matches": 42,
+    "hard_zero": 42,
+    "internal_external_component_matches": 42,
+    "officially_feasible": 42,
+    "records": 42,
+    "validator_clean": 42
+  },
+  "paired_ablation": {
+    "objective_sums": {
+      "off": 20457,
+      "on": 19870,
+      "on_minus_off": -587,
+      "on_relative_change": -0.02869433445764291
+    },
+    "on_better": 3,
+    "on_worse": 0,
+    "paired_delta_distribution": {
+      "count": 21,
+      "maximum": 0,
+      "mean": -27.952380952380953,
+      "median": 0,
+      "minimum": -291,
+      "sum": -587
+    },
+    "ties": 18,
+    "weighted_component_sums": {
+      "off": {
+        "curriculum_compactness": 8230,
+        "minimum_working_days": 6460,
+        "room_capacity": 5093,
+        "room_stability": 674,
+        "total": 20457
+      },
+      "on": {
+        "curriculum_compactness": 8180,
+        "minimum_working_days": 6405,
+        "room_capacity": 4576,
+        "room_stability": 709,
+        "total": 19870
+      },
+      "on_minus_off": {
+        "curriculum_compactness": -50,
+        "minimum_working_days": -55,
+        "room_capacity": -517,
+        "room_stability": 35,
+        "total": -587
+      },
+      "on_relative_change": {
+        "curriculum_compactness": -0.0060753341433779084,
+        "minimum_working_days": -0.008513931888544879,
+        "room_capacity": -0.10151187904967607,
+        "room_stability": 0.05192878338278928,
+        "total": -0.02869433445764291
+      }
+    }
+  },
+  "paired_improvement_attribution": [
+    {
+      "attribution": "accepted fixed-time room candidate",
+      "dive_returned_source": "fixed_time_room_dive",
+      "dive_status": "ACCEPTED_IMPROVEMENT",
+      "instance": "comp01",
+      "off_returned_score": 499,
+      "off_returned_source": "initial_incumbent",
+      "on_pre_dive_score": 499,
+      "on_returned_score": 253,
+      "on_returned_source": "fixed_time_room_dive",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": -261,
+        "room_stability": 15,
+        "total": -246
+      },
+      "paired_delta": -246,
+      "phase_seconds": {
+        "off_adaptive": 7.014782312995521,
+        "off_initial": 1.0548175220028497,
+        "off_total": 8.117576292002923,
+        "on_adaptive": 7.014295738990768,
+        "on_dive_search": 0.39724755799397826,
+        "on_dive_setup": 0.006008875003317371,
+        "on_dive_total": 0.41068787200492807,
+        "on_dive_validation": 0.003767073998460546,
+        "on_initial": 1.090998257001047,
+        "on_total": 8.566147224002634
+      },
+      "within_run_dive_delta": -246
+    },
+    {
+      "attribution": "time-limited upstream divergence before the dive; no accepted dive candidate",
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp13",
+      "off_returned_score": 1096,
+      "off_returned_source": "initial_incumbent",
+      "on_pre_dive_score": 1046,
+      "on_returned_score": 1046,
+      "on_returned_source": "initial_incumbent",
+      "paired_component_delta": {
+        "curriculum_compactness": -14,
+        "minimum_working_days": 5,
+        "room_capacity": -48,
+        "room_stability": 7,
+        "total": -50
+      },
+      "paired_delta": -50,
+      "phase_seconds": {
+        "off_adaptive": 7.017853462006315,
+        "off_initial": 1.9129931049974402,
+        "off_total": 9.166293107991805,
+        "on_adaptive": 7.066248053000891,
+        "on_dive_search": 0.3593011399934767,
+        "on_dive_setup": 0.0296998339908896,
+        "on_dive_total": 0.39247565499681514,
+        "on_dive_validation": null,
+        "on_initial": 1.9457158979930682,
+        "on_total": 9.604869884991786
+      },
+      "within_run_dive_delta": 0
+    },
+    {
+      "attribution": "time-limited upstream divergence before the dive; no accepted dive candidate",
+      "dive_returned_source": "incumbent",
+      "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+      "instance": "comp20",
+      "off_returned_score": 1928,
+      "off_returned_source": "initial_incumbent",
+      "on_pre_dive_score": null,
+      "on_returned_score": 1637,
+      "on_returned_source": "rescue_incumbent",
+      "paired_component_delta": {
+        "curriculum_compactness": -36,
+        "minimum_working_days": -60,
+        "room_capacity": -208,
+        "room_stability": 13,
+        "total": -291
+      },
+      "paired_delta": -291,
+      "phase_seconds": {
+        "off_adaptive": 6.426037601006101,
+        "off_initial": 3.0451771910011303,
+        "off_total": 9.800267914994038,
+        "on_adaptive": 3.6755793370102765,
+        "on_dive_search": null,
+        "on_dive_setup": null,
+        "on_dive_total": 1.1883006663993001e-05,
+        "on_dive_validation": null,
+        "on_initial": 2.9305501720082248,
+        "on_total": 9.543771672004368
+      },
+      "within_run_dive_delta": null
+    }
+  ],
+  "per_instance": [
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 5,
+      "dive_attempted": true,
+      "dive_candidate_score": 253,
+      "dive_status": "ACCEPTED_IMPROVEMENT",
+      "instance": "comp01",
+      "off": 499,
+      "off_components": {
+        "curriculum_compactness": 58,
+        "minimum_working_days": 75,
+        "room_capacity": 341,
+        "room_stability": 25,
+        "total": 499
+      },
+      "off_solve_elapsed_seconds": 8.117576292002923,
+      "off_total_overrun_seconds": 0.0,
+      "on": 253,
+      "on_components": {
+        "curriculum_compactness": 58,
+        "minimum_working_days": 75,
+        "room_capacity": 80,
+        "room_stability": 40,
+        "total": 253
+      },
+      "on_pre_score": 499,
+      "on_returned_source": "fixed_time_room_dive",
+      "on_solve_elapsed_seconds": 8.566147224002634,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": -261,
+        "room_stability": 15,
+        "total": -246
+      },
+      "paired_delta": -246,
+      "shared_deadline_remaining_at_dive_start_seconds": 1.8714770040096482,
+      "within_run_dive_delta": -246
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 137,
+      "dive_attempted": true,
+      "dive_candidate_score": null,
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp02",
+      "off": 914,
+      "off_components": {
+        "curriculum_compactness": 444,
+        "minimum_working_days": 350,
+        "room_capacity": 82,
+        "room_stability": 38,
+        "total": 914
+      },
+      "off_solve_elapsed_seconds": 9.137559395996504,
+      "off_total_overrun_seconds": 0.0,
+      "on": 914,
+      "on_components": {
+        "curriculum_compactness": 444,
+        "minimum_working_days": 350,
+        "room_capacity": 82,
+        "room_stability": 38,
+        "total": 914
+      },
+      "on_pre_score": 914,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.608382067002822,
+      "on_total_overrun_seconds": 0.0,
+      "order": "on_off",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.988142654998228,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 167,
+      "dive_attempted": true,
+      "dive_candidate_score": null,
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp03",
+      "off": 701,
+      "off_components": {
+        "curriculum_compactness": 290,
+        "minimum_working_days": 320,
+        "room_capacity": 56,
+        "room_stability": 35,
+        "total": 701
+      },
+      "off_solve_elapsed_seconds": 8.782466384000145,
+      "off_total_overrun_seconds": 0.0,
+      "on": 701,
+      "on_components": {
+        "curriculum_compactness": 290,
+        "minimum_working_days": 320,
+        "room_capacity": 56,
+        "room_stability": 35,
+        "total": 701
+      },
+      "on_pre_score": 701,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.074446995000471,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 1.4713389509997796,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 67,
+      "dive_attempted": true,
+      "dive_candidate_score": null,
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp04",
+      "off": 978,
+      "off_components": {
+        "curriculum_compactness": 194,
+        "minimum_working_days": 320,
+        "room_capacity": 432,
+        "room_stability": 32,
+        "total": 978
+      },
+      "off_solve_elapsed_seconds": 9.03465480300656,
+      "off_total_overrun_seconds": 0.0,
+      "on": 978,
+      "on_components": {
+        "curriculum_compactness": 194,
+        "minimum_working_days": 320,
+        "room_capacity": 432,
+        "room_stability": 32,
+        "total": 978
+      },
+      "on_pre_score": 978,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.409643310005777,
+      "on_total_overrun_seconds": 0.0,
+      "order": "on_off",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 1.134787946997676,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 746,
+      "dive_attempted": true,
+      "dive_candidate_score": null,
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp05",
+      "off": 1645,
+      "off_components": {
+        "curriculum_compactness": 706,
+        "minimum_working_days": 280,
+        "room_capacity": 650,
+        "room_stability": 9,
+        "total": 1645
+      },
+      "off_solve_elapsed_seconds": 8.260158379998757,
+      "off_total_overrun_seconds": 0.0,
+      "on": 1645,
+      "on_components": {
+        "curriculum_compactness": 706,
+        "minimum_working_days": 280,
+        "room_capacity": 650,
+        "room_stability": 9,
+        "total": 1645
+      },
+      "on_pre_score": 1645,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 8.821484347005025,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 1.8978916069900151,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": false,
+      "admission_shortfall_seconds": 0.07873982399178203,
+      "cpsolver": 141,
+      "dive_attempted": false,
+      "dive_candidate_score": null,
+      "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+      "instance": "comp06",
+      "off": 1172,
+      "off_components": {
+        "curriculum_compactness": 178,
+        "minimum_working_days": 620,
+        "room_capacity": 349,
+        "room_stability": 25,
+        "total": 1172
+      },
+      "off_solve_elapsed_seconds": 9.661587502007023,
+      "off_total_overrun_seconds": 0.0,
+      "on": 1172,
+      "on_components": {
+        "curriculum_compactness": 178,
+        "minimum_working_days": 620,
+        "room_capacity": 349,
+        "room_stability": 25,
+        "total": 1172
+      },
+      "on_pre_score": null,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.53926225399482,
+      "on_total_overrun_seconds": 0.0,
+      "order": "on_off",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.671260176008218,
+      "within_run_dive_delta": null
+    },
+    {
+      "admission_passed": false,
+      "admission_shortfall_seconds": 0.04828021700086538,
+      "cpsolver": 99,
+      "dive_attempted": false,
+      "dive_candidate_score": null,
+      "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+      "instance": "comp07",
+      "off": 1304,
+      "off_components": {
+        "curriculum_compactness": 432,
+        "minimum_working_days": 535,
+        "room_capacity": 294,
+        "room_stability": 43,
+        "total": 1304
+      },
+      "off_solve_elapsed_seconds": 9.853849110993906,
+      "off_total_overrun_seconds": 0.0,
+      "on": 1304,
+      "on_components": {
+        "curriculum_compactness": 432,
+        "minimum_working_days": 535,
+        "room_capacity": 294,
+        "room_stability": 43,
+        "total": 1304
+      },
+      "on_pre_score": null,
+      "on_returned_source": "rescue_incumbent",
+      "on_solve_elapsed_seconds": 9.57876215899887,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.7017197829991346,
+      "within_run_dive_delta": null
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 78,
+      "dive_attempted": true,
+      "dive_candidate_score": null,
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp08",
+      "off": 692,
+      "off_components": {
+        "curriculum_compactness": 444,
+        "minimum_working_days": 180,
+        "room_capacity": 27,
+        "room_stability": 41,
+        "total": 692
+      },
+      "off_solve_elapsed_seconds": 9.325333758009947,
+      "off_total_overrun_seconds": 0.0,
+      "on": 692,
+      "on_components": {
+        "curriculum_compactness": 444,
+        "minimum_working_days": 180,
+        "room_capacity": 27,
+        "room_stability": 41,
+        "total": 692
+      },
+      "on_pre_score": 692,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.704983914998593,
+      "on_total_overrun_seconds": 0.0,
+      "order": "on_off",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.8278543280030135,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 146,
+      "dive_attempted": true,
+      "dive_candidate_score": null,
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp09",
+      "off": 893,
+      "off_components": {
+        "curriculum_compactness": 310,
+        "minimum_working_days": 400,
+        "room_capacity": 162,
+        "room_stability": 21,
+        "total": 893
+      },
+      "off_solve_elapsed_seconds": 8.93847067799652,
+      "off_total_overrun_seconds": 0.0,
+      "on": 893,
+      "on_components": {
+        "curriculum_compactness": 310,
+        "minimum_working_days": 400,
+        "room_capacity": 162,
+        "room_stability": 21,
+        "total": 893
+      },
+      "on_pre_score": 893,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.41315305500757,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 1.1401801359897945,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": false,
+      "admission_shortfall_seconds": 0.035838674986734986,
+      "cpsolver": 82,
+      "dive_attempted": false,
+      "dive_candidate_score": null,
+      "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+      "instance": "comp10",
+      "off": 826,
+      "off_components": {
+        "curriculum_compactness": 448,
+        "minimum_working_days": 295,
+        "room_capacity": 24,
+        "room_stability": 59,
+        "total": 826
+      },
+      "off_solve_elapsed_seconds": 9.751383886992699,
+      "off_total_overrun_seconds": 0.0,
+      "on": 826,
+      "on_components": {
+        "curriculum_compactness": 448,
+        "minimum_working_days": 295,
+        "room_capacity": 24,
+        "room_stability": 59,
+        "total": 826
+      },
+      "on_pre_score": null,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.532185205986025,
+      "on_total_overrun_seconds": 0.0,
+      "order": "on_off",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.714161325013265,
+      "within_run_dive_delta": null
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 0,
+      "dive_attempted": true,
+      "dive_candidate_score": 661,
+      "dive_status": "REJECTED_NO_IMPROVEMENT",
+      "instance": "comp11",
+      "off": 661,
+      "off_components": {
+        "curriculum_compactness": 48,
+        "minimum_working_days": 125,
+        "room_capacity": 473,
+        "room_stability": 15,
+        "total": 661
+      },
+      "off_solve_elapsed_seconds": 7.577724296992528,
+      "off_total_overrun_seconds": 0.0,
+      "on": 661,
+      "on_components": {
+        "curriculum_compactness": 48,
+        "minimum_working_days": 125,
+        "room_capacity": 473,
+        "room_stability": 15,
+        "total": 661
+      },
+      "on_pre_score": 661,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 8.001484937005443,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 2.4393869469931815,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 644,
+      "dive_attempted": true,
+      "dive_candidate_score": null,
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp12",
+      "off": 1367,
+      "off_components": {
+        "curriculum_compactness": 882,
+        "minimum_working_days": 340,
+        "room_capacity": 121,
+        "room_stability": 24,
+        "total": 1367
+      },
+      "off_solve_elapsed_seconds": 8.74922685099591,
+      "off_total_overrun_seconds": 0.0,
+      "on": 1367,
+      "on_components": {
+        "curriculum_compactness": 882,
+        "minimum_working_days": 340,
+        "room_capacity": 121,
+        "room_stability": 24,
+        "total": 1367
+      },
+      "on_pre_score": 1367,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.234541779005667,
+      "on_total_overrun_seconds": 0.0,
+      "order": "on_off",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 1.43382491999364,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 114,
+      "dive_attempted": true,
+      "dive_candidate_score": null,
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp13",
+      "off": 1096,
+      "off_components": {
+        "curriculum_compactness": 492,
+        "minimum_working_days": 190,
+        "room_capacity": 385,
+        "room_stability": 29,
+        "total": 1096
+      },
+      "off_solve_elapsed_seconds": 9.166293107991805,
+      "off_total_overrun_seconds": 0.0,
+      "on": 1046,
+      "on_components": {
+        "curriculum_compactness": 478,
+        "minimum_working_days": 195,
+        "room_capacity": 337,
+        "room_stability": 36,
+        "total": 1046
+      },
+      "on_pre_score": 1046,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.604869884991786,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": -14,
+        "minimum_working_days": 5,
+        "room_capacity": -48,
+        "room_stability": 7,
+        "total": -50
+      },
+      "paired_delta": -50,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.9330436710006325,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 109,
+      "dive_attempted": true,
+      "dive_candidate_score": null,
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp14",
+      "off": 917,
+      "off_components": {
+        "curriculum_compactness": 420,
+        "minimum_working_days": 200,
+        "room_capacity": 274,
+        "room_stability": 23,
+        "total": 917
+      },
+      "off_solve_elapsed_seconds": 8.805370444999426,
+      "off_total_overrun_seconds": 0.0,
+      "on": 917,
+      "on_components": {
+        "curriculum_compactness": 420,
+        "minimum_working_days": 200,
+        "room_capacity": 274,
+        "room_stability": 23,
+        "total": 917
+      },
+      "on_pre_score": 917,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.26657322900428,
+      "on_total_overrun_seconds": 0.0,
+      "order": "on_off",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 1.3565225719939917,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 139,
+      "dive_attempted": true,
+      "dive_candidate_score": null,
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp15",
+      "off": 701,
+      "off_components": {
+        "curriculum_compactness": 290,
+        "minimum_working_days": 320,
+        "room_capacity": 56,
+        "room_stability": 35,
+        "total": 701
+      },
+      "off_solve_elapsed_seconds": 8.713299405004364,
+      "off_total_overrun_seconds": 0.0,
+      "on": 701,
+      "on_components": {
+        "curriculum_compactness": 290,
+        "minimum_working_days": 320,
+        "room_capacity": 56,
+        "room_stability": 35,
+        "total": 701
+      },
+      "on_pre_score": 701,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.181481056002667,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 1.3575072009989526,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": false,
+      "admission_shortfall_seconds": 0.018559420001110993,
+      "cpsolver": 104,
+      "dive_attempted": false,
+      "dive_candidate_score": null,
+      "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+      "instance": "comp16",
+      "off": 895,
+      "off_components": {
+        "curriculum_compactness": 576,
+        "minimum_working_days": 250,
+        "room_capacity": 32,
+        "room_stability": 37,
+        "total": 895
+      },
+      "off_solve_elapsed_seconds": 9.733777710993309,
+      "off_total_overrun_seconds": 0.0,
+      "on": 895,
+      "on_components": {
+        "curriculum_compactness": 576,
+        "minimum_working_days": 250,
+        "room_capacity": 32,
+        "room_stability": 37,
+        "total": 895
+      },
+      "on_pre_score": null,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.480727503003436,
+      "on_total_overrun_seconds": 0.0,
+      "order": "on_off",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.731440579998889,
+      "within_run_dive_delta": null
+    },
+    {
+      "admission_passed": false,
+      "admission_shortfall_seconds": 0.02386042001307942,
+      "cpsolver": 146,
+      "dive_attempted": false,
+      "dive_candidate_score": null,
+      "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+      "instance": "comp17",
+      "off": 952,
+      "off_components": {
+        "curriculum_compactness": 458,
+        "minimum_working_days": 320,
+        "room_capacity": 126,
+        "room_stability": 48,
+        "total": 952
+      },
+      "off_solve_elapsed_seconds": 9.704167966992827,
+      "off_total_overrun_seconds": 0.0,
+      "on": 952,
+      "on_components": {
+        "curriculum_compactness": 458,
+        "minimum_working_days": 320,
+        "room_capacity": 126,
+        "room_stability": 48,
+        "total": 952
+      },
+      "on_pre_score": null,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 9.462492492006277,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.7261395799869206,
+      "within_run_dive_delta": null
+    },
+    {
+      "admission_passed": true,
+      "admission_shortfall_seconds": 0.0,
+      "cpsolver": 115,
+      "dive_attempted": true,
+      "dive_candidate_score": 572,
+      "dive_status": "REJECTED_NO_IMPROVEMENT",
+      "instance": "comp18",
+      "off": 572,
+      "off_components": {
+        "curriculum_compactness": 256,
+        "minimum_working_days": 230,
+        "room_capacity": 65,
+        "room_stability": 21,
+        "total": 572
+      },
+      "off_solve_elapsed_seconds": 7.889794171001995,
+      "off_total_overrun_seconds": 0.0,
+      "on": 572,
+      "on_components": {
+        "curriculum_compactness": 256,
+        "minimum_working_days": 230,
+        "room_capacity": 65,
+        "room_stability": 21,
+        "total": 572
+      },
+      "on_pre_score": 572,
+      "on_returned_source": "initial_incumbent",
+      "on_solve_elapsed_seconds": 8.32284360199992,
+      "on_total_overrun_seconds": 0.0,
+      "order": "on_off",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 2.1467618409951683,
+      "within_run_dive_delta": 0
+    },
+    {
+      "admission_passed": false,
+      "admission_shortfall_seconds": 0.020507854991592467,
+      "cpsolver": 156,
+      "dive_attempted": false,
+      "dive_candidate_score": null,
+      "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+      "instance": "comp19",
+      "off": 660,
+      "off_components": {
+        "curriculum_compactness": 452,
+        "minimum_working_days": 165,
+        "room_capacity": 10,
+        "room_stability": 33,
+        "total": 660
+      },
+      "off_solve_elapsed_seconds": 9.701318617007928,
+      "off_total_overrun_seconds": 0.0,
+      "on": 660,
+      "on_components": {
+        "curriculum_compactness": 452,
+        "minimum_working_days": 165,
+        "room_capacity": 10,
+        "room_stability": 33,
+        "total": 660
+      },
+      "on_pre_score": null,
+      "on_returned_source": "rescue_incumbent",
+      "on_solve_elapsed_seconds": 9.477860345999943,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.7294921450084075,
+      "within_run_dive_delta": null
+    },
+    {
+      "admission_passed": false,
+      "admission_shortfall_seconds": 0.040770314997644164,
+      "cpsolver": 197,
+      "dive_attempted": false,
+      "dive_candidate_score": null,
+      "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+      "instance": "comp20",
+      "off": 1928,
+      "off_components": {
+        "curriculum_compactness": 408,
+        "minimum_working_days": 555,
+        "room_capacity": 922,
+        "room_stability": 43,
+        "total": 1928
+      },
+      "off_solve_elapsed_seconds": 9.800267914994038,
+      "off_total_overrun_seconds": 0.0,
+      "on": 1637,
+      "on_components": {
+        "curriculum_compactness": 372,
+        "minimum_working_days": 495,
+        "room_capacity": 714,
+        "room_stability": 56,
+        "total": 1637
+      },
+      "on_pre_score": null,
+      "on_returned_source": "rescue_incumbent",
+      "on_solve_elapsed_seconds": 9.543771672004368,
+      "on_total_overrun_seconds": 0.0,
+      "order": "on_off",
+      "paired_component_delta": {
+        "curriculum_compactness": -36,
+        "minimum_working_days": -60,
+        "room_capacity": -208,
+        "room_stability": 13,
+        "total": -291
+      },
+      "paired_delta": -291,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.7092296850023558,
+      "within_run_dive_delta": null
+    },
+    {
+      "admission_passed": false,
+      "admission_shortfall_seconds": 0.025147522013867274,
+      "cpsolver": 194,
+      "dive_attempted": false,
+      "dive_candidate_score": null,
+      "dive_status": "SKIPPED_INSUFFICIENT_BUDGET",
+      "instance": "comp21",
+      "off": 1084,
+      "off_components": {
+        "curriculum_compactness": 444,
+        "minimum_working_days": 390,
+        "room_capacity": 212,
+        "room_stability": 38,
+        "total": 1084
+      },
+      "off_solve_elapsed_seconds": 9.721830676004174,
+      "off_total_overrun_seconds": 0.0,
+      "on": 1084,
+      "on_components": {
+        "curriculum_compactness": 444,
+        "minimum_working_days": 390,
+        "room_capacity": 212,
+        "room_stability": 38,
+        "total": 1084
+      },
+      "on_pre_score": null,
+      "on_returned_source": "rescue_incumbent",
+      "on_solve_elapsed_seconds": 9.463905547003378,
+      "on_total_overrun_seconds": 0.0,
+      "order": "off_on",
+      "paired_component_delta": {
+        "curriculum_compactness": 0,
+        "minimum_working_days": 0,
+        "room_capacity": 0,
+        "room_stability": 0,
+        "total": 0
+      },
+      "paired_delta": 0,
+      "shared_deadline_remaining_at_dive_start_seconds": 0.7248524779861327,
+      "within_run_dive_delta": null
+    }
+  ],
+  "release_disposition": {
+    "deadline_release_blocker": "resolved for this 42-case single-seed breadth gate",
+    "default_enabled": false,
+    "external_quality_gate": "failed: compatible CPSolver won 21/21",
+    "reason_default_remains_off": "Only 1/13 attempted dives directly improved its incumbent; the remaining paired gains were upstream divergence, and the experiment has one seed.",
+    "superiority_claim_supported": false
+  },
+  "reproduction": {
+    "command_template": ".venv/bin/python scripts/benchmark_itc2007.py run --instances /tmp/planora-itc2007-cpsolver/data/ctt/{instance}.ctt --seeds 17 --time-limit-seconds 10 --validator /tmp/planora-itc2007-validator --cpsolver-root /tmp/planora-itc2007-cpsolver --classes /tmp/planora-itc2007-build/classes --output-directory output/itc2007-room-dive-breadth-seed17-counterbalanced-final-v2/{instance}-{variant} --repo-root /mnt/d/Stuff/Projects/Sites/Planora --python-command /mnt/d/Stuff/Projects/Sites/Planora/.venv/bin/python --workers 1 --cpu 0 --strategy research_adaptive --itc2007-course-symmetry off --itc2007-adaptive-seeding on --itc2007-fixed-time-room-dive {variant} --solvers planora",
+    "exact_worker_commands": "Each exact executed worker argv is stored in the command field of the corresponding results.jsonl record indexed by matrix_index.json.",
+    "source_stability_guard": "Each manifest stores the complete Planora source-file hash map and aggregate hash; every result and summary records a successful snapshot match."
+  },
+  "runtime_accounting": {
+    "definitions": {
+      "fresh_process": "The solver subprocess wall/CPU measurement includes interpreter or JVM startup and solver execution, but excludes the later official-validator subprocess.",
+      "solve_instance": "Shared in-process solver deadline telemetry governed by the configured 10-second budget.",
+      "worker": "Planora worker-process internal wall/CPU measurement."
+    },
+    "fresh_process_cpu_seconds": {
+      "cpsolver": {
+        "count": 21,
+        "maximum": 10.728113999999994,
+        "mean": 10.518905142857145,
+        "median": 10.574313999999994,
+        "minimum": 9.955759999999975,
+        "sum": 220.89700800000006
+      },
+      "off": {
+        "count": 21,
+        "maximum": 10.744810999999999,
+        "mean": 9.974389238095238,
+        "median": 9.99781,
+        "minimum": 8.477691,
+        "sum": 209.462174
+      },
+      "on": {
+        "count": 21,
+        "maximum": 10.728201,
+        "mean": 10.210796952380953,
+        "median": 10.397891000000001,
+        "minimum": 8.966524,
+        "sum": 214.426736
+      }
+    },
+    "fresh_process_wall_seconds": {
+      "cpsolver": {
+        "count": 21,
+        "maximum": 10.853782038000645,
+        "mean": 10.694374730764096,
+        "median": 10.683110965997912,
+        "minimum": 10.619304756008205,
+        "sum": 224.581869346046
+      },
+      "off": {
+        "count": 21,
+        "maximum": 14.600864463995094,
+        "mean": 13.740943619093049,
+        "median": 13.811416861004545,
+        "minimum": 12.313582857997972,
+        "sum": 288.559816000954
+      },
+      "on": {
+        "count": 21,
+        "maximum": 15.06854578400089,
+        "mean": 13.976121987047096,
+        "median": 14.078597115003504,
+        "minimum": 12.705731446010759,
+        "sum": 293.498561727989
+      }
+    },
+    "solve_instance_elapsed_seconds": {
+      "off": {
+        "count": 21,
+        "maximum": 9.853849110993906,
+        "mean": 9.067910064475395,
+        "median": 9.137559395996504,
+        "minimum": 7.577724296992528,
+        "sum": 190.4261113539833
+      },
+      "on": {
+        "count": 21,
+        "maximum": 9.704983914998593,
+        "mean": 9.251857265715703,
+        "median": 9.462492492006277,
+        "minimum": 8.001484937005443,
+        "sum": 194.28900258002977
+      }
+    },
+    "worker_cpu_seconds": {
+      "off": {
+        "count": 21,
+        "maximum": 9.731032459000001,
+        "mean": 8.99449272604762,
+        "median": 9.041033312,
+        "minimum": 7.47632982,
+        "sum": 188.884347247
+      },
+      "on": {
+        "count": 21,
+        "maximum": 9.690948036000002,
+        "mean": 9.204662324285716,
+        "median": 9.435630201,
+        "minimum": 7.962407819999999,
+        "sum": 193.29790881
+      }
+    },
+    "worker_wall_seconds": {
+      "off": {
+        "count": 21,
+        "maximum": 10.06694593699649,
+        "mean": 9.26795876095102,
+        "median": 9.335082293007872,
+        "minimum": 7.785175304001314,
+        "sum": 194.6271339799714
+      },
+      "on": {
+        "count": 21,
+        "maximum": 9.91039224799897,
+        "mean": 9.46202916985896,
+        "median": 9.661198786998284,
+        "minimum": 8.206377551003243,
+        "sum": 198.70261256703816
+      }
+    }
+  },
+  "source_stability": {
+    "all_manifests_same_source_file_map": true,
+    "all_results_source_snapshot_match": 42,
+    "all_summaries_source_stable": 42,
+    "planora_git_head": "43028f327ee94d648bb8ce3479e3bd9276aad52a",
+    "planora_source_sha256": "a63732de42d9e0053ea196f46a410024b85c006e4cc6d7f91e5529f3bd1294cb",
+    "records": 42
+  },
+  "strict_total_deadline": {
+    "completion_reserve_formula": "min(0.25 seconds, max(0.05 seconds, 2.5 percent of total budget))",
+    "dive_admission_required_seconds_on": 0.75,
+    "dive_reserve_formula": "min(0.50 seconds, max(0.05 seconds, 5 percent of total budget))",
+    "off_total_overrun_seconds": {
+      "count": 21,
+      "maximum": 0.0,
+      "mean": 0.0,
+      "median": 0.0,
+      "minimum": 0.0,
+      "sum": 0.0
+    },
+    "on_total_overrun_seconds": {
+      "count": 21,
+      "maximum": 0.0,
+      "mean": 0.0,
+      "median": 0.0,
+      "minimum": 0.0,
+      "sum": 0.0
+    },
+    "total_overrun_runs": 0,
+    "total_overrun_seconds": {
+      "count": 42,
+      "maximum": 0.0,
+      "mean": 0.0,
+      "median": 0.0,
+      "minimum": 0.0,
+      "sum": 0.0
+    }
+  }
+}

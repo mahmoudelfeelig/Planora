@@ -1,0 +1,492 @@
+{
+  "calibration_decisions": [
+    {
+      "decision": "retain 0..4 only as the historical five-start grid",
+      "evidence": "all 1,265 extracted scheduled cells use the five displayed time labels",
+      "path": "institutional_policy.standard_start_slots"
+    },
+    {
+      "decision": "use nominal rather than a budgeted uncertainty gamma",
+      "evidence": "the snapshot contains no enrollment or demand-deviation observations",
+      "path": "demand_policy"
+    },
+    {
+      "decision": "disable GIU-specific enforcement pending authoritative inputs",
+      "evidence": "no current rules, building closures, locations, or travel matrix were supplied",
+      "path": "hard_constraints.calendar/buildings/travel"
+    },
+    {
+      "decision": "do not encode these as GIU facts",
+      "evidence": "the snapshot does not establish normative policy targets or solver strategy",
+      "path": "institutional_policy.prime_time/room_target_fill/staged_solve"
+    }
+  ],
+  "calibration_id": "giu_berlin_ss23_historical_schedule_snapshot",
+  "cross_source_checks": {
+    "courses_match_stored_report": true,
+    "current_room_overlap_count_matches_stored_report": true,
+    "current_validation_count_matches_stored_report": false,
+    "events_match_extractor_scheduled_cells": true,
+    "events_match_stored_report": true,
+    "groups_match_stored_report": true,
+    "merged_activities_match_stored_report": true,
+    "room_record_accounting_explained": true,
+    "staff_count_matches_stored_report": false
+  },
+  "current_preset": {
+    "id": "giu_target",
+    "payload": {
+      "demand_policy": {
+        "mode": "nominal"
+      },
+      "hard_constraints": {
+        "enforce_building_closures": false,
+        "enforce_calendar_rules": false,
+        "enforce_room_availability": true,
+        "enforce_room_capacity": true,
+        "enforce_standard_start_slots": true,
+        "enforce_travel_time_buffers": false
+      },
+      "institutional_policy": {
+        "calibration_artifact": "paper/evidence/giu_ss23_calibration.json",
+        "evidence_status": "partially calibrated against a local GIU Berlin Spring 2023 timetable snapshot; historical, not institution-approved, and not validated as current policy",
+        "historical_calendar_snapshot": {
+          "authority": "historical local snapshot only",
+          "days": [
+            "MON",
+            "TUE",
+            "WED",
+            "THU",
+            "FRI",
+            "SAT"
+          ],
+          "label": "Berlin Campus Spring Semester 2023",
+          "source_sha256": "217e8a08bcf525a38df6200161b361a3135b6962f0393026764780ebfb38d395",
+          "time_labels": [
+            "08:30 - 10:00",
+            "10:30 - 12:00",
+            "12:15 - 13:45",
+            "14:15 - 15:45",
+            "16:00 - 17:30"
+          ],
+          "weeks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ]
+        },
+        "institutional_validation_protocol": "docs/GIU_INSTITUTIONAL_VALIDATION_PROTOCOL.md",
+        "known_missing_evidence": [
+          "current academic calendar and scheduling policy",
+          "room capacities, types, accessibility, buildings, and travel times",
+          "staff identities, availability, qualifications, and workload limits",
+          "student enrollment, sectioning choices, and demand uncertainty",
+          "approved prime-time, fairness, and room-utilization targets"
+        ],
+        "policy_id": "giu_target",
+        "standard_start_slots": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "standard_start_slots_evidence": "all extracted scheduled cells use the five displayed starts; this does not establish current-policy exclusivity"
+      },
+      "label": "GIU Berlin historical research preset",
+      "objective_profile": "fairness_first"
+    },
+    "payload_sha256": "946c90fee89eaf6bb9cbf35b690ab7f713a88ddca1e9a21b0575ae161bbd0bc5"
+  },
+  "evidence_classification": {
+    "derived_or_inferred_by_planora": [
+      "major plus row-index keys as distinct scheduling groups",
+      "identical-row merging into scheduling activities",
+      "course text labels as course entities",
+      "blank room cells as row-scoped UNSPECIFIED room placeholders",
+      "all staff identities and workload assignments",
+      "room types, capacities, and specialization semantics"
+    ],
+    "directly_observed_in_historical_snapshot": [
+      "twelve displayed teaching weeks",
+      "Monday through Saturday page grid",
+      "five displayed daily time labels",
+      "raw scheduled/free/holiday/blank cell counts",
+      "major, course-text, and room-label strings present in the extraction"
+    ],
+    "missing_for_institutional_calibration": [
+      "current academic calendar and authoritative scheduling policy",
+      "authoritative room inventory, capacities, types, accessibility, buildings, and travel times",
+      "staff identities, availability, qualifications, contracts, and workload limits",
+      "student enrollment, section choices, demand forecasts, and uncertainty calibration",
+      "course ownership, required contact hours, precedence, sharing, and cross-listing rules",
+      "approved prime-time definition, fairness targets, room-fill targets, and objective weights",
+      "interpretation or correction of apparent room overlaps and fragmented PDF cells",
+      "authorized institutional sign-off and data-retention/privacy review"
+    ]
+  },
+  "observed": {
+    "calendar": {
+      "days": [
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+        "SAT"
+      ],
+      "slot_count": 5,
+      "slot_grid": [
+        {
+          "raw_scheduled_cells": 19,
+          "raw_scheduled_share": 0.01501976,
+          "solver_index": 0,
+          "source_index": 1,
+          "time_label": "08:30 - 10:00"
+        },
+        {
+          "raw_scheduled_cells": 312,
+          "raw_scheduled_share": 0.24664032,
+          "solver_index": 1,
+          "source_index": 2,
+          "time_label": "10:30 - 12:00"
+        },
+        {
+          "raw_scheduled_cells": 365,
+          "raw_scheduled_share": 0.28853755,
+          "solver_index": 2,
+          "source_index": 3,
+          "time_label": "12:15 - 13:45"
+        },
+        {
+          "raw_scheduled_cells": 321,
+          "raw_scheduled_share": 0.25375494,
+          "solver_index": 3,
+          "source_index": 4,
+          "time_label": "14:15 - 15:45"
+        },
+        {
+          "raw_scheduled_cells": 248,
+          "raw_scheduled_share": 0.19604743,
+          "solver_index": 4,
+          "source_index": 5,
+          "time_label": "16:00 - 17:30"
+        }
+      ],
+      "week_count": 12,
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    "current_import_projection": {
+      "assumptions": [
+        "CSV import uses explicit or teaching-load staff names when available.",
+        "Unmatched courses share balanced synthetic professor/TA pools with at most four base courses per person.",
+        "CSV import infers groups/programs from major/group/cohort columns.",
+        "Rows with identical week/day/slot/duration/course/room/kind are merged into one shared activity.",
+        "Imported assignments are left unlocked by default so solve/improve can repair conflicts."
+      ],
+      "course_text_entities": 88,
+      "inferred_groups": 17,
+      "merged_activities": 1044,
+      "modeled_room_accounting": {
+        "nonblank_labels": 15,
+        "row_scoped_unspecified_placeholders": 146,
+        "sum_matches_modeled_records": true
+      },
+      "modeled_room_records": 161,
+      "normalized_source_events": 1265,
+      "synthetic_staff_pool_size_per_role": 22,
+      "synthetic_staff_records": 44,
+      "validation_error_categories": {
+        "inferred_room_type_or_specialization": 39,
+        "room_overlap": 16,
+        "synthetic_staff_overlap": 93
+      },
+      "validation_error_count": 148,
+      "validation_errors_sha256": "223e7b5300dc67a0c5597b594d1f5a4a6fced06b341227bf3aee9e09a712e3b2"
+    },
+    "extractor_summary": {
+      "blank_cells": 34,
+      "cells": 3360,
+      "free_cells": 1831,
+      "holiday_cells": 230,
+      "pages": 72,
+      "scheduled_cells": 1265
+    },
+    "raw_extraction": {
+      "blank_room_event_rows": 146,
+      "compound_room_labels": [
+        "2.08/ 2.12"
+      ],
+      "course_text_label_count": 88,
+      "course_text_labels_sha256": "984ec9bc20ebe5e46b2cda2692d7c8e13952fa07389e1a3831dcfafe7dc226af",
+      "day_counts": {
+        "FRI": 179,
+        "MON": 13,
+        "SAT": 265,
+        "THU": 290,
+        "TUE": 186,
+        "WED": 332
+      },
+      "major_label_count": 9,
+      "major_labels": [
+        "BINF 6th",
+        "CSEN 10th",
+        "CSEN 6th",
+        "GIU AUTO 6th",
+        "GIU BA 4th",
+        "GIU MANF 6th",
+        "GIU ROBO 6th",
+        "MCTR 10th",
+        "MGT 6th"
+      ],
+      "major_row_key_count": 17,
+      "major_row_keys": [
+        {
+          "major": "BINF 6th",
+          "row_index": 5
+        },
+        {
+          "major": "BINF 6th",
+          "row_index": 6
+        },
+        {
+          "major": "CSEN 10th",
+          "row_index": 3
+        },
+        {
+          "major": "CSEN 10th",
+          "row_index": 4
+        },
+        {
+          "major": "CSEN 6th",
+          "row_index": 2
+        },
+        {
+          "major": "CSEN 6th",
+          "row_index": 3
+        },
+        {
+          "major": "GIU AUTO 6th",
+          "row_index": 6
+        },
+        {
+          "major": "GIU AUTO 6th",
+          "row_index": 7
+        },
+        {
+          "major": "GIU BA 4th",
+          "row_index": 9
+        },
+        {
+          "major": "GIU BA 4th",
+          "row_index": 10
+        },
+        {
+          "major": "GIU MANF 6th",
+          "row_index": 8
+        },
+        {
+          "major": "GIU MANF 6th",
+          "row_index": 9
+        },
+        {
+          "major": "GIU ROBO 6th",
+          "row_index": 7
+        },
+        {
+          "major": "GIU ROBO 6th",
+          "row_index": 8
+        },
+        {
+          "major": "MCTR 10th",
+          "row_index": 1
+        },
+        {
+          "major": "MGT 6th",
+          "row_index": 4
+        },
+        {
+          "major": "MGT 6th",
+          "row_index": 5
+        }
+      ],
+      "nonblank_room_label_count": 15,
+      "nonblank_room_labels": [
+        "1.07",
+        "1.10",
+        "1.12",
+        "1.13",
+        "1.16",
+        "12",
+        "13",
+        "2.03",
+        "2.07",
+        "2.08",
+        "2.08/ 2.12",
+        "2.09",
+        "2.12",
+        "3.01",
+        "3.16"
+      ],
+      "scheduled_cells": 1265,
+      "week_counts": {
+        "1": 70,
+        "10": 106,
+        "11": 126,
+        "12": 102,
+        "2": 122,
+        "3": 104,
+        "4": 100,
+        "5": 123,
+        "6": 79,
+        "7": 127,
+        "8": 105,
+        "9": 101
+      }
+    },
+    "snapshot_label": "Berlin Campus Spring Semester 2023",
+    "stored_validation_report": {
+      "courses": 88,
+      "groups": 17,
+      "merged_activities": 1044,
+      "modeled_rooms": 161,
+      "source_events": 1265,
+      "synthetic_staff_records": 1044,
+      "validation_error_count": 16,
+      "warning": "historical generated report; staff-model counts differ from the current importer and are not institutional observations"
+    }
+  },
+  "preset_comparison": {
+    "calendar_days": {
+      "assessment": "snapshot evidence only; no current academic-calendar rule was supplied",
+      "historically_observed": [
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+        "SAT"
+      ],
+      "preset_hard_calendar_rules": false
+    },
+    "demand_policy": {
+      "assessment": "nominal is the only non-speculative default until enrollment and uncertainty evidence are supplied",
+      "enrollment_or_forecast_evidence_available": false,
+      "preset": {
+        "mode": "nominal"
+      }
+    },
+    "prime_time_and_fill_targets": {
+      "prime_time_configured": false,
+      "room_target_fill_configured": false,
+      "stakeholder_policy_evidence_available": false
+    },
+    "room_availability": {
+      "assessment": "retain as a scheduler safety invariant; the snapshot only records assigned room labels",
+      "inventory_evidence_available": false,
+      "preset_enforced": true
+    },
+    "room_capacity": {
+      "assessment": "retain as a scheduler safety invariant, but calibrate capacities before institutional use",
+      "capacity_evidence_available": false,
+      "preset_enforced": true
+    },
+    "standard_start_slots": {
+      "assessment": "matches the five starts used in this historical snapshot; exclusivity is not confirmed as current policy",
+      "delta": [],
+      "historically_observed": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "preset": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "travel_and_building": {
+      "building_closures_enforced": false,
+      "evidence_available": false,
+      "travel_buffers_enforced": false
+    }
+  },
+  "publication_and_deployment_gates": {
+    "historical_schedule_model_agreement": "open: the current import projection has synthetic-staff, inferred-room-type, and apparent room-overlap errors that require adjudication",
+    "historical_snapshot_provenance": "pass for the checked-in source hashes and aggregate extraction counts",
+    "institutional_calibration": "open",
+    "minimum_sign_off_roles": [
+      "registrar or timetable owner",
+      "facilities or room inventory owner",
+      "academic department representatives",
+      "student services or accessibility representative",
+      "data protection or information security representative"
+    ],
+    "required_protocol": "docs/GIU_INSTITUTIONAL_VALIDATION_PROTOCOL.md"
+  },
+  "schema_version": 1,
+  "sources": {
+    "events_csv": {
+      "evidence_level": "derived from the PDF by repository extraction code",
+      "path": "data/SS23-All-Majors-Schedule-events.csv",
+      "role": "machine-extracted scheduled cells",
+      "sha256": "1e9ef2c7e0734a25ca8d3a461d956df4ad3dbebfcae83606b3a96bcefb743efd",
+      "size_bytes": 132445
+    },
+    "extraction_summary": {
+      "evidence_level": "derived",
+      "path": "data/SS23-All-Majors-Schedule-summary.json",
+      "role": "extractor aggregate report",
+      "sha256": "a145691261369ff2d781b255c259962153b0a6a50565c90c7289872c6c4f7b05",
+      "size_bytes": 567
+    },
+    "pdf": {
+      "evidence_level": "primary local snapshot; institutional provenance not independently authenticated",
+      "path": "data/SS23-All-Majors-Schedule.pdf",
+      "role": "historical timetable document",
+      "sha256": "217e8a08bcf525a38df6200161b361a3135b6962f0393026764780ebfb38d395",
+      "size_bytes": 970888
+    },
+    "stored_validation_report": {
+      "evidence_level": "derived and potentially stale relative to current importer code",
+      "path": "data/ss23-uni-validation-report.json",
+      "role": "historical importer validation report",
+      "sha256": "b2ea028d4682fdb3d1a6b98d4a97ebe130fa9a6ac50514ef9101b95ddfc7c6d2",
+      "size_bytes": 12027
+    }
+  },
+  "status": {
+    "classification": "historical_partial_calibration",
+    "current_policy_validated": false,
+    "fit_for_current_production_configuration": false,
+    "fit_for_reproducible_historical_scale_research": true,
+    "official_or_institution_approved": false,
+    "statement": "This artifact calibrates only observable properties of a local Spring 2023 Berlin Campus timetable snapshot. It is not a current or institution-approved GIU policy model."
+  }
+}

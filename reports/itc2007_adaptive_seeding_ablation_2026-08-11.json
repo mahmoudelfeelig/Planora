@@ -1,0 +1,113 @@
+{
+  "schema_version": "planora.itc2007-adaptive-seeding-ablation.v1",
+  "evidence_status": "bounded_engineering_pilot",
+  "evaluated_on": "2026-08-11",
+  "claim_boundary": "The result supports keeping this implementation for imported ITC-2007 instances. One instance and three seeds do not support a general solver-superiority or statistical-significance claim.",
+  "hypothesis": "Short adaptive runs should not cold-start unavailable certificate or partition-boundary arms, and ITC-2007 penalty neighborhoods should be seeded by activity support for the official objective rather than Planora's generic soft score.",
+  "trace_reproduction": {
+    "baseline_certificates_seen": 0,
+    "baseline_first_three_arms": [
+      "certificate:12",
+      "certificate:24",
+      "certificate:48"
+    ],
+    "baseline_first_three_certificate_lineages": [[], [], []],
+    "baseline_behavior": "Each unavailable certificate arm fell through to a random singleton seed. The generic penalty family first appeared in round four.",
+    "candidate_eligible_families_on_comp01": ["penalty", "random"],
+    "candidate_first_three_arms": [
+      "penalty:12",
+      "penalty:24",
+      "penalty:48"
+    ],
+    "typed_support_components": [
+      "room_capacity",
+      "minimum_working_days",
+      "curriculum_compactness",
+      "room_stability"
+    ]
+  },
+  "protocol": {
+    "instance_id": "comp01",
+    "instance_sha256": "57227834c435519b848543a283d765c8f82668616cf951b887dc9d77b2a7ac08",
+    "strategy": "research_adaptive",
+    "course_symmetry": false,
+    "configured_solver_seconds": 10.0,
+    "workers": 1,
+    "cpu_affinity": 0,
+    "seeds": [17, 23, 31],
+    "official_validator_sha256": "6b991efa2195ed59f9e514532d9add65b4790791bd6de054ce6f5cbdc19546b3",
+    "baseline_source_sha256": "40f536f895a1d94db9f69401c2f937b4905222e0e11beb5e584a7ab7c7205c30",
+    "candidate_source_sha256": "40f536f895a1d94db9f69401c2f937b4905222e0e11beb5e584a7ab7c7205c30",
+    "hashed_source_files": 66,
+    "source_stable": true,
+    "counterbalanced": false,
+    "execution_order": "all baseline runs, then all candidate runs"
+  },
+  "baseline": {
+    "artifact_directory": "output/itc2007-ablation-comp01-adaptive-seeding-off-idle-10s",
+    "official_validator_agreement": {
+      "feasible_runs": 3,
+      "zero_hard_violation_runs": 3,
+      "internal_external_score_matches": 3,
+      "validator_errors": 0
+    },
+    "official_objectives_by_seed": {
+      "17": 503,
+      "23": 409,
+      "31": 327
+    },
+    "objective_mean": 413.0,
+    "objective_median": 409.0,
+    "wall_time_median_seconds": 13.550769149995176,
+    "worker_wall_time_median_seconds": 8.614903449008125,
+    "cpu_time_median_seconds": 8.04007,
+    "adaptive_deadline_overrun_max_seconds": 0.012871807994088158
+  },
+  "candidate": {
+    "artifact_directory": "output/itc2007-ablation-comp01-adaptive-seeding-on-idle-10s",
+    "official_validator_agreement": {
+      "feasible_runs": 3,
+      "zero_hard_violation_runs": 3,
+      "internal_external_score_matches": 3,
+      "validator_errors": 0
+    },
+    "official_objectives_by_seed": {
+      "17": 479,
+      "23": 390,
+      "31": 262
+    },
+    "objective_mean": 377.0,
+    "objective_median": 390.0,
+    "wall_time_median_seconds": 13.166546993990778,
+    "worker_wall_time_median_seconds": 8.32760413500364,
+    "cpu_time_median_seconds": 9.093665,
+    "adaptive_deadline_overrun_max_seconds": 0.02059653800097294
+  },
+  "paired_result": {
+    "delta_definition": "candidate_official_objective_minus_baseline_official_objective",
+    "deltas_by_seed": {
+      "17": -24,
+      "23": -19,
+      "31": -65
+    },
+    "candidate_better_seeds": 3,
+    "baseline_better_seeds": 0,
+    "ties": 0,
+    "mean_objective_delta": -36.0,
+    "mean_objective_relative_change": -0.08716707021791768,
+    "median_objective_delta": -19.0,
+    "median_wall_time_delta_seconds": -0.38422215600439813,
+    "median_cpu_time_relative_change": 0.13104301330709803
+  },
+  "verdict": {
+    "keep": true,
+    "default_for_imported_itc2007": "on",
+    "reason": "At an identical source snapshot and fixed wall budget, the candidate improved the official objective on all three seeds, lowered mean objective by 8.72 percent, and slightly lowered median wall time. All schedules remained officially feasible and internal/external scoring agreed.",
+    "time_accounting": "The candidate's largest reported adaptive overrun was 20.6 ms on a 7-second adaptive budget and total worker wall time remained below the configured 10-second solver budget. CPU time increased by about 13.1 percent at the median, so the result is a fixed-wall quality gain rather than a CPU-efficiency claim.",
+    "next_gate": "Run a counterbalanced multi-instance, predeclared-seed matrix before making a paper claim or generalizing beyond ITC-2007."
+  },
+  "reproduction": {
+    "baseline": ".venv/bin/python scripts/benchmark_itc2007.py run --instances /tmp/planora-itc2007-cpsolver/data/ctt/comp01.ctt --seeds 17 23 31 --time-limit-seconds 10 --validator /tmp/planora-itc2007-validator --cpsolver-root /tmp/planora-itc2007-cpsolver --classes /tmp/planora-itc2007-build/classes --output-directory output/itc2007-ablation-comp01-adaptive-seeding-off-idle-10s --repo-root /mnt/d/Stuff/Projects/Sites/Planora --python-command /mnt/d/Stuff/Projects/Sites/Planora/.venv/bin/python --workers 1 --cpu 0 --strategy research_adaptive --itc2007-course-symmetry off --itc2007-adaptive-seeding off --solvers planora",
+    "candidate": ".venv/bin/python scripts/benchmark_itc2007.py run --instances /tmp/planora-itc2007-cpsolver/data/ctt/comp01.ctt --seeds 17 23 31 --time-limit-seconds 10 --validator /tmp/planora-itc2007-validator --cpsolver-root /tmp/planora-itc2007-cpsolver --classes /tmp/planora-itc2007-build/classes --output-directory output/itc2007-ablation-comp01-adaptive-seeding-on-idle-10s --repo-root /mnt/d/Stuff/Projects/Sites/Planora --python-command /mnt/d/Stuff/Projects/Sites/Planora/.venv/bin/python --workers 1 --cpu 0 --strategy research_adaptive --itc2007-course-symmetry off --itc2007-adaptive-seeding on --solvers planora"
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "analysis_scope": "primary attempts only; fallback outcomes are counted but excluded",
+  "conditions": [
+    {
+      "cp_seconds_iqr": [
+        0.22588725224341033,
+        3.7244101392570883
+      ],
+      "cp_seconds_mean_ci95": [
+        1.7956287110316165,
+        3.436428184796908
+      ],
+      "cp_seconds_median": 2.2342100349997054,
+      "effective_instance_gate": "NO-GO",
+      "effective_runs": 22,
+      "fallback_runs": 0,
+      "minimum_effective_instances": 30,
+      "mode": "small_demo",
+      "penalty_mean_ci95": [
+        686.0852272727274,
+        1074.1931818181818
+      ],
+      "penalty_median": 755.5,
+      "primary_feasible_rate": 0.7333333333333333,
+      "primary_feasible_runs": 22,
+      "room_mode": "cp_rooms",
+      "runs": 30,
+      "unique_effective_instances": 22
+    },
+    {
+      "cp_seconds_iqr": [
+        0.11565887825054233,
+        1.434938120739389
+      ],
+      "cp_seconds_mean_ci95": [
+        0.7171946066473417,
+        1.9962809653372702
+      ],
+      "cp_seconds_median": 0.8571413059980841,
+      "effective_instance_gate": "NO-GO",
+      "effective_runs": 21,
+      "fallback_runs": 0,
+      "minimum_effective_instances": 30,
+      "mode": "small_demo",
+      "penalty_mean_ci95": [
+        587.0916666666667,
+        1073.6773809523809
+      ],
+      "penalty_median": 673.0,
+      "primary_feasible_rate": 0.7,
+      "primary_feasible_runs": 21,
+      "room_mode": "decomposed",
+      "runs": 30,
+      "unique_effective_instances": 21
+    },
+    {
+      "cp_seconds_iqr": [
+        0.07029901424539275,
+        0.8156452617513423
+      ],
+      "cp_seconds_mean_ci95": [
+        0.38944030324080814,
+        0.7132521816842805
+      ],
+      "cp_seconds_median": 0.47114284600684186,
+      "effective_instance_gate": "NO-GO",
+      "effective_runs": 22,
+      "fallback_runs": 0,
+      "minimum_effective_instances": 30,
+      "mode": "small_demo",
+      "penalty_mean_ci95": [
+        590.6784090909091,
+        1044.9193181818182
+      ],
+      "penalty_median": 662.0,
+      "primary_feasible_rate": 0.7333333333333333,
+      "primary_feasible_runs": 22,
+      "room_mode": "greedy",
+      "runs": 30,
+      "unique_effective_instances": 22
+    }
+  ],
+  "paired_comparisons": [
+    {
+      "cp_seconds_difference_mean_ci95": [
+        0.5011113487346545,
+        2.1413779618048765
+      ],
+      "cp_seconds_left_minus_right_median": 1.0217007710016333,
+      "cp_seconds_sign_test_p": 5.774199962615967e-08,
+      "left": "cp_rooms",
+      "mode": "small_demo",
+      "paired_runs": 30,
+      "penalty_difference_mean_ci95": [
+        -154.57976190476185,
+        291.0488095238095
+      ],
+      "penalty_left_minus_right_median": 65.0,
+      "penalty_paired_runs": 21,
+      "penalty_sign_test_p": 0.38331031799316406,
+      "right": "decomposed"
+    },
+    {
+      "cp_seconds_difference_mean_ci95": [
+        1.4048961628998586,
+        2.727948800678969
+      ],
+      "cp_seconds_left_minus_right_median": 1.7314633799978765,
+      "cp_seconds_sign_test_p": 1.862645149230957e-09,
+      "left": "cp_rooms",
+      "mode": "small_demo",
+      "paired_runs": 30,
+      "penalty_difference_mean_ci95": [
+        -156.59545454545452,
+        264.78181818181804
+      ],
+      "penalty_left_minus_right_median": 77.5,
+      "penalty_paired_runs": 22,
+      "penalty_sign_test_p": 0.5234670639038086,
+      "right": "greedy"
+    },
+    {
+      "cp_seconds_difference_mean_ci95": [
+        0.26125079865170847,
+        1.4000766688909296
+      ],
+      "cp_seconds_left_minus_right_median": 0.29148626400274225,
+      "cp_seconds_sign_test_p": 8.430331945419312e-06,
+      "left": "decomposed",
+      "mode": "small_demo",
+      "paired_runs": 30,
+      "penalty_difference_mean_ci95": [
+        -47.523809523809526,
+        28.571428571428573
+      ],
+      "penalty_left_minus_right_median": 12.0,
+      "penalty_paired_runs": 21,
+      "penalty_sign_test_p": 0.00022125244140625,
+      "right": "greedy"
+    }
+  ],
+  "publication_gate": {
+    "definition": "A unique generated or external instance fingerprint with a feasible primary result, no fallback, and zero independent-validator errors. Repeated solver seeds on one instance do not increase the effective-instance count.",
+    "minimum_unique_effective_instances_per_condition": 30,
+    "status": "NO-GO"
+  },
+  "schema_version": 2
+}

@@ -4,10 +4,24 @@ time assignment, room assignment, and quality improvement.
 \subsection{Decomposition Strategy}
 \begin{itemize}[leftmargin=*]
   \item \textbf{Stage 1 (time feasibility):} assign each activity to a valid week/day/slot while satisfying all hard constraints.
-  \item \textbf{Stage 2 (rooming):} either co-optimize rooms inside CP (\texttt{cp\_rooms}) or assign rooms afterward (\texttt{greedy}).
+  \item \textbf{Stage 2 (rooming):} co-optimize rooms inside CP (\texttt{cp\_rooms}), assign rooms afterward (\texttt{greedy}), or iterate between an exact room subproblem and certificate cuts (\texttt{decomposed}).
   \item \textbf{Stage 3 (quality):} improve a feasible schedule using local search under a soft-penalty objective.
 \end{itemize}
 This decomposition provides a practical trade-off between strictness and runtime.
+
+\subsection{Adaptive Week-Partitioned Scale Mode}
+For large instances, the operational \texttt{partitioned} mode exploits the fact that group, staff, room, and generic-resource conflicts are indexed by teaching week in the current model.
+It first runs global structural checks for course totals, staff competency, and block-teaching invariants.
+Before partitioning, every required distribution relation is inspected: week-separable aggregate and non-overlap rules are split exactly, fixed week relations are decided statically, and a relation that genuinely couples decisions across weeks causes a fail-fast error, as does a forced repeated-weekly pattern.
+Cross-week precedence is accepted only when its fixed week order already satisfies the rule; reverse order is rejected.
+
+Each remaining week is compiled into a compact objective-free CP master.
+Up to four week partitions run concurrently by default, each with one CP-SAT search worker to bound memory multiplication.
+A valid fast room assignment completes the partition.
+If room extraction fails, only that week is rebuilt with the exact certificate-guided room subproblem and the remaining shared wall budget.
+Required same-room or different-room relations select the exact inner mode immediately.
+All rows are merged only when every partition is feasible, after which the original full instance validator rechecks completeness and every hard rule.
+The mode does not report a global soft-objective bound: stability, fairness, and other cross-week quality terms require monolithic optimization or a separately reported improvement phase.
 
 \subsection{Reliability Policy}
 To reduce solver timeouts in difficult instances, the runtime applies a bounded retry policy:
@@ -16,23 +30,24 @@ To reduce solver timeouts in difficult instances, the runtime applies a bounded 
   \item objective-disabled retry in the same room mode (feasibility-oriented),
   \item optional fallback from strict rooming to greedy rooming.
 \end{enumerate}
-The policy is deterministic for fixed seeds and configuration.
+The operational policy remains available, but research comparisons disable it and analyze primary attempts only.
+One-worker configurations are intended to be reproducible for fixed seeds; multi-worker CP-SAT runs are labeled separately.
 
 \subsection{Budgeted Anytime Mode}
 For interactive use, total solve time budget $B$ is split into
 a feasibility phase $B_f$ and an improvement phase $B_i$:
-\[
-B_f + B_i = B,\qquad
-B_i \approx 0.2B\ \text{(capped)},\qquad
-B_f \approx 0.8B\ \text{(floored)}.
-\]
+\begin{align*}
+B_f + B_i &= B,\\
+B_i &\approx 0.2B\ \text{(capped)},\\
+B_f &\approx 0.8B\ \text{(floored)}.
+\end{align*}
 The first phase prioritizes obtaining a valid schedule quickly; the second phase runs short local-search slices to improve penalty.
 Each improvement slice uses a capped deterministic pre-pass (group/week sweep with bounded compound lookahead) followed by guided stochastic neighborhoods with bounded restarts/diversification when the search plateaus.
 
 \subsection{Operational Parameters}
 The main runtime parameters are:
 \begin{itemize}[leftmargin=*]
-  \item room mode (\texttt{cp\_rooms} vs \texttt{greedy}),
+  \item room mode (\texttt{cp\_rooms}, \texttt{decomposed}, \texttt{partitioned}, or \texttt{greedy}),
   \item objective on/off,
   \item time limit and worker count,
   \item local-search iteration/time budget.

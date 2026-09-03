@@ -1,0 +1,134 @@
+{
+  "schema_version": "planora.itc2019-public-mirror-evidence.v1",
+  "generated_at_utc": "2026-08-11T18:06:03.599639+00:00",
+  "source": {
+    "repository": "https://github.com/ADDALemos/MPPTimetables",
+    "commit": "c33d15797686a27c192eabb90948baa54d3ddef5",
+    "root_tree": "85d223752d27d041e1f8f9cf3d869ed232628f3b",
+    "source_manifest_sha256": "d4e8e694892c11d8c7ebb998feccd404ddcd2b5cc60a3780ed808b7eca2a35bb",
+    "full_ignored_cache_provenance_sha256": "c9164b6f7514fa18df42431f3186216cbd55f1a79d697550eb35c0f78ef2d50a",
+    "verified_files": 56,
+    "downloaded_files": 0,
+    "reused_hash_verified_files": 56,
+    "problem_xml_files": 36,
+    "mirror_output_xml_files": 18,
+    "total_xml_bytes": 323538608
+  },
+  "problem_parsing": {
+    "structural_xml_passed": 36,
+    "strict_semantic_passed": 34,
+    "strict_semantic_rejected": 2,
+    "rejections": [
+      {
+        "instance": "pu-c8-spr07",
+        "class_id": "1338",
+        "class_limit": 0,
+        "reason": "negative meeting length is not a documented ITC-2019 sentinel",
+        "time": {
+          "days": "1000000",
+          "start": 228,
+          "length": -2,
+          "weeks": "100000000000000",
+          "penalty": 0
+        }
+      },
+      {
+        "instance": "pu-llr-spr07",
+        "class_id": "448",
+        "class_limit": 0,
+        "reason": "negative meeting length is not a documented ITC-2019 sentinel",
+        "time": {
+          "days": "1000000",
+          "start": 228,
+          "length": -2,
+          "weeks": "100000000000000",
+          "penalty": 0
+        }
+      }
+    ]
+  },
+  "solution_validation": {
+    "solution_xml_parsed": 18,
+    "locally_valid_for_implemented_scope": 12,
+    "locally_invalid_for_implemented_scope": 6,
+    "locally_valid_instances": [
+      "agh-fis-spr17",
+      "agh-ggis-spr17",
+      "agh-ggos-spr17",
+      "lums-fal17",
+      "lums-spr18",
+      "lums-sum17",
+      "mary-fal18",
+      "muni-fi-spr17",
+      "pu-llr-spr17",
+      "tg-fal17",
+      "tg-spr18",
+      "yach-fal17"
+    ],
+    "locally_invalid_instances": [
+      {
+        "instance": "mary-spr17",
+        "error_count": 3666,
+        "categories": {"duplicate_student_class_entries": 3666},
+        "ordered_errors_sha256": "d0450b5b6a07fb6a16ec9a3c1225b4e8b299373942744f1b7639b40925eb5712"
+      },
+      {
+        "instance": "muni-fi-spr16",
+        "error_count": 1543,
+        "categories": {"duplicate_student_class_entries": 1543},
+        "ordered_errors_sha256": "d73bc5183403f4fd4cbf4a68fce50ba1afe8d5f551ddb2f3f6b97a6845fc4501"
+      },
+      {
+        "instance": "muni-fsps-spr17",
+        "error_count": 865,
+        "categories": {"duplicate_student_class_entries": 865},
+        "ordered_errors_sha256": "48d030026475faf1889e9c95afdd1686165e4233a7a6880d131fdc26590f83da"
+      },
+      {
+        "instance": "muni-fsps-spr17c",
+        "error_count": 395,
+        "categories": {"duplicate_student_class_entries": 395},
+        "ordered_errors_sha256": "f6a96e952b127d916abeead9bdb75045a08a6a83023536d5699bd1e77646621d"
+      },
+      {
+        "instance": "muni-pdf-spr16",
+        "error_count": 26,
+        "categories": {
+          "class_limit_exceeded": 25,
+          "duplicate_student_class_entries": 1
+        },
+        "ordered_errors_sha256": "0bafbee41b1e92522a130162edc3b225e7e29f8079167a7e665cc556decca019"
+      },
+      {
+        "instance": "wbg-fal10",
+        "error_count": 28,
+        "categories": {
+          "configuration_selection": 19,
+          "missing_class_placements": 1,
+          "missing_students": 1,
+          "outside_time_domain": 3,
+          "unrequested_courses": 4
+        },
+        "ordered_errors_sha256": "3bf5cdf68318bf0cc436b6a73ef34f38afe75c9ebe819d3a7765e05abb18e053"
+      }
+    ]
+  },
+  "claim_boundary": {
+    "implemented_local_scope": [
+      "complete class placement",
+      "time and room domains",
+      "room availability and collisions",
+      "course configuration, subpart, parent, and class-limit sectioning"
+    ],
+    "official_validator_agreement": "not_run_authenticated_website_upload_unavailable",
+    "distribution_constraints": "not_implemented_in_local_combined_validator",
+    "objective_agreement": "not_implemented_or_validated",
+    "mirror_outputs": "not_assumed_to_be_official_competition_submissions"
+  },
+  "local_measurement": {
+    "command": ".venv/bin/python scripts/fetch_itc2019_public_corpus.py --report /tmp/itc2019-public-corpus-fetch-report.json",
+    "elapsed_seconds": 111.51,
+    "maximum_resident_set_kib": 1194224,
+    "note": "single uncontrolled WSL workstation run; engineering evidence, not a performance benchmark"
+  }
+}

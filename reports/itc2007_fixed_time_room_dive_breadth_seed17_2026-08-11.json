@@ -1,0 +1,642 @@
+{
+  "artifacts": {
+    "immutable_cpsolver_source": {
+      "directory": "output/itc2007-breadth-21-candidate-vs-cpsolver-10s-seed17",
+      "manifest_sha256": "1964dcfcb199efd9e8a21173a9ad61a1e4a1d3b8945547b276a1c2ff009473cc",
+      "results_sha256": "4043519ab9d42052ce0102d55fa34e44629431b529de0f3460b4a929fe921cd3",
+      "rows_reused": "Only 21 solver_id=cpsolver-itc2007 rows.",
+      "summary_sha256": "eb230822923730b69f5de75d31ab0c1122e2b319f374e0524cedfd97275b67dc"
+    },
+    "matrix_index": "output/itc2007-room-dive-breadth-seed17-counterbalanced-v1/matrix_index.json",
+    "matrix_index_sha256": "ebf31d4067081012a729170478f2a618ce534a253ce81d8961abcff7994f311e",
+    "raw_root": "output/itc2007-room-dive-breadth-seed17-counterbalanced-v1",
+    "report": "reports/itc2007_fixed_time_room_dive_breadth_seed17_2026-08-11.json",
+    "telemetry_rejection_smoke": {
+      "directory": "output/itc2007-room-dive-rejection-smoke-seed31-on-v2",
+      "manifest_sha256": "9faa9df4c63757fee28768d27382bc661ecb728725bc540663f304c723b04087",
+      "results_sha256": "74d17afb9a7a108c945e95b35021c31f3d2fd08f287da1775655ff132521ead6",
+      "summary_sha256": "e9da133ce9abf3cca2e68b75e82ccf2a5a481e129e003b14f27fd387c2ff0d1e"
+    }
+  },
+  "claim_boundary": "This is a complete single-seed engineering breadth ablation, not a replicated or statistical superiority study. OFF and ON ran as separate fresh processes with counterbalanced order, so paired differences include time-limited upstream search divergence. CPSolver rows are immutable reuse, not an interleaved rerun, after exact compatibility checks.",
+  "evaluated_on": "2026-08-11",
+  "evidence_status": "complete_counterbalanced_single_seed_negative_strict_deadline_gate",
+  "external_comparison": {
+    "compatibility_gate_passed": true,
+    "objective_sums": {
+      "cpsolver": 3586,
+      "planora_on": 19711,
+      "planora_on_over_cpsolver": 5.496653653095371
+    },
+    "positive_denominator_score_ratios": {
+      "arithmetic_mean": 9.370306473534093,
+      "geometric_mean": 7.091326013195425,
+      "maximum": 50.6,
+      "median": 7.53194077755345,
+      "minimum": 1.9946380697050938,
+      "pairs": 20,
+      "undefined_or_infinite": [
+        "comp11: CPSolver 0, Planora ON 661"
+      ]
+    },
+    "ranking": {
+      "cpsolver_wins": 21,
+      "on_wins": 0,
+      "ties": 0
+    },
+    "weighted_component_sums": {
+      "cpsolver": {
+        "curriculum_compactness": 2268,
+        "minimum_working_days": 955,
+        "room_capacity": 135,
+        "room_stability": 228,
+        "total": 3586
+      },
+      "planora_on": {
+        "curriculum_compactness": 8116,
+        "minimum_working_days": 6400,
+        "room_capacity": 4442,
+        "room_stability": 753,
+        "total": 19711
+      },
+      "planora_on_over_cpsolver": {
+        "curriculum_compactness": 3.578483245149912,
+        "minimum_working_days": 6.701570680628272,
+        "room_capacity": 32.903703703703705,
+        "room_stability": 3.3026315789473686,
+        "total": 5.496653653095371
+      }
+    }
+  },
+  "headline": "The fixed-time room dive reduced the 21-instance objective sum by 3.19 percent and never directly worsened an incumbent, but ON exceeded the strict total 10-second solve_instance deadline on 7/21 instances. It fails the release gate and remains default off.",
+  "immutable_cpsolver_compatibility": {
+    "cpsolver_classes_sha256": true,
+    "cpsolver_git_head": true,
+    "cpu_affinity": true,
+    "cpu_model": true,
+    "instance_paths_and_sha256": true,
+    "logical_cpu_count": true,
+    "ortools_version": true,
+    "platform": true,
+    "processor": true,
+    "python_version": true,
+    "seeds": true,
+    "time_limit_seconds": true,
+    "validator_sha256": true,
+    "workers": true
+  },
+  "paired_ablation": {
+    "objective_sums": {
+      "off": 20360,
+      "on": 19711,
+      "on_minus_off": -649,
+      "on_relative_change": -0.0318762278978389
+    },
+    "on_better": 5,
+    "on_worse": 2,
+    "paired_delta_distribution": {
+      "maximum": 5,
+      "mean": -30.904761904761905,
+      "median": 0,
+      "minimum": -246,
+      "sum": -649
+    },
+    "ties": 14,
+    "weighted_component_sums": {
+      "off": {
+        "curriculum_compactness": 8178,
+        "minimum_working_days": 6440,
+        "room_capacity": 5065,
+        "room_stability": 677,
+        "total": 20360
+      },
+      "on": {
+        "curriculum_compactness": 8116,
+        "minimum_working_days": 6400,
+        "room_capacity": 4442,
+        "room_stability": 753,
+        "total": 19711
+      },
+      "on_minus_off": {
+        "curriculum_compactness": -62,
+        "minimum_working_days": -40,
+        "room_capacity": -623,
+        "room_stability": 76,
+        "total": -649
+      },
+      "on_relative_change": {
+        "curriculum_compactness": -0.007581315725116165,
+        "minimum_working_days": -0.006211180124223602,
+        "room_capacity": -0.1230009871668312,
+        "room_stability": 0.11225997045790251,
+        "total": -0.0318762278978389
+      }
+    }
+  },
+  "paired_regression_attribution": [
+    {
+      "attribution": "pre_dive_upstream_divergence; room dive retained the incumbent",
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp02",
+      "off_returned_score": 920,
+      "off_returned_source": "initial_incumbent",
+      "on_pre_dive_score": 925,
+      "on_returned_score": 925,
+      "on_returned_source": "initial_incumbent",
+      "paired_delta": 5,
+      "phase_seconds": {
+        "off_adaptive": 7.04527357200277,
+        "off_initial": 2.050805933002266,
+        "off_total": 9.303657699012547,
+        "on_adaptive": 7.014294348002295,
+        "on_dive_search": 0.3823921080038417,
+        "on_dive_setup": 0.023247088989592157,
+        "on_dive_total": 0.40901536800083704,
+        "on_dive_validation": null,
+        "on_initial": 1.8287598509923555,
+        "on_total": 9.491029409997282
+      },
+      "within_run_dive_delta": 0
+    },
+    {
+      "attribution": "pre_dive_upstream_divergence; room dive retained the incumbent",
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp12",
+      "off_returned_score": 1367,
+      "off_returned_source": "initial_incumbent",
+      "on_pre_dive_score": 1369,
+      "on_returned_score": 1369,
+      "on_returned_source": "initial_incumbent",
+      "paired_delta": 2,
+      "phase_seconds": {
+        "off_adaptive": 7.107402944995556,
+        "off_initial": 1.2823328179947566,
+        "off_total": 8.708634383001481,
+        "on_adaptive": 7.054886279001948,
+        "on_dive_search": 0.39121257700026035,
+        "on_dive_setup": 0.013522784996894188,
+        "on_dive_total": 0.4091180419927696,
+        "on_dive_validation": null,
+        "on_initial": 1.306229257999803,
+        "on_total": 9.09644645699882
+      },
+      "within_run_dive_delta": 0
+    }
+  ],
+  "per_instance": [
+    {
+      "cpsolver": 5,
+      "dive_returned_source": "fixed_time_room_dive",
+      "dive_status": "ACCEPTED_IMPROVEMENT",
+      "instance": "comp01",
+      "off": 499,
+      "on": 253,
+      "on_pre": 499,
+      "order": "off_on",
+      "paired_delta": -246,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": -246
+    },
+    {
+      "cpsolver": 137,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp02",
+      "off": 920,
+      "on": 925,
+      "on_pre": 925,
+      "order": "on_off",
+      "paired_delta": 5,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 167,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp03",
+      "off": 701,
+      "on": 701,
+      "on_pre": 701,
+      "order": "off_on",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 67,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp04",
+      "off": 978,
+      "on": 978,
+      "on_pre": 978,
+      "order": "on_off",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 746,
+      "dive_returned_source": "fixed_time_room_dive",
+      "dive_status": "ACCEPTED_IMPROVEMENT",
+      "instance": "comp05",
+      "off": 1645,
+      "on": 1488,
+      "on_pre": 1645,
+      "order": "off_on",
+      "paired_delta": -157,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": -157
+    },
+    {
+      "cpsolver": 141,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp06",
+      "off": 1172,
+      "on": 1172,
+      "on_pre": 1172,
+      "order": "on_off",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.0395139470056165,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 99,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp07",
+      "off": 1304,
+      "on": 1304,
+      "on_pre": 1304,
+      "order": "off_on",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.2769483209995087,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 78,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp08",
+      "off": 692,
+      "on": 692,
+      "on_pre": 692,
+      "order": "on_off",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 146,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp09",
+      "off": 893,
+      "on": 893,
+      "on_pre": 893,
+      "order": "off_on",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 82,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp10",
+      "off": 826,
+      "on": 826,
+      "on_pre": 826,
+      "order": "on_off",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.16419322100409772,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 0,
+      "dive_returned_source": "incumbent",
+      "dive_status": "REJECTED_NO_IMPROVEMENT",
+      "instance": "comp11",
+      "off": 661,
+      "on": 661,
+      "on_pre": 661,
+      "order": "off_on",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 644,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp12",
+      "off": 1367,
+      "on": 1369,
+      "on_pre": 1369,
+      "order": "on_off",
+      "paired_delta": 2,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 114,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp13",
+      "off": 1077,
+      "on": 998,
+      "on_pre": 998,
+      "order": "off_on",
+      "paired_delta": -79,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 109,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp14",
+      "off": 917,
+      "on": 917,
+      "on_pre": 917,
+      "order": "on_off",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 139,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp15",
+      "off": 701,
+      "on": 701,
+      "on_pre": 701,
+      "order": "off_on",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 104,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp16",
+      "off": 895,
+      "on": 895,
+      "on_pre": 895,
+      "order": "on_off",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.04018893498869147,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 146,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp17",
+      "off": 952,
+      "on": 952,
+      "on_pre": 952,
+      "order": "off_on",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 115,
+      "dive_returned_source": "incumbent",
+      "dive_status": "REJECTED_NO_IMPROVEMENT",
+      "instance": "comp18",
+      "off": 592,
+      "on": 572,
+      "on_pre": 572,
+      "order": "on_off",
+      "paired_delta": -20,
+      "total_overrun_seconds": 0.0,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 156,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp19",
+      "off": 660,
+      "on": 660,
+      "on_pre": 660,
+      "order": "off_on",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.0377749409963144,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 197,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp20",
+      "off": 1824,
+      "on": 1824,
+      "on_pre": 1824,
+      "order": "on_off",
+      "paired_delta": 0,
+      "total_overrun_seconds": 0.3029863249976188,
+      "within_dive_delta": 0
+    },
+    {
+      "cpsolver": 194,
+      "dive_returned_source": "incumbent",
+      "dive_status": "NO_FEASIBLE_CANDIDATE",
+      "instance": "comp21",
+      "off": 1084,
+      "on": 930,
+      "on_pre": 930,
+      "order": "off_on",
+      "paired_delta": -154,
+      "total_overrun_seconds": 0.08025730001099873,
+      "within_dive_delta": 0
+    }
+  ],
+  "protocol": {
+    "adaptive_seeding": true,
+    "benchmark_family": "ITC-2007 Curriculum Course Timetabling",
+    "configured_solver_seconds": 10.0,
+    "counterbalance": "odd instances OFF then ON; even instances ON then OFF",
+    "course_symmetry": false,
+    "cpu_affinity": 0,
+    "cpu_model": "AMD Ryzen 7 5800H with Radeon Graphics",
+    "finalization_reserve_seconds": 0.5,
+    "fresh_process_per_case": true,
+    "instances": "comp01 through comp21",
+    "only_ablation": "itc2007_fixed_time_room_dive OFF versus ON",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "seed": 17,
+    "strategy": "research_adaptive",
+    "workers": 1
+  },
+  "reproduction": {
+    "execution_order": "comp01..comp21; odd OFF then ON, even ON then OFF; fresh output subdirectory per case.",
+    "single_case_template": ".venv/bin/python scripts/benchmark_itc2007.py run --instances /tmp/planora-itc2007-cpsolver/data/ctt/INSTANCE.ctt --seeds 17 --time-limit-seconds 10 --validator /tmp/planora-itc2007-validator --cpsolver-root /tmp/planora-itc2007-cpsolver --classes /tmp/planora-itc2007-build/classes --output-directory output/itc2007-room-dive-breadth-seed17-counterbalanced-v1/INSTANCE-VARIANT --repo-root /mnt/d/Stuff/Projects/Sites/Planora --python-command /mnt/d/Stuff/Projects/Sites/Planora/.venv/bin/python --workers 1 --cpu 0 --strategy research_adaptive --itc2007-course-symmetry off --itc2007-adaptive-seeding on --itc2007-fixed-time-room-dive VARIANT --solvers planora"
+  },
+  "schema_version": "planora.itc2007-fixed-time-room-dive-breadth-gate.v1",
+  "snapshots": {
+    "cpsolver_classes_sha256": "540f2a6059a20769c2176d978a9a858bbce5821752fbee79662d4ded5a9e578a",
+    "cpsolver_git_head": "354b3d551827ba60a2f21be3bf9f1ba6622c05e3",
+    "official_validator_sha256": "6b991efa2195ed59f9e514532d9add65b4790791bd6de054ce6f5cbdc19546b3",
+    "planora_git_head": "43028f327ee94d648bb8ce3479e3bd9276aad52a",
+    "planora_source_sha256": "0a72cc1e8a029720cf3536c4ee3401cd92b9c79f711322c4638dea8520bdc19d",
+    "source_matching_records": 42,
+    "source_stable_all_42": true,
+    "unique_source_hashes": [
+      "0a72cc1e8a029720cf3536c4ee3401cd92b9c79f711322c4638dea8520bdc19d"
+    ]
+  },
+  "strict_total_deadline": {
+    "configured_seconds": 10.0,
+    "definition": "strategy_meta.timing covers solve_instance through final quality and result construction. Fresh-process wall additionally includes interpreter/import/export and validator orchestration.",
+    "diagnosis_boundary": "All dives had zero dive-local overrun, but seven ON solve_instance calls exceeded the shared deadline. Dive-local timing is insufficient.",
+    "fresh_process_cpu_seconds": {
+      "off": {
+        "maximum": 10.762305,
+        "mean": 9.817311761904762,
+        "median": 9.835644,
+        "minimum": 8.409873999999999,
+        "sum": 206.163547
+      },
+      "on": {
+        "maximum": 11.038107,
+        "mean": 10.182847095238095,
+        "median": 10.230609,
+        "minimum": 8.764299,
+        "sum": 213.839789
+      }
+    },
+    "fresh_process_wall_seconds": {
+      "off": {
+        "maximum": 15.37286086801032,
+        "mean": 13.625760524811561,
+        "median": 13.588356117994408,
+        "minimum": 12.003245108004194,
+        "sum": 286.1409710210428
+      },
+      "on": {
+        "maximum": 15.424560726998607,
+        "mean": 14.068812664714642,
+        "median": 13.958128518992453,
+        "minimum": 12.717876157999854,
+        "sum": 295.4450659590075
+      }
+    },
+    "gate": "failed",
+    "off": {
+      "deadline_overrun_seconds": {
+        "maximum": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "minimum": 0.0,
+        "sum": 0.0
+      },
+      "elapsed_seconds": {
+        "maximum": 9.990673134991084,
+        "mean": 9.067817838477259,
+        "median": 9.109142218003399,
+        "minimum": 7.551018797006691,
+        "sum": 190.42417460802244
+      },
+      "overrun_runs": 0
+    },
+    "on": {
+      "deadline_overrun_seconds": {
+        "maximum": 0.3029863249976188,
+        "mean": 0.04485061857156411,
+        "median": 0.0,
+        "minimum": 0.0,
+        "sum": 0.9418629900028463
+      },
+      "elapsed_seconds": {
+        "maximum": 10.302986324997619,
+        "mean": 9.445624198522724,
+        "median": 9.491029409997282,
+        "minimum": 8.029540840987465,
+        "sum": 198.3581081689772
+      },
+      "overrun_instances": [
+        {
+          "instance": "comp06",
+          "seconds": 0.0395139470056165
+        },
+        {
+          "instance": "comp07",
+          "seconds": 0.2769483209995087
+        },
+        {
+          "instance": "comp10",
+          "seconds": 0.16419322100409772
+        },
+        {
+          "instance": "comp16",
+          "seconds": 0.04018893498869147
+        },
+        {
+          "instance": "comp19",
+          "seconds": 0.0377749409963144
+        },
+        {
+          "instance": "comp20",
+          "seconds": 0.3029863249976188
+        },
+        {
+          "instance": "comp21",
+          "seconds": 0.08025730001099873
+        }
+      ],
+      "overrun_runs": 7
+    }
+  },
+  "validation": {
+    "internal_external_exact_matches": 42,
+    "officially_feasible": 42,
+    "records": 42,
+    "validator_errors": 0,
+    "zero_hard_violations": 42
+  },
+  "verdict": {
+    "enable_by_default": false,
+    "quality_signal": "positive but mixed: 5 better, 14 ties, 2 worse; objective sum lower by 3.19 percent",
+    "required_next_gate": "Correct shared-deadline admission, test simulated upstream overrun, then rerun the seven overrun instances before another breadth matrix.",
+    "strict_deadline_gate": "failed on 7/21 ON versus 0/21 OFF",
+    "superiority_claim": "not_supported",
+    "supported_statement": "At seed 17 under the counterbalanced 10-second CPU0 single-worker ablation, ON preserved official feasibility and reduced the sum from 20,360 to 19,711, but exceeded the strict total deadline on seven instances and remained worse than compatible immutable CPSolver rows on all 21 objectives."
+  },
+  "within_run_room_dive": {
+    "acceptance_semantics": "Only strictly lower independently validated official objectives replace the incumbent.",
+    "accepted_improvement": 2,
+    "accepted_instances": [
+      {
+        "delta": -246,
+        "instance": "comp01",
+        "pre": 499,
+        "returned": 253
+      },
+      {
+        "delta": -157,
+        "instance": "comp05",
+        "pre": 1645,
+        "returned": 1488
+      }
+    ],
+    "accepted_total_objective_delta": -403,
+    "dive_local_deadline_overrun_runs": 0,
+    "no_feasible_candidate": 17,
+    "paired_vs_within_attribution": {
+      "accepted_dive_sum_delta": -403,
+      "note": "comp13, comp18, and comp21 improvements and comp02 and comp12 regressions were already present in ON pre_score versus OFF.",
+      "paired_sum_delta": -649,
+      "pre_dive_upstream_divergence_net_delta": -246
+    },
+    "rejected_no_improvement": 2
+  }
+}

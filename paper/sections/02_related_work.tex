@@ -1,24 +1,54 @@
-Automated university timetabling is typically studied through three families of methods: exact/constraint-based optimization, metaheuristics, and hybrids.
-Survey work highlights that no single family dominates all instances; performance depends strongly on structure and constraint tightness~\cite{schaerf1999survey,lewis2008metaheuristics,bettinelli2015overview}.
+Automated timetabling spans mathematical programming, constraint programming, local search, and hybrids~\cite{schaerf1999survey,lewis2008metaheuristics,bettinelli2015overview}.
+Competition formats made hard/soft semantics, validators, and comparable instances central to the field~\cite{mccollum2010itc,bonutti2012benchmarking}.
+ITC~2019 broadened the target to real-world classes, admissible time/room domains, distribution constraints, and student sectioning~\cite{muller2025itc2019}.
+MaxSAT preprocessing followed by local improvement is an established ITC~2019 competitor design~\cite{lemos2022unicort}.
+Recent surveys emphasize that institution-specific rules and reproducible benchmark validation remain central obstacles to transferring one timetabling formulation between universities~\cite{rossi2022survey}.
 
-\paragraph{Competition-driven modeling.}
-ITC-style benchmark design emphasized clear hard/soft separation, reproducible formats, and comparable scoring~\cite{mccollum2010itc,bonutti2012benchmarking}.
-Our formulation follows this pattern directly: hard feasibility first, weighted soft penalties second, with explicit validation and reproducibility artifacts.
+\paragraph{Decomposition.}
+Logic-based Benders methods use a master problem and a subordinate inference problem whose failures generate cuts~\cite{hooker2003logic}.
+Lach and L\"ubbecke characterize the partial-transversal structure behind time-first, room-second university timetabling through Hall inequalities~\cite{lach2008partial}; Bagger et al. segment the curriculum-based problem into time scheduling and room allocation and generate Benders feasibility cuts~\cite{bagger2018benders}.
+Consequently, neither time/room decomposition nor Hall/Benders room cuts are claimed as novel.
+Expanding the left side of the bipartite graph from jobs to admissible job--start options also subsumes the start-dependent contextual formula: for option set $U$, the established partial-transversal inequality is $x(U)\le |\Gamma(U)|$.
+An earlier reviewed draft used the witnessed-room cardinality and could be weaker when $\Gamma(U)$ was a strict subset of that witness; the implementation now uses the stronger standard right-hand side $|\Gamma(U)|$.
+This correction strengthens the separation but does not change the prior-art verdict: the method is evaluated as a dynamic effective-domain instantiation with conservative fallback, not as a new inequality family.
 
-\paragraph{Metaheuristics.}
-Neighborhood search (tabu, SA, VNS, large-neighborhood variants) is effective for quality improvement after feasibility, especially when incremental delta evaluation is available~\cite{lewis2008metaheuristics}.
-The local-search layer in this work follows that direction, but with bounded deterministic passes before stochastic exploration to improve predictability in interactive runs.
+\paragraph{Hybrid improvement.}
+Feasibility construction followed by tabu search, simulated annealing, variable-neighborhood search, or related neighborhoods is established practice~\cite{lewis2008metaheuristics,muller2009hybrid}.
+Burke et al. explicitly combine decomposition, reformulation, and diving for university course timetabling, while L\"u and Hao construct periods heuristically and solve the induced room assignment as an exact bipartite matching problem~\cite{burke2010diving,lu2008hybrid}.
+Accordingly, fixing event times and reoptimizing rooms is an established special case rather than a new algorithmic primitive.
+Instance-feature-driven parameter tuning is also established for curriculum-based timetabling~\cite{bellio2016feature}; any future learned or calibrated controller must be evaluated against that line of work rather than presented as a new idea in isolation.
+CP-based exact repair in course-timetabling LNS, failure-derived cuts, adaptive neighborhood size, Benders-cut-guided LNS, Benders-aware LNS subproblems, and explanation-derived neighborhoods also precede this work~\cite{cambazard2012cp,nagata2018random,trick2011benderslns,maher2021benderslns,prudhomme2014explanationlns}.
+Adaptive LNS and online bandit selection are established across mixed-integer and scheduling domains~\cite{ropke2006alns,hendel2022alns,phan2024balance,cai2025balans}.
+The Planora local search, exact repair, and discounted-UCB controller are therefore not presented as new metaheuristic classes.
+The testable systems hypothesis is whether a typed certificate-support record, with independently replayable cut assumptions and explicit neighborhood lineage, can safely serve as a cut, semantic repair seed, explanation, and audit event.
+Room-majority guidance and course room-stability penalties likewise do not define a new neighborhood.
+The support-aware feedback ablation evaluated here changes only the deterministic secondary ranking signal: it estimates the number of distinct courses fragmented after a period--room collision projection, while the official four-component score and independent validator retain sole acceptance authority.
+It is therefore described as a Planora selection hypothesis, not as a new or exact room-stability objective.
 
-\paragraph{Constraint programming and hybrid solvers.}
-Competition solvers and later systems often combine exact modeling with heuristic guidance~\cite{muller2009hybrid}.
-Modern CP-SAT combines SAT-style propagation, integer reasoning, and linear relaxations in one engine, enabling strong feasibility search under mixed logical/arithmetic constraints~\cite{cpsatlp,ortools,perron_didier_gay_cpsatlp_2023}.
-Relative to pure metaheuristics, our system uses CP-SAT to guarantee hard feasibility (when a feasible model is found) and then applies local search only for soft improvement.
+\paragraph{Systematic novelty boundary.}
+The reproducible search protocol and prior-art matrix are provided in \path{paper/novelty_review.md} and its machine-readable companion.
+An adversarial second pass found direct mathematical and algorithmic anticipation for both broad candidate claims.
+We therefore make no priority claim for the contextual inequality, Benders/certificate-guided LNS, or assumption-core-guided repair.
+The fixed-time room dive and feature-based tuning directions are likewise prior art.
+The remaining candidate is an integration and reproducibility contribution, and it still requires independent database review before submission.
 
-\paragraph{Positioning of this paper.}
-Methodologically, the contribution is not a new global algorithm class, but an implementation-grounded integration of:
-\begin{itemize}[leftmargin=*]
-  \item a CP-SAT hard model with explicit occupancy and rule constraints,
-  \item switchable strict/greedy rooming to trade strictness for runtime,
-  \item bounded post-optimization tuned for interactive administration.
-\end{itemize}
-This placement is closest to practical hybrid workflows used in deployable timetabling tools, while keeping the mathematical model explicit and reproducible.
+\paragraph{Fairness.}
+M\"uhlenthaler and Wanka formulate academic timetabling with max--min fairness and Jain's index, and later study a decomposition of the max--min fair room assignment problem~\cite{muhlenthaler2013fairness,muhlenthaler2013decomposition}.
+Our fairness profile therefore implements an established normative direction: minimize the worst group burden lexicographically before aggregate penalty.
+Gini and Jain values are diagnostics, not proof that the chosen burden definition is institutionally fair.
+
+\paragraph{Explainability and repair.}
+An infeasibility explanation is useful only if its semantics match the actual solver domains.
+Our Hall witness is generated after applying type, combined cluster capacity, specialization, availability, closure, and room-lock filters.
+Travel and cross-week repeat-room coupling can make the full room model infeasible even when every slot-wise bipartite graph has a perfect matching; those cases receive an exact time-assignment nogood rather than a false Hall explanation.
+This distinction is central to the proposed evaluation.
+
+\paragraph{Robustness and institutional policy.}
+Enrollment and disruption uncertainty motivate robust or stochastic scheduling rather than deterministic capacity assumptions alone~\cite{holm2023robust}.
+Published university policies additionally expose operational criteria not represented by a single competition score, including standard meeting patterns, prime-time balancing, historical enrollment, equipment and location fit, room-fill targets, and post-registration change controls~\cite{ucdavispolicy,berkeleypolicy,michiganpolicy}.
+Planora represents these criteria as data and metrics; it does not claim that one generic preset is an official policy for any named institution.
+
+\paragraph{Scale decomposition.}
+Institutional systems may stage or partition scheduling work by department, lecture size, laboratory category, or other resource boundaries; UniTime documents a Purdue workflow that first handles large lectures, then departments, and then computing laboratories~\cite{unitimeproblem}.
+This supports decomposition as an operational pattern, not a novelty claim.
+Planora's additional research question is narrower: whether a policy-completeness preflight plus adaptive certificate fallback can retain auditability while exploiting genuinely independent temporal partitions.

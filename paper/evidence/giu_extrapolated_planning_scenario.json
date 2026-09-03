@@ -1,0 +1,182 @@
+{
+  "canonical_payload_sha256": "946262833f7c9db7795d19199cda8aa4890b2bb355b70daf436e90b7f696f7cf",
+  "classification": "repository_derived_research_extrapolation",
+  "current_giu_policy_claim": false,
+  "demand_sensitivity_scenarios": [
+    {
+      "interpretation": "workload-volume sensitivity only; not an enrollment or policy forecast",
+      "projected_scheduled_event_rows": 1265,
+      "scenario_id": "historical_volume",
+      "volume_multiplier": 1.0
+    },
+    {
+      "interpretation": "workload-volume sensitivity only; not an enrollment or policy forecast",
+      "projected_scheduled_event_rows": 1392,
+      "scenario_id": "planning_plus_10_percent",
+      "volume_multiplier": 1.1
+    },
+    {
+      "interpretation": "workload-volume sensitivity only; not an enrollment or policy forecast",
+      "projected_scheduled_event_rows": 1518,
+      "scenario_id": "stress_plus_20_percent",
+      "volume_multiplier": 1.2
+    }
+  ],
+  "derived_capacity_indicators": {
+    "scheduled_rows_by_day": {
+      "FRI": 179,
+      "MON": 13,
+      "SAT": 265,
+      "THU": 290,
+      "TUE": 186,
+      "WED": 332
+    },
+    "scheduled_rows_by_week": {
+      "1": 70,
+      "10": 106,
+      "11": 126,
+      "12": 102,
+      "2": 122,
+      "3": 104,
+      "4": 100,
+      "5": 123,
+      "6": 79,
+      "7": 127,
+      "8": 105,
+      "9": 101
+    },
+    "scheduled_rows_per_teaching_week": 105.417,
+    "slot_shares": {
+      "0": 0.01501976,
+      "1": 0.24664032,
+      "2": 0.28853755,
+      "3": 0.25375494,
+      "4": 0.19604743
+    }
+  },
+  "generated_for_date": "2026-08-13",
+  "institution_approved": false,
+  "limitations": [
+    "The source is a Spring 2023 historical timetable snapshot, not a current GIU system export.",
+    "Volume multipliers are sensitivity cases, not forecasts of enrollment or institutional demand.",
+    "Room capacities, staff constraints, student requests, accessibility needs, and current policy remain unconfirmed.",
+    "Only an authorized GIU institutional decision can change institution_approved to true."
+  ],
+  "preserved_observations": {
+    "course_text_label_count": 88,
+    "days": [
+      "MON",
+      "TUE",
+      "WED",
+      "THU",
+      "FRI",
+      "SAT"
+    ],
+    "major_labels": [
+      "BINF 6th",
+      "CSEN 10th",
+      "CSEN 6th",
+      "GIU AUTO 6th",
+      "GIU BA 4th",
+      "GIU MANF 6th",
+      "GIU ROBO 6th",
+      "MCTR 10th",
+      "MGT 6th"
+    ],
+    "merged_activities": 1044,
+    "normalized_source_events": 1265,
+    "rooms_observed_or_placeholder_records": 161,
+    "slot_grid": [
+      {
+        "raw_scheduled_cells": 19,
+        "raw_scheduled_share": 0.01501976,
+        "solver_index": 0,
+        "source_index": 1,
+        "time_label": "08:30 - 10:00"
+      },
+      {
+        "raw_scheduled_cells": 312,
+        "raw_scheduled_share": 0.24664032,
+        "solver_index": 1,
+        "source_index": 2,
+        "time_label": "10:30 - 12:00"
+      },
+      {
+        "raw_scheduled_cells": 365,
+        "raw_scheduled_share": 0.28853755,
+        "solver_index": 2,
+        "source_index": 3,
+        "time_label": "12:15 - 13:45"
+      },
+      {
+        "raw_scheduled_cells": 321,
+        "raw_scheduled_share": 0.25375494,
+        "solver_index": 3,
+        "source_index": 4,
+        "time_label": "14:15 - 15:45"
+      },
+      {
+        "raw_scheduled_cells": 248,
+        "raw_scheduled_share": 0.19604743,
+        "solver_index": 4,
+        "source_index": 5,
+        "time_label": "16:00 - 17:30"
+      }
+    ],
+    "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ]
+  },
+  "safe_solver_policy": {
+    "hard_constraints_preserved": [
+      "room capacity",
+      "room availability",
+      "standard observed start slots"
+    ],
+    "interactive_improve_limit_seconds": 2.0,
+    "interactive_solve_limit_seconds": 15.0,
+    "not_enabled_without_authoritative_data": [
+      "current calendar rules",
+      "building closures",
+      "travel buffers",
+      "staff workload policy",
+      "student demand uncertainty"
+    ],
+    "objective_profile": "university_fast",
+    "room_mode": "partitioned"
+  },
+  "scenario_id": "giu_berlin_repository_extrapolation_2026",
+  "schema_version": 1,
+  "sign_off": {
+    "approvers": [],
+    "decision": null,
+    "effective_term": null,
+    "required_protocol": "docs/GIU_INSTITUTIONAL_VALIDATION_PROTOCOL.md",
+    "required_roles": [
+      "registrar or timetable owner",
+      "facilities or room inventory owner",
+      "academic department representatives",
+      "student services or accessibility representative",
+      "data protection or information security representative"
+    ],
+    "review_or_expiry_date": null,
+    "status": "institutional_signature_required"
+  },
+  "source": {
+    "calibration_id": "giu_berlin_ss23_historical_schedule_snapshot",
+    "path": "paper/evidence/giu_ss23_calibration.json",
+    "sha256": "c2620b38ed4535fbbeb55ca66ec3c031cf346a1a5dc6c66d62cc545c5df53b73",
+    "source_snapshot_label": "Berlin Campus Spring Semester 2023"
+  }
+}

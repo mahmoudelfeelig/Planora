@@ -1,0 +1,356 @@
+{
+  "title": "ITC 2019: International Timetabling Competition 2019",
+  "url": "https://www.itc2019.org/results",
+  "tables": [
+    [
+      [
+        "Instance",
+        "Total cost",
+        "Student conflicts",
+        "Time penalty",
+        "Room penalty",
+        "Distribution penalty",
+        "Submitter",
+        ""
+      ],
+      [
+        "",
+        "agh-fis-spr17",
+        "2985",
+        "49",
+        "162",
+        "247",
+        "123",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "agh-ggis-spr17",
+        "34285",
+        "2548",
+        "1383",
+        "278",
+        "1049",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "bet-fal17",
+        "289452",
+        "391",
+        "220",
+        "6786",
+        "8904",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "iku-fal17",
+        "18968",
+        "0",
+        "13112",
+        "4296",
+        "52",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "mary-spr17",
+        "14910",
+        "43",
+        "815",
+        "50",
+        "2560",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "muni-fi-spr16",
+        "3752",
+        "582",
+        "212",
+        "186",
+        "2",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "muni-fsps-spr17",
+        "868",
+        "5",
+        "0",
+        "68",
+        "20",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "muni-pdf-spr16c",
+        "32762",
+        "608",
+        "4744",
+        "2710",
+        "305",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "pu-llr-spr17",
+        "10038",
+        "643",
+        "850",
+        "1752",
+        "37",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "tg-fal17",
+        "4215",
+        "0",
+        "1792",
+        "31",
+        "30",
+        "Marlúcio Alves Pires",
+        ""
+      ],
+      [
+        "",
+        "agh-ggos-spr17",
+        "2855",
+        "25",
+        "409",
+        "194",
+        "60",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "agh-h-spr17",
+        "21161",
+        "10",
+        "158",
+        "154",
+        "1355",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "lums-spr18",
+        "95",
+        "0",
+        "0",
+        "25",
+        "14",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "muni-fi-spr17",
+        "3738",
+        "677",
+        "56",
+        "125",
+        "6",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "muni-fsps-spr17c",
+        "2594",
+        "0",
+        "71",
+        "609",
+        "14",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "muni-pdf-spr16",
+        "17159",
+        "358",
+        "1896",
+        "1851",
+        "205",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "nbi-spr18",
+        "18014",
+        "440",
+        "6422",
+        "3370",
+        "5",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "pu-d5-spr17",
+        "15184",
+        "16",
+        "1307",
+        "127",
+        "688",
+        "Tomas Muller",
+        ""
+      ],
+      [
+        "",
+        "pu-proj-fal19",
+        "117169",
+        "2182",
+        "19282",
+        "11547",
+        "1895",
+        "Tomas Muller",
+        ""
+      ],
+      [
+        "",
+        "yach-fal17",
+        "1074",
+        "122",
+        "0",
+        "404",
+        "6",
+        "Tomas Muller",
+        ""
+      ],
+      [
+        "",
+        "agh-fal17",
+        "117627",
+        "11400",
+        "4533",
+        "2970",
+        "2635",
+        "Tomas Muller",
+        ""
+      ],
+      [
+        "",
+        "bet-spr18",
+        "348524",
+        "258",
+        "180",
+        "7016",
+        "10972",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "iku-spr18",
+        "25863",
+        "0",
+        "19912",
+        "4031",
+        "64",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "lums-fal17",
+        "349",
+        "0",
+        "60",
+        "149",
+        "16",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "mary-fal18",
+        "4331",
+        "234",
+        "299",
+        "328",
+        "213",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "muni-fi-fal17",
+        "2837",
+        "448",
+        "98",
+        "133",
+        "17",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "muni-fspsx-fal17",
+        "10014",
+        "0",
+        "294",
+        "1254",
+        "94",
+        "Tomas Muller",
+        ""
+      ],
+      [
+        "",
+        "muni-pdfx-fal17",
+        "82258",
+        "771",
+        "14416",
+        "14698",
+        "741",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "pu-d9-fal19",
+        "38834",
+        "601",
+        "3330",
+        "6274",
+        "389",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ],
+      [
+        "",
+        "tg-spr18",
+        "12704",
+        "0",
+        "982",
+        "180",
+        "528",
+        "D. Holm & R. Mikkelsen",
+        ""
+      ]
+    ],
+    [
+      [
+        "ITC 2019 Discussion Forum",
+        "For any questions or comments, please contact us at organizers@itc2019.org.",
+        "Follow @itc2019"
+      ]
+    ]
+  ],
+  "captured_at": "2026-08-13T21:32:49.125Z"
+}

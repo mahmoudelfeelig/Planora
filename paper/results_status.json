@@ -1,0 +1,49 @@
+{
+  "status": "historical_results_quarantined_replacement_feasibility_gate_passed",
+  "claim_eligible": false,
+  "affected_files": [
+    "results.jsonl",
+    "results_baseline_expanded.jsonl",
+    "results_ls_expanded.jsonl",
+    "sections/07_experiments_table.tex",
+    "sections/07_experiments_runs.tex",
+    "sections/07_experiments_ls_table.tex"
+  ],
+  "reasons": [
+    "Named generator modes did not receive the recorded seed, so seed labels did not identify distinct instances.",
+    "Requested cp_rooms runtime included retries and greedy fallback, confounding direct algorithm comparisons.",
+    "The small seed count and missing bounds, gaps, and confidence intervals do not support strong statistical claims."
+  ],
+  "replacement_protocol": "paper/sections/07_experiments.tex",
+  "replacement_claim_eligible": true,
+  "replacement_claim_scope": "Generated small_demo feasibility architecture only; no quality, external-transfer, or competitor-superiority claim.",
+  "replacement_evidence": {
+    "analysis": "paper/evidence/generated_feasibility_50x3_2026-08-11_analysis.json",
+    "publication_gate": "PASS",
+    "minimum_effective_instances_per_condition": 30,
+    "effective_instances": {
+      "cp_rooms": 38,
+      "decomposed": 37,
+      "greedy": 38
+    },
+    "raw_shards": [
+      {
+        "path": "paper/evidence/generated_feasibility_30x3_2026-08-11.jsonl",
+        "sha256": "624370c0545f72ff75a68e0502543dacd22e2975cba1b2f5621559529c50153c",
+        "rows": 90
+      },
+      {
+        "path": "paper/evidence/generated_feasibility_supplement_31_50_2026-08-11.jsonl",
+        "sha256": "58bd92b62d4350c3f33d0ac657d0cb07280ab551dc5736f94cb0dab8d6d5a47f",
+        "rows": 60
+      }
+    ]
+  },
+  "post_incumbent_quality_evidence": {
+    "path": "paper/evidence/selected_post_incumbent_quality_2026-08-13.json",
+    "claim_eligible": true,
+    "claim_scope": "Selected retained-incumbent mechanism evidence only; no end-to-end, equal-budget, runtime-superiority, or corpus-wide competitor claim.",
+    "selected_results": 5,
+    "fresh_paired_matrix_required_for_general_superiority": true
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "schema_version": "planora.itc2007-support-proxy-evidence.v1",
+  "created_at": "2026-08-13",
+  "claim_scope": "bounded_post_incumbent_mechanism_evidence",
+  "claim_boundary": {
+    "end_to_end_cold_solve": false,
+    "competitor_superiority": false,
+    "new_neighborhood_claim": false,
+    "official_score_is_acceptance_authority": true,
+    "description": "Two deterministic fixed-checkpoint calls start from the same retained Planora-native incumbent. Timing excludes construction of that incumbent and therefore cannot be compared with the retained CPSolver runtime."
+  },
+  "instance": {
+    "id": "comp10",
+    "path": "/tmp/planora-itc2007-cpsolver/data/ctt/comp10.ctt",
+    "sha256": "1266e73d63b8f61945fbbb693c62e4621856618a4d5c29a6228a518d72a5ac92"
+  },
+  "incumbent": {
+    "path": "output/itc2007-projected-hybrid-breadth21-seed17-10s-v2/runs/comp10/seed-17/planora/solution.out",
+    "sha256": "754781b064fe1cd70a1b763b174f3207f12ea6a4e28255d9eb79ce8505d9fcb3",
+    "official_components": {
+      "room_capacity": 0,
+      "minimum_working_days": 20,
+      "curriculum_compactness": 48,
+      "room_stability": 41,
+      "total": 109
+    }
+  },
+  "configuration": {
+    "seed": 17,
+    "absolute_budget_seconds": 2.2,
+    "feedback_rounds": 4,
+    "feedback_iterations_per_round": 32,
+    "candidate_batch_size": 20,
+    "time_rooted_relocations": 0,
+    "component_rooted_relocations": 0,
+    "stability_collision_weight": 1,
+    "stability_proxy_mode": "fragmented_courses",
+    "pythonhashseed": 0,
+    "blas_threads": 1,
+    "cpu_affinity": 4
+  },
+  "runs": [
+    {
+      "id": "a",
+      "report_path": "/tmp/planora-comp10-fragmented-proof-a.json",
+      "report_sha256": "2cf2c7df9bae4d32f565af08cc1bfab3529b6fbd323acf529b144351d799b6df",
+      "output_path": "/tmp/planora-comp10-fragmented-proof-a.out",
+      "output_sha256": "09a1c1c949b3e52345a2d48d93fcde5e84e2e018729c672e0a2810a27a7f8dcf",
+      "elapsed_seconds": 1.7361455640020722,
+      "deadline_overrun_seconds": 0.0,
+      "official_hard_violations": 0,
+      "official_components": {
+        "room_capacity": 0,
+        "minimum_working_days": 20,
+        "curriculum_compactness": 46,
+        "room_stability": 30,
+        "total": 96
+      }
+    },
+    {
+      "id": "b",
+      "report_path": "/tmp/planora-comp10-fragmented-proof-b.json",
+      "report_sha256": "d1aeac32b803dd35bd00f61baaac496a0f6ec69cc18c2fcba3d93b427e650771",
+      "output_path": "/tmp/planora-comp10-fragmented-proof-b.out",
+      "output_sha256": "09a1c1c949b3e52345a2d48d93fcde5e84e2e018729c672e0a2810a27a7f8dcf",
+      "elapsed_seconds": 1.8135638879975886,
+      "deadline_overrun_seconds": 0.0,
+      "official_hard_violations": 0,
+      "official_components": {
+        "room_capacity": 0,
+        "minimum_working_days": 20,
+        "curriculum_compactness": 46,
+        "room_stability": 30,
+        "total": 96
+      }
+    }
+  ],
+  "comparator": {
+    "solver": "CPSolver",
+    "path": "output/itc2007-breadth-21-candidate-vs-cpsolver-10s-seed17/runs/comp10/seed-17/cpsolver-itc2007/solution.out",
+    "sha256": "dffb57a0697c807ecd32680517deb5253a50e5f67d68c65e72f8bd99a425cd0d",
+    "official_hard_violations": 0,
+    "official_components": {
+      "room_capacity": 0,
+      "minimum_working_days": 20,
+      "curriculum_compactness": 58,
+      "room_stability": 4,
+      "total": 82
+    },
+    "comparison_boundary": "quality context only; not an equal-runtime comparison"
+  },
+  "ablation_observations": {
+    "fragmented_course_proxy_delta": -13,
+    "higher_collision_weight_total": 102,
+    "higher_collision_weight_was_better_than_incumbent": true,
+    "higher_collision_weight_was_worse_than_fragmented_course_proxy": true,
+    "fragmented_course_proxy_beats_comparator": false
+  },
+  "implementation_sha256": {
+    "core/itc2007_feedback_search.py": "76f3c35235d2361f7a9f5e2efd14de951d077d69f53d7485a66e757fd8192c1b",
+    "core/itc2007_iterative_feedback_dispatcher.py": "8ac69e123a0f671c88e16c77a9dfc372918cf286928977e45190de0188bc0acc",
+    "core/itc2007_feedback_rooted_dispatcher.py": "fa0a814bf0f3ed695ad8e6649ad2a40c1f1a17d10264ccd13289a65d9195435d",
+    "services/contracts.py": "9c9f15044969c7a62cf3e719b41d6f36d55633e525319fc930ee315a71c5b851",
+    "services/solver_service.py": "5447ff8728bb0591266c2a2a2576570e6086bc6734491ec47268cf3399a8f42d",
+    "benchmarks/itc2007_harness.py": "65fdcce4553e4e8cd9227b268f29bc6ba3f3e0d43cf7761922df915f013d2822"
+  },
+  "validator": {
+    "path": "/tmp/planora-itc2007-validator",
+    "sha256": "6b991efa2195ed59f9e514532d9add65b4790791bd6de054ce6f5cbdc19546b3",
+    "agreement": "hard feasibility and all four official soft components match internal scoring in both runs"
+  }
+}

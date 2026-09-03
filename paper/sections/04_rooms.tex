@@ -1,27 +1,75 @@
-Room assignment is supported in two modes:
-\begin{enumerate}[leftmargin=*]
-  \item \textbf{Integrated rooming} (\texttt{room\_mode=cp\_rooms}): CP-SAT selects rooms and enforces per-room non-overlap, eligibility, and room availability.
-  \item \textbf{Post-processing rooming} (\texttt{room\_mode=greedy}): CP-SAT assigns times only; rooms are assigned afterward by a greedy algorithm.
-\end{enumerate}
-Using either integrated or decoupled room assignment is consistent with hybrid/decomposition strategies studied in timetabling literature~\cite{muller2009hybrid,bettinelli2015overview}.
+The implementation retains integrated CP rooming and greedy post-processing as baselines, and adds \texttt{room\_mode=decomposed} as the research method.
+Strict CP rooming now uses every eligible room by default; candidate truncation is explicit and opt-in.
+For a co-located cluster, capacity is computed over the union of participating groups rather than per activity.
 
-\subsection{Eligibility}
-Eligibility is based on:
-\begin{itemize}[leftmargin=*]
-  \item room type (lecture/tutorial/lab),
-  \item capacity $\mathrm{cap}(r)\ge \sum_{g\in\mathcal{G}(a)} \mathrm{size}(g)$,
-  \item for specialized labs: required tag $\mathrm{tag}(a)$ must be present in the room's specialization tags.
-\end{itemize}
+\subsection{Fixed-Time Room Jobs}
+Given a master schedule, co-located activities are collapsed into room jobs $j\in\mathcal{J}$.
+Each job has a fixed week, day, start, duration, union robust-demand requirement $D_j$, and candidate domain $R_j$.
+The domain is the intersection of member eligibility after room type, specialization, capacity (when hard), availability, closures, and room locks are applied.
+Binary $y_{j,r}$ selects exactly one candidate room:
+\begin{align}
+\sum_{r\in R_j}y_{j,r}=1 \qquad \forall j\in\mathcal{J}.
+\end{align}
+Per-room/per-slot at-most-one constraints enforce physical occupancy.
+Additional pairwise constraints enforce travel buffers for jobs sharing staff or groups, and equality constraints implement an optional repeated weekly room pattern.
+The room objective prioritizes tutorial room type, capacity overflow when capacity is soft, capacity waste, and deterministic room identifiers.
+In objective-free runs the exact subproblem stops at feasibility rather than spending the remaining budget proving room-waste optimality; objective-enabled runs retain the room objective.
 
-\subsection{Integrated CP Rooming}
-When rooming is integrated, each activity selects one room from its eligible set and the schedule enforces non-overlap for each room (week-wise).
-Room availability constraints are enforced by forbidding time/room combinations that would occupy unavailable slots.
+paragraph{Support-aware feedback proxy.}
+For a fixed incumbent-majority room $r_c$ for each course $c$, the compatibility feedback scalar counts event-level collisions at $(q,r_c)$.
+The opt-in ablation instead resolves every period--majority-room collision deterministically, retains one capacity-prioritized event, and counts each displaced course once over the timetable.
+This distinct-course fragmentation count is only a candidate-ordering proxy: it is neither the official room-stability objective nor an exact fixed-time room solve.
+All resulting candidates are lifted to physical rooms and accepted only after full hard validation and canonical official rescoring.
 
-\subsection{Greedy Rooming}
-The greedy rooming algorithm iterates through each week/day/slot, assigning rooms for activities that occupy that slot.
-It prioritizes:
-\begin{itemize}[leftmargin=*]
-  \item co-locating clustered activities in a single room,
-  \item smallest-capacity eligible room that fits (to preserve large rooms).
-\end{itemize}
-If rooming fails, the implementation raises a structured error with a reason code (e.g., capacity, availability, tag mismatch) for debugging and UI display.
+\subsection{Hall-Deficiency Certificates}
+For occupied slot $q=(w,d,s)$, form a bipartite graph between active jobs $\mathcal{J}_q$ and their eligible rooms.
+A maximum matching is computed.
+If it does not cover every active job, alternating reachability from unmatched jobs yields a witness $J'\subseteq\mathcal{J}_q$ with neighborhood $N(J')$ satisfying
+\begin{align}
+|J'|>|N(J')|.
+\end{align}
+By Hall's theorem, those jobs cannot receive distinct rooms at $q$.
+The certificate stores the activities, representative cluster activities, candidate rooms, slot, deficiency, active demand mode, required capacities, and a counting explanation.
+
+\subsection{Master Cut}
+Let $D(j,t)$ be the exact candidate-room domain of representative job $j$ when started at $t$, after cluster membership, aggregate demand, room type, specialization, room locks, interval availability, and closures are applied.
+Retain the fixed-time certificate's witnessed room set $R^{\mathrm w}$ as evidence, and define the option-expanded literal set
+\begin{align}
+U(q,R^{\mathrm w})=
+\{(j,t):q\in I(j,t),\;D(j,t)\subseteq R^{\mathrm w}\}.
+\end{align}
+Only starts whose complete candidate domain is contained in the witnessed room set are counted.
+Their actual neighborhood is reconstructed separately as
+\begin{align}
+\Gamma(U)=\bigcup_{(j,t)\in U(q,R^{\mathrm w})}D(j,t).
+\end{align}
+The master receives the standard option-expanded Hall inequality
+\begin{align}
+\sum_{(j,t)\in U(q,R^{\mathrm w})}x_{j,t}
+\le |\Gamma(U)|. \label{eq:contextual-hall}
+\end{align}
+The witness $R^{\mathrm w}$ therefore limits which alternatives can enter the derivation, while the right-hand side is the stronger reconstructed neighborhood cardinality, not $|R^{\mathrm w}|$.
+For any selected subset of those alternatives, distinct active jobs require distinct rooms drawn from a subset of $\Gamma(U)$, which proves~\eqref{eq:contextual-hall}; the master's at-most-one start constraint prevents two alternatives of one job from being selected together.
+The incumbent witnessed starts must all satisfy the subset rule, and the contextual inequality is emitted only when it excludes the incumbent and is stronger than its exact incumbent-start nogood.
+Non-incumbent starts whose domain expands outside $R^{\mathrm w}$ are excluded from $U$.
+If an incumbent domain is not contained in $R^{\mathrm w}$, if any domain proof is uncertain, or if infeasibility arises only after travel or repeated-room coupling, the solver emits the universally safe exact incumbent-start nogood instead.
+Each cut records its kind, witness slot and rooms, derived $\Gamma(U)$, right-hand side, included and excluded start counts, proof rule, and fallback reason.
+The master is re-solved and the exact room subproblem is repeated until a full assignment is found, the master proves infeasible, or the shared wall-clock/round limit is reached.
+
+\subsection{Replay and Integrity Lineage}
+Before adding a contextual Hall inequality, a separate checker replays the serialized certificate and derivation without consulting the constructed CP model.
+It verifies the certificate schema and deficiency, fingerprints the room-domain input context, reconstructs every effective room domain from the stated members, time, duration, and master start domains, checks that the counted option set is complete, recomputes $\Gamma(U)$ and the right-hand side, and confirms that the inequality excludes the incumbent.
+Malformed, incomplete, or inconsistent evidence is never inserted as a contextual cut; when the representative incumbent starts are available, the cut layer uses the exact-nogood fallback.
+The replay path is independent of the cut-construction code, although both deliberately call the same authoritative effective-domain routine; it is not a second implementation of room eligibility.
+
+Canonical JSON payloads receive content-addressed SHA-256 identifiers for the certificate, room context, inequality, and complete derivation.
+The certificate-derived LNS signal retains these identifiers, the witness and derived room sets, and the domain assumptions; a selected certificate neighborhood records the source certificate, cut, and derivation identifiers in its trace.
+These hashes provide deterministic integrity and lineage, not authorship or authenticity: they are neither digital signatures nor protection against an actor replacing an artifact and all of its reference hashes.
+
+\subsection{Explanation and Repair Reuse}
+The Hall certificate supports the statement ``$k$ simultaneous room jobs can use only $m<k$ rooms'' and recommends moving at least one certified job outside the slot.
+For repair, certified activities are expanded through a typed activity hypergraph linking shared groups, staff, courses, rooms, clusters, distribution constraints, and temporal partition boundaries.
+Activities outside the selected neighborhood are fixed through CP-SAT assumptions on a reusable exact model; an infeasible assumption core is converted into another typed search signal.
+A discounted-UCB controller chooses between certificate, penalty, partition-boundary, and random families at several target sizes.
+Only schedules accepted by the separate repository-local post-solve validator and found to be strictly improving replace the incumbent, and every exact-repair round records build, assumption-setup, search, validation, objective, bound, and local-optimality evidence.
+Cut-guided LNS, explanation-guided repair, adaptive LNS, and bandit selection have prior art; the benefit of this integrity-linked systems integration remains an experimental question pending the prescribed ablations.

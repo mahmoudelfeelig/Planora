@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "evidence_class": "local_engineering_smoke_not_inferential",
+  "recorded_at": "2026-08-11",
+  "git_base_sha": "43028f327ee94d648bb8ce3479e3bd9276aad52a",
+  "git_dirty": true,
+  "environment": {
+    "os": "WSL2 Linux 6.6.87.2",
+    "cpu": "AMD Ryzen 7 5800H",
+    "visible_logical_cpus": 8,
+    "python": "3.12.3",
+    "ortools": "9.15.6755"
+  },
+    "instance": {
+        "preset": "giu_target",
+        "scenario_kind": "synthetic_target_case_with_historical_policy_layer",
+        "institutional_fact_status": "not_institutional_ground_truth",
+        "giu_calibration_artifact": "paper/evidence/giu_ss23_calibration.json",
+        "historical_room_provenance": {
+            "distinct_nonblank_room_labels": 15,
+            "missing_room_rows_preserved_as_scoped_placeholders": 146,
+            "modeled_room_records": 161,
+            "warning": "The synthetic benchmark uses 35 generated rooms. Neither 35 nor 161 is a confirmed GIU physical-room inventory."
+        },
+        "fingerprint_sha256": "6c59fa2a5f98b72f58a1af89b96fea613d840c6c6a0b05e5ae8f2f9829b538ec",
+    "activities": 3888,
+    "weeks": 12,
+    "groups": 29,
+    "staff": 67,
+    "rooms": 35,
+    "compact_start_integer_variables": 3888,
+    "estimated_start_domain_values": 105510
+  },
+  "condition": {
+    "wall_budget_seconds": 30.0,
+    "partition_workers": 4,
+    "inner_workers": 1,
+    "objective": false,
+    "strict_post_solve_validation": true
+  },
+  "partitioned_runs": [
+    {
+      "solver_seed": 1,
+      "status": "OPTIMAL",
+      "model_build_seconds": 1.193140425006277,
+      "solve_seconds": 11.350505260008504,
+      "measured_path_seconds": 13.028337693031062,
+      "schedule_rows": 3888,
+      "validation_errors": 0,
+      "peak_rss_kib": 240688,
+      "exact_room_fallbacks": 0
+    },
+    {
+      "solver_seed": 2,
+      "status": "OPTIMAL",
+      "solve_seconds": 11.220983929000795,
+      "measured_path_seconds": 12.857439017985598,
+      "schedule_rows": 3888,
+      "validation_errors": 0,
+      "peak_rss_kib": 238012,
+      "exact_room_fallbacks": 0
+    },
+    {
+      "solver_seed": 3,
+      "status": "OPTIMAL",
+      "solve_seconds": 11.663178674993105,
+      "measured_path_seconds": 13.243990707997,
+      "schedule_rows": 3888,
+      "validation_errors": 0,
+      "peak_rss_kib": 244464,
+      "exact_room_fallbacks": 0
+    }
+  ],
+  "partitioned_summary": {
+    "feasible_runs": 3,
+    "runs": 3,
+    "median_solve_seconds": 11.350505260008504,
+    "solve_range_seconds": [11.220983929000795, 11.663178674993105],
+    "median_measured_path_seconds": 13.028337693031062,
+    "median_peak_rss_kib": 240688
+  },
+  "monolithic_seed_1_smokes": [
+    {
+      "room_mode": "greedy",
+      "workers": 1,
+      "status": "UNKNOWN",
+      "solve_seconds": 30.274602534002042,
+      "measured_path_seconds": 30.596469032985624,
+      "peak_rss_kib": 424220
+    },
+    {
+      "room_mode": "greedy",
+      "workers": 8,
+      "status": "UNKNOWN",
+      "solve_seconds": 32.14348008298839,
+      "measured_path_seconds": 32.51246765999531,
+      "peak_rss_kib": 1848068
+    }
+  ],
+    "interpretation_boundary": "The three partitioned solver seeds share one synthetically generated target-case instance. These rows verify a local scale path and do not establish algorithmic superiority, cross-machine performance, physical room inventory, or institutional validity."
+}

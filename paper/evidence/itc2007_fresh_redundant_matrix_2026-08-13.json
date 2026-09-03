@@ -1,0 +1,348 @@
+{
+  "claim_boundary": "Planora has the lower mean objective in both passes, but winner changes between passes prohibit deterministic per-instance or general superiority claims.",
+  "generated_at": "2026-08-13",
+  "identity": {
+    "cpsolver_classes_sha256": "540f2a6059a20769c2176d978a9a858bbce5821752fbee79662d4ded5a9e578a",
+    "cpu_affinity": 0,
+    "planora_source_sha256": "665cee79e832c9b04aebcad62ea1c1b7b16252569b8aac9d98a41f39b3c1ec11",
+    "planora_strategy": "projected_hybrid",
+    "seeds": [
+      17
+    ],
+    "time_limit_seconds": 10.0,
+    "validator_sha256": "6b991efa2195ed59f9e514532d9add65b4790791bd6de054ce6f5cbdc19546b3",
+    "workers": 1
+  },
+  "instances": {
+    "comp01": {
+      "a": {
+        "cpsolver": 6,
+        "planora": 8,
+        "winner": "cpsolver-itc2007"
+      },
+      "b": {
+        "cpsolver": 6,
+        "planora": 17,
+        "winner": "cpsolver-itc2007"
+      }
+    },
+    "comp02": {
+      "a": {
+        "cpsolver": 167,
+        "planora": 109,
+        "winner": "planora"
+      },
+      "b": {
+        "cpsolver": 168,
+        "planora": 108,
+        "winner": "planora"
+      }
+    },
+    "comp03": {
+      "a": {
+        "cpsolver": 166,
+        "planora": 155,
+        "winner": "planora"
+      },
+      "b": {
+        "cpsolver": 175,
+        "planora": 156,
+        "winner": "planora"
+      }
+    },
+    "comp04": {
+      "a": {
+        "cpsolver": 74,
+        "planora": 82,
+        "winner": "cpsolver-itc2007"
+      },
+      "b": {
+        "cpsolver": 80,
+        "planora": 79,
+        "winner": "planora"
+      }
+    },
+    "comp05": {
+      "a": {
+        "cpsolver": 740,
+        "planora": 497,
+        "winner": "planora"
+      },
+      "b": {
+        "cpsolver": 752,
+        "planora": 526,
+        "winner": "planora"
+      }
+    },
+    "comp06": {
+      "a": {
+        "cpsolver": 120,
+        "planora": 148,
+        "winner": "cpsolver-itc2007"
+      },
+      "b": {
+        "cpsolver": 127,
+        "planora": 139,
+        "winner": "cpsolver-itc2007"
+      }
+    },
+    "comp07": {
+      "a": {
+        "cpsolver": 133,
+        "planora": 117,
+        "winner": "planora"
+      },
+      "b": {
+        "cpsolver": 106,
+        "planora": 135,
+        "winner": "cpsolver-itc2007"
+      }
+    },
+    "comp08": {
+      "a": {
+        "cpsolver": 79,
+        "planora": 88,
+        "winner": "cpsolver-itc2007"
+      },
+      "b": {
+        "cpsolver": 88,
+        "planora": 81,
+        "winner": "planora"
+      }
+    },
+    "comp09": {
+      "a": {
+        "cpsolver": 147,
+        "planora": 159,
+        "winner": "cpsolver-itc2007"
+      },
+      "b": {
+        "cpsolver": 172,
+        "planora": 157,
+        "winner": "planora"
+      }
+    },
+    "comp10": {
+      "a": {
+        "cpsolver": 87,
+        "planora": 121,
+        "winner": "cpsolver-itc2007"
+      },
+      "b": {
+        "cpsolver": 94,
+        "planora": 120,
+        "winner": "cpsolver-itc2007"
+      }
+    },
+    "comp11": {
+      "a": {
+        "cpsolver": 0,
+        "planora": 1,
+        "winner": "cpsolver-itc2007"
+      },
+      "b": {
+        "cpsolver": 0,
+        "planora": 1,
+        "winner": "cpsolver-itc2007"
+      }
+    },
+    "comp12": {
+      "a": {
+        "cpsolver": 630,
+        "planora": 528,
+        "winner": "planora"
+      },
+      "b": {
+        "cpsolver": 629,
+        "planora": 528,
+        "winner": "planora"
+      }
+    },
+    "comp13": {
+      "a": {
+        "cpsolver": 118,
+        "planora": 121,
+        "winner": "cpsolver-itc2007"
+      },
+      "b": {
+        "cpsolver": 117,
+        "planora": 121,
+        "winner": "cpsolver-itc2007"
+      }
+    },
+    "comp14": {
+      "a": {
+        "cpsolver": 107,
+        "planora": 107,
+        "winner": "tie"
+      },
+      "b": {
+        "cpsolver": 110,
+        "planora": 107,
+        "winner": "planora"
+      }
+    },
+    "comp15": {
+      "a": {
+        "cpsolver": 155,
+        "planora": 155,
+        "winner": "tie"
+      },
+      "b": {
+        "cpsolver": 172,
+        "planora": 155,
+        "winner": "planora"
+      }
+    },
+    "comp16": {
+      "a": {
+        "cpsolver": 117,
+        "planora": 100,
+        "winner": "planora"
+      },
+      "b": {
+        "cpsolver": 115,
+        "planora": 104,
+        "winner": "planora"
+      }
+    },
+    "comp17": {
+      "a": {
+        "cpsolver": 162,
+        "planora": 149,
+        "winner": "planora"
+      },
+      "b": {
+        "cpsolver": 161,
+        "planora": 153,
+        "winner": "planora"
+      }
+    },
+    "comp18": {
+      "a": {
+        "cpsolver": 120,
+        "planora": 146,
+        "winner": "cpsolver-itc2007"
+      },
+      "b": {
+        "cpsolver": 132,
+        "planora": 141,
+        "winner": "cpsolver-itc2007"
+      }
+    },
+    "comp19": {
+      "a": {
+        "cpsolver": 148,
+        "planora": 132,
+        "winner": "planora"
+      },
+      "b": {
+        "cpsolver": 146,
+        "planora": 132,
+        "winner": "planora"
+      }
+    },
+    "comp20": {
+      "a": {
+        "cpsolver": 183,
+        "planora": 165,
+        "winner": "planora"
+      },
+      "b": {
+        "cpsolver": 176,
+        "planora": 160,
+        "winner": "planora"
+      }
+    },
+    "comp21": {
+      "a": {
+        "cpsolver": 192,
+        "planora": 208,
+        "winner": "cpsolver-itc2007"
+      },
+      "b": {
+        "cpsolver": 220,
+        "planora": 201,
+        "winner": "planora"
+      }
+    }
+  },
+  "passes": {
+    "a": {
+      "aggregate": {
+        "cpsolver-itc2007": {
+          "feasibility_rate": 1.0,
+          "feasible_runs": 21,
+          "objective_max": 740,
+          "objective_mean": 173.85714285714286,
+          "objective_median": 133.0,
+          "objective_min": 0,
+          "runs": 21,
+          "wall_time_median_seconds": 10.96442277800088
+        },
+        "planora": {
+          "feasibility_rate": 1.0,
+          "feasible_runs": 21,
+          "objective_max": 528,
+          "objective_mean": 156.95238095238096,
+          "objective_median": 132.0,
+          "objective_min": 1,
+          "runs": 21,
+          "wall_time_median_seconds": 16.791345763005666
+        }
+      },
+      "directory": "/mnt/d/Stuff/Projects/Sites/Planora/output/itc2007-fresh-competitor-matrix-20260813-pass-a",
+      "manifest_sha256": "67d38c126df98acd97b7c258e38420a1dccc1af7622ffe4df9a8a326fe3db2b4",
+      "paired_counts": {
+        "cpsolver_wins": 10,
+        "planora_wins": 9,
+        "ties": 2,
+        "unpaired": 0
+      },
+      "results_sha256": "2aa359433b8231521220fec69b2b9196edb45da1128ed640f94d6755e52fb0f3",
+      "summary_sha256": "55f2ba66fd28591fb3e488089b373089aa043c1d68ec96aede846a2a0e1815ed"
+    },
+    "b": {
+      "aggregate": {
+        "cpsolver-itc2007": {
+          "feasibility_rate": 1.0,
+          "feasible_runs": 21,
+          "objective_max": 752,
+          "objective_mean": 178.38095238095238,
+          "objective_median": 132.0,
+          "objective_min": 0,
+          "runs": 21,
+          "wall_time_median_seconds": 10.987289017000876
+        },
+        "planora": {
+          "feasibility_rate": 1.0,
+          "feasible_runs": 21,
+          "objective_max": 528,
+          "objective_mean": 158.14285714285714,
+          "objective_median": 135.0,
+          "objective_min": 1,
+          "runs": 21,
+          "wall_time_median_seconds": 17.448051521001616
+        }
+      },
+      "directory": "/mnt/d/Stuff/Projects/Sites/Planora/output/itc2007-fresh-competitor-matrix-20260813-pass-b",
+      "manifest_sha256": "67d38c126df98acd97b7c258e38420a1dccc1af7622ffe4df9a8a326fe3db2b4",
+      "paired_counts": {
+        "cpsolver_wins": 7,
+        "planora_wins": 14,
+        "ties": 0,
+        "unpaired": 0
+      },
+      "results_sha256": "b3912b334e1e5ab513d5edf00a95a01833f74876f0296d08ab864ef4234e570b",
+      "summary_sha256": "8ce361e6466a79a252ce7b6f2d852198e1a8d48ab91f7613c531f725d670f2aa"
+    }
+  },
+  "reproducibility": {
+    "all_84_rows_officially_feasible": true,
+    "both_passes_complete": true,
+    "instance_count": 21,
+    "stable_winner_count": 14,
+    "winner_changed_count": 7
+  },
+  "schema": "planora.itc2007-redundant-matrix-summary.v1"
+}

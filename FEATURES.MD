@@ -25,6 +25,13 @@ Legend:
 - [x] Service/backend wrapper around the solver engine
 - [x] Stable solve/improve request/result contract dataclasses
 - [x] Rule registry so new constraints can compile through one shared definition point
+- [x] Compact integer start domains with lazy literals for feasibility-first models
+- [x] Certificate-guided exact time/room decomposition with start-domain-safe contextual Hall cuts and exact-nogood fallback
+- [x] Exhaustive tiny-domain soundness enumeration for contextual room cuts
+- [x] Reusable assumption-based integrated CP model for proof-guided adaptive neighborhoods
+- [x] Strict total/slice deadline accounting with separate build, setup, and search measurements
+- [x] Adaptive parallel week decomposition for large instances, with global preflight and exact room-certificate fallback
+- [x] Fail-fast safeguards for hard constraints that couple week partitions
 
 ## Hard Constraints
 
@@ -48,6 +55,11 @@ Legend:
 - [x] Institution-defined blackout dates / holidays / exam weeks
 - [x] Resource-precedence rules (activity A must happen before B)
 - [x] Generic reusable rule-definition registry
+- [x] Portable ITC/UniTime-style distribution constraints with typed validation and scoring
+- [x] Exact CP enforcement for common pair, precedence, maximum-day, and maximum-day-load rules
+- [x] Explicit fail-fast handling for hard distribution rules without a CP compiler
+- [x] Nominal, scenario-quantile, worst-case, and budgeted-uncertainty room sizing
+- [x] Demand-policy evidence embedded in room infeasibility certificates
 
 ## Soft Constraints And Quality
 
@@ -101,6 +113,15 @@ Legend:
 - [x] Multiple campuses/buildings/floors in the base model
 - [x] Generic resource types beyond room/staff/group/course
 - [x] Reusable institutional templates with branding + rules + imports
+- [x] Executable institution policy presets, including a validation-marked GIU target preset
+- [x] Standard-start and per-day scheduling-window compilation
+- [x] External ITC-2007 parser, official four-term CP objective, solution interchange, common benchmark harness, and official-validator bridge
+- [x] External ITC-2019 semantic parser, fixed-placement validator, conditional student sectioning, independent local validators, and official-format solution interchange
+- [ ] Official ITC-2019 full-corpus effective coverage (authenticated agreement is complete for every emitted valid artifact, but most ten-second conditions emit no solution)
+- [x] Dataset-independent research metrics and deterministic instance fingerprints
+- [x] General-purpose `generic_research_university`, North American research abstraction, and validation-marked GIU presets
+- [x] Policy readiness report that separates configured flags from required institutional data and evidence
+- [x] Hash-locked historical GIU calibration plus an institutional validation protocol
 
 ## Scheduler Workspace UI
 
@@ -123,6 +144,8 @@ Legend:
 - [x] Search/filter bar across activities, staff, rooms, and conflicts
 - [x] Keyboard shortcuts and command palette
 - [x] Optional web/desktop frontend split with stable backend contract
+- [x] Five-step administrator setup wizard with plain-language outcomes, policy evidence boundaries, and solver-profile recommendations
+- [x] Run-readiness summary that distinguishes loaded assumptions from institutionally confirmed evidence
 
 ## Manual Editing And Admin Actions
 
@@ -173,8 +196,8 @@ Legend:
 
 ## Imports, Exports, And Interoperability
 
-- [x] Save project snapshots (JSON/PKL)
-- [x] Load project snapshots (JSON/PKL)
+- [x] Save project snapshots (JSON/SQLite)
+- [x] Load project snapshots (JSON/SQLite; unsafe legacy pickle is rejected)
 - [x] Service-backed project save/load flow
 - [x] Product-scenario JSON save/load flow
 - [x] Load raw instance files

@@ -1,202 +1,187 @@
-This section reports controlled empirical measurements under fixed seeds and solver budgets.
+This version defines the evaluation protocol and evidence gates.
+It reports a generated feasibility-architecture study, an official-validator-checked ITC-2007 breadth comparison, a single-seed fixed-time room-dive ablation, and bounded engineering-smoke evidence; the external quality result is negative and the remaining ablations stay open.
+
+\subsection{Quarantined Historical Evidence}
+The previously generated JSONL tables are retained only for provenance and are not evidence for this paper.
+Two defects invalidate the intended interpretation:
+\begin{itemize}[leftmargin=*]
+  \item seed labels were not passed into named generators, so seeds 1, 2, and 3 produced identical instances within each mode;
+  \item a requested \texttt{cp\_rooms} runtime could include an objective attempt, an objective-free retry, and a greedy fallback, while the requested \texttt{greedy} condition could follow a different path.
+\end{itemize}
+The old claims of 24/24 reliability, strict-vs-greedy speed ratios, and local-search gains are therefore withdrawn.
+The artifact records this status in \path{paper/results_status.json}.
 
 \subsection{Research Questions}
-We evaluate four practical questions:
+The regenerated study will address:
 \begin{itemize}[leftmargin=*]
-  \item \textbf{RQ1 (Feasibility reliability):} does the retry/fallback pipeline consistently return a feasible schedule?
-  \item \textbf{RQ2 (Runtime trade-off):} how much faster is requested \texttt{greedy} room mode than requested \texttt{cp\_rooms} on larger scenarios?
-  \item \textbf{RQ3 (Fallback behavior):} how often do strict-room requests end up requiring greedy fallback?
-  \item \textbf{RQ4 (Quality improvement):} how much penalty reduction is obtained by local-search post-improvement?
+  \item \textbf{RQ1:} Does certificate-guided decomposition improve feasible-solution rate or time-to-feasible relative to full integrated room CP under an identical total budget?
+  \item \textbf{RQ2:} How many master iterations and Hall or generic cuts are required, and how large are the certificates?
+  \item \textbf{RQ3:} Do certificate-guided repair neighborhoods reduce repair time and collateral activity changes relative to generic resource-linked and random neighborhoods?
+  \item \textbf{RQ4:} What price in total penalty and runtime is paid for lexicographically reducing worst-group burden?
+  \item \textbf{RQ5:} Which findings transfer from generated workloads to official-validator-checked ITC-2007 instances and, once the corpus and official validator are available, locally parsed ITC-2019 instances with fixed placements?
+  \item \textbf{RQ6:} When week independence is established by preflight, how do adaptive parallel partitions change time-to-feasible and peak memory relative to a monolithic objective-free master?
 \end{itemize}
 
-\subsection{Setup}
-All runs are produced by the batch driver script \texttt{run\_experiment\_batches.sh}.
-We evaluate modes \texttt{small\_demo}, \texttt{block\_profs}, \texttt{mixed\_large}, and \texttt{target\_case}
-with seeds \(\{1,2,3\}\).
+\subsection{Conditions and Controls}
+Named generators receive an explicit instance seed.
+The same integer is recorded separately as instance, CP-SAT, and local-search seed, and every normalized instance and extracted schedule receives a SHA-256 fingerprint.
+Canonical research runs use one CP-SAT worker; multi-worker runs are labeled non-deterministic configurations.
 
-\paragraph{Batch A reliability/runtime}
+The primary comparison disables retries and fallbacks.
+Each algorithm receives the same total wall-clock budget and is analyzed from its primary attempt only:
 \begin{itemize}[leftmargin=*]
-  \item requested room modes: \(\{\texttt{cp\_rooms}, \texttt{greedy}\}\),
-  \item objective on first attempt, objective-off retry enabled,
-  \item \texttt{cp\_rooms} \(\rightarrow\) \texttt{greedy} fallback enabled,
-  \item strict first-attempt budget: \(20\) s,
-  \item per-attempt time limit: \(60\) s,
-  \item workers: \(4\),
-  \item local search disabled (\texttt{ls\_iters}=0).
+  \item integrated full-domain \texttt{cp\_rooms};
+  \item certificate-guided \texttt{decomposed};
+  \item time-master plus \texttt{greedy}, reported as a practical baseline whose post-processing can fail.
 \end{itemize}
-This produces 24 runs in total.
+Portfolio retries are evaluated separately as an operational policy, never merged into an algorithm runtime.
 
-\paragraph{Batch B local-search ablation}
-\begin{itemize}[leftmargin=*]
-  \item requested room mode: \texttt{greedy},
-  \item same retry/fallback and CP limits as Batch A,
-  \item local search enabled with \texttt{ls\_iters}=150 and \texttt{ls\_seconds}=8,
-  \item deterministic group/week pre-pass enabled (worst groups first) with bounded compound lookahead,
-  \item guided stochastic neighborhood search with bounded restart/diversification defaults,
-  \item entity-priority targeting enabled (worst groups/staff are optimized first).
-\end{itemize}
-This produces 12 runs in total and is used for RQ4.
+At least 30 effective instance seeds per generated condition are required before inferential claims.
+Each row records status, objective, best bound, relative gap, branches, conflicts, solver-reported and external wall time, environment, Git revision and dirty state, decomposition rounds, certificates, and final validation.
 
-The JSONL outputs are then aggregated into LaTeX table rows.
+\subsection{Statistics}
+Feasibility is reported with a binomial confidence interval.
+Runtime and penalty use medians and interquartile ranges plus bootstrap confidence intervals.
+Algorithms are paired only when their \texttt{instance\_sha256} values match.
+Paired differences are accompanied by bootstrap intervals and an exact sign test; effect sizes and raw rows remain available.
+Timeouts are not discarded: time-to-feasible analysis treats them as right-censored observations or reports conservative budget-capped values.
+No claim is based solely on a $p$-value.
 
-\subsection{Results}
-\paragraph{RQ1 (Feasibility reliability).}
-All 24/24 Batch-A runs are feasible (100\%).
-
-\paragraph{RQ2 (Runtime trade-off).}
-Table~\ref{tab:perf} and Figure~\ref{fig:runtime_compare} show that on larger scenarios, requested \texttt{greedy} is consistently faster:
-\begin{itemize}[leftmargin=*]
-  \item \texttt{block\_profs}: \(87.48\) s (\texttt{cp\_rooms}) vs \(47.59\) s (\texttt{greedy}), \(\approx 1.84\times\),
-  \item \texttt{mixed\_large}: \(103.28\) s vs \(65.12\) s, \(\approx 1.59\times\),
-  \item \texttt{target\_case}: \(98.34\) s vs \(49.59\) s, \(\approx 1.98\times\).
-\end{itemize}
-For \texttt{small\_demo}, both requested modes are effectively identical (\(20.17\) s vs \(20.03\) s).
-
-\paragraph{RQ3 (Fallback behavior).}
-Among 12 runs that request \texttt{cp\_rooms}, only 3 finish in \texttt{cp\_rooms}
-(all \texttt{small\_demo}); the remaining 9 finish via \texttt{greedy} fallback
-(Figure~\ref{fig:fallback_outcomes}).
-This confirms that integrated strict rooming is the main bottleneck under short strict budgets.
-
-\paragraph{RQ4 (Quality improvement).}
-Table~\ref{tab:ls} and Figure~\ref{fig:ls_gain} summarize base-vs-LS penalties for Batch B.
-Local search always preserves or improves penalty in this batch:
-\begin{itemize}[leftmargin=*]
-  \item \texttt{block\_profs}: median \(-149\) penalty points (\(1.13\%\)),
-  \item \texttt{mixed\_large}: median \(-34\) (\(0.26\%\)),
-  \item \texttt{target\_case}: median \(-58\) (\(0.50\%\)),
-  \item \texttt{small\_demo}: median change \(0\).
-\end{itemize}
-
-\paragraph{Retry dynamics (additional evidence).}
-Objective-off retries are never needed for \texttt{small\_demo} (0/6 runs),
-but are needed in all large-scenario runs in this batch (3/3 per requested mode for
-\texttt{block\_profs}, \texttt{mixed\_large}, and \texttt{target\_case}; see Table~\ref{tab:perf}).
-This supports the design choice of retaining an automatic objective-off retry path.
-
-\subsection{External Benchmark Positioning}
-This submission reports claims on the project's generated workloads only.
-For broader cross-paper score comparison, public benchmark ingestion and schema mapping (e.g., ITC-style CB-CTT datasets)
-remain future work~\cite{itc2007_track3,mccollum2010itc,bonutti2012benchmarking,bettinelli2015overview}.
-
-\subsection{Tables}
-Detailed per-run results are provided as supplementary table rows in \texttt{sections/07\_experiments\_runs.tex}.
-
-\subsection{Comparison Diagrams}
-\begin{figure}[t]
-\centering
-\begin{tikzpicture}
-\begin{axis}[
-    ybar,
-    bar width=5.2pt,
-    width=0.96\columnwidth,
-    height=0.52\columnwidth,
-    ymin=0,
-    ylabel={Median runtime (s)},
-    symbolic x coords={SD,BP,ML,TC},
-    xtick=data,
-    enlarge x limits=0.18,
-    legend style={at={(0.5,1.02)},anchor=south,legend columns=2,font=\footnotesize},
-    tick label style={font=\scriptsize},
-    label style={font=\footnotesize},
-]
-\addplot coordinates {(SD,20.17) (BP,87.48) (ML,103.28) (TC,98.34)};
-\addplot coordinates {(SD,20.03) (BP,47.59) (ML,65.12) (TC,49.59)};
-\legend{Requested \texttt{cp\_rooms}, Requested \texttt{greedy}}
-\end{axis}
-\end{tikzpicture}
-\caption{Runtime comparison for requested room modes (Batch A medians; SD=\texttt{small\_demo}, BP=\texttt{block\_profs}, ML=\texttt{mixed\_large}, TC=\texttt{target\_case}).}\label{fig:runtime_compare}
-\end{figure}
-
-\begin{figure}[t]
-\centering
-\begin{tikzpicture}
-\begin{axis}[
-    ybar,
-    bar width=16pt,
-    width=0.88\columnwidth,
-    height=0.48\columnwidth,
-    ymin=0,
-    ymax=12,
-    ylabel={Run count},
-    symbolic x coords={CPReq},
-    xtick=data,
-    xticklabels={Requested \texttt{cp\_rooms}},
-    enlarge x limits=0.35,
-    legend style={at={(0.5,1.02)},anchor=south,legend columns=2,font=\footnotesize},
-    nodes near coords,
-    nodes near coords align={vertical},
-    every node near coord/.append style={font=\scriptsize},
-    tick label style={font=\scriptsize},
-    label style={font=\footnotesize},
-]
-\addplot coordinates {(CPReq,3)};
-\addplot coordinates {(CPReq,9)};
-\legend{Final \texttt{cp\_rooms}, Final \texttt{greedy} (fallback)}
-\end{axis}
-\end{tikzpicture}
-\caption{Fallback outcomes when strict room mode is requested (12 runs total).}\label{fig:fallback_outcomes}
-\end{figure}
-
-\begin{figure}[t]
-\centering
-\begin{tikzpicture}
-\begin{axis}[
-    ybar,
-    bar width=8pt,
-    width=0.96\columnwidth,
-    height=0.48\columnwidth,
-    ymin=0,
-    ylabel={Median LS gain (\%)},
-    symbolic x coords={SD,BP,ML,TC},
-    xtick=data,
-    enlarge x limits=0.22,
-    nodes near coords,
-    nodes near coords align={vertical},
-    every node near coord/.append style={font=\scriptsize},
-    tick label style={font=\scriptsize},
-    label style={font=\footnotesize},
-]
-\addplot coordinates {(SD,0.00) (BP,1.13) (ML,0.26) (TC,0.50)};
-\end{axis}
-\end{tikzpicture}
-\caption{Median local-search improvement over base penalty (Batch B).}\label{fig:ls_gain}
-\end{figure}
+\subsection{Generated Feasibility Gate}
+We executed 50 paired \texttt{small\_demo} instance seeds for each room architecture, for 150 primary runs in total, with one worker, a 10~s limit, objective disabled, and no retry, fallback, local search, or adaptive repair.
+An effective observation requires a unique normalized-instance SHA-256, a primary feasible result, no fallback, and zero errors from a separate repository-local post-solve validator.
+The initial 30 seeds produced only 21--22 effective observations per condition and therefore failed the preregistered gate; rather than weaken the criterion, we preserved that shard and added seeds 31--50.
+The combined checked-in, content-hashed shards contain 37--38 effective instances per condition and pass the minimum-30 gate.
 
 \begin{table*}[t]
 \centering
 \footnotesize
-\setlength{\tabcolsep}{5pt}
-\begin{tabular}{lrrrrrrr}
+\begin{tabular}{lrrrr}
 \toprule
-Scenario & Req.\ mode & Runs & Feasible (\%) & Median CP (s) & Median base penalty & Median LS penalty & Objective retries \\
+Room architecture & Effective / attempted & Feasible rate (Wilson 95\% CI) & Effective median (s) & IQR (s) \\
 \midrule
-block\_profs & cp\_rooms & 3 & 100.00 & 87.48 & 13220.00 & - & 3 \\
-block\_profs & greedy & 3 & 100.00 & 47.59 & 13220.00 & - & 3 \\
-mixed\_large & cp\_rooms & 3 & 100.00 & 103.28 & 12920.00 & - & 3 \\
-mixed\_large & greedy & 3 & 100.00 & 65.12 & 12920.00 & - & 3 \\
-small\_demo & cp\_rooms & 3 & 100.00 & 20.17 & 55.00 & - & 0 \\
-small\_demo & greedy & 3 & 100.00 & 20.03 & 46.00 & - & 0 \\
-target\_case & cp\_rooms & 3 & 100.00 & 98.34 & 11691.00 & - & 3 \\
-target\_case & greedy & 3 & 100.00 & 49.59 & 11691.00 & - & 3 \\
+Integrated \texttt{cp\_rooms} & 38 / 50 & 0.760 [0.626, 0.857] & 3.478 & [2.163, 4.215] \\
+Exact \texttt{decomposed} & 37 / 50 & 0.740 [0.604, 0.841] & 1.124 & [0.815, 1.489] \\
+Time master + \texttt{greedy} & 38 / 50 & 0.760 [0.626, 0.857] & 0.698 & [0.453, 0.886] \\
 \bottomrule
 \end{tabular}
-\caption{Aggregated reliability/runtime metrics (Batch A).}\label{tab:perf}
+\caption{Primary CP search time on feasible generated instances accepted by a separate repository-local post-solve validator. Infeasibility proofs and the single decomposed timeout are retained in the raw rows but excluded from the effective-time summaries.}\label{tab:generated-feasibility}
 \end{table*}
 
-\begin{table*}[t]
+On the 37 instances effective for both exact formulations, integrated CP minus decomposition had a paired median of 2.177~s, a bootstrap mean-difference 95\% interval of [1.652, 2.687]~s, and exact sign-test $p=5.53\times10^{-10}$.
+On the 37 exact-decomposition/greedy pairs, decomposition minus greedy had a paired median of 0.405~s and a bootstrap interval of [0.394, 0.776]~s.
+Thus the exact room decomposition materially reduces time-to-validated-feasible relative to the integrated room model on this generated condition, while greedy post-processing remains faster.
+The feasibility rates do not establish a reliability advantage, and objective-free soft penalties are exploratory only: the three formulations do not expose commensurate optimization variables or bounds under this protocol.
+The two raw shards and the combined analysis are content-hashed in \path{paper/evidence/generated_feasibility_50x3_2026-08-11_analysis.json}.
+Each raw row records a base Git revision and \texttt{git\_dirty=true}, but the runner did not capture a file-by-file manifest of the dirty working tree.
+The checked-in rows and shard hashes therefore preserve result integrity and configuration provenance, not an exact reconstruction of the executed source snapshot.
+
+\subsection{Certificate and Repair Evaluation}
+For each infeasible room subproblem we record certificate type, $|J'|$, $|N(J')|$, deficiency, cut strength, and whether the next master solution removes the witnessed overload.
+Certificate soundness is checked by a separate replay path that reconstructs the filtered bipartite graph and verifies $|J'|>|N(J')|$.
+
+Disruption trials sample used staff-week and room-week pairs with a seeded protocol.
+Outcomes include affected and unresolved activities, recovery rate, hard conflicts, repair wall time, and number of activities changed from baseline.
+The implemented script currently evaluates deterministic staff/room reassignment baselines; a publication claim about certificate-guided repair requires the planned controlled neighborhood ablation.
+
+\subsection{External Validity}
+The ITC-2007 importer preserves curricula as zero-size conflict groups, adds a separate enrollment group for capacity, and maps course-specific unavailability to activity-specific forbidden starts.
+Room capacity is soft in the imported variant.
+The external scorer implements the official ITC-2007 weights: one per excess student, five per missing working day, two per isolated curriculum lecture, and one per additional room used by a course~\cite{digaspero2007itc}.
+
+\paragraph{Official ITC-2007 breadth.}
+Under the recorded one-worker, 10~s, seed-17 protocol, two fresh source-identical passes produced 84 officially feasible, zero-hard-violation schedules across all 21 competition instances and both solvers, with exact Planora internal/official component agreement.
+Pass A yields Planora/CPSolver/tie counts 9/10/2 and mean objectives 156.95/173.86; pass B yields 14/7/0 and means 158.14/178.38~\cite{muller2009hybrid,unitimeitc2007}.
+Only 14 of 21 instance winners remain unchanged across the two passes, so the lower Planora mean in both passes is promising breadth evidence but not a deterministic or general superiority result.
+The consolidated source/tool/validator-bound record is \path{paper/evidence/itc2007_fresh_redundant_matrix_2026-08-13.json} (SHA-256 \path{ef02acc47d02c59462a00a4ba57b25b1e39ce02a6d98dd7061c1e28cc269409e}).
+The older 0/21 breadth artifact remains historical evidence and is not used as the current quality conclusion.
+
+\paragraph{Fixed-time room-dive ablation.}
+Fixing all event starts and reoptimizing rooms is directly related to established timetabling dives and exact room matching~\cite{burke2010diving,lu2008hybrid}.
+We therefore test it as an engineering ablation, not a novelty claim.
+An earlier breadth attempt is retained as a failed gate: the ON condition was better on five instances, tied on 14, and worse on two, with reported sums 19,711 ON versus 20,360 OFF, but seven of its 21 ON runs exceeded the strict total deadline; those rows are excluded from the corrected result.
+After adding explicit dive and outer-completion reserves, a fresh counterbalanced matrix with source SHA-256 \path{a63732de42d9e0053ea196f46a410024b85c006e4cc6d7f91e5529f3bd1294cb} produced 42/42 officially feasible, zero-hard-violation schedules, with 42/42 internal/official component agreement, source stability, and zero strict total-deadline overrun.
+Here, source stability means that every matrix record matched that frozen source snapshot; the snapshot predates the later repeat-week greedy-to-decomposed correctness-only change, so the matrix is immutable historical evidence rather than evidence for the exact current checkout.
+ON was better on three pairs, tied on 18, and worse on none; its aggregate objective was 19,870 versus 20,457 OFF, a 587-point (2.869\%) reduction.
+However, 13 dives were attempted, only one was accepted, 12 returned no accepted improvement, and eight were skipped for insufficient reserved budget.
+Only \texttt{comp01} records a direct within-run accepted-dive improvement (499 to 253, $-246$); the other two paired differences arose from different initial incumbents and are not attributed to the dive.
+Against the immutable CPSolver rows, the ON condition still loses all 21 instances and is 5.541 times the CPSolver aggregate (19,870 versus 3,586).
+This is a single-seed ablation with no competitor superiority, so the feature remains disabled by default.
+The final evidence report is \path{reports/itc2007_fixed_time_room_dive_breadth_final_v2_seed17_2026-08-11.json} (SHA-256 \path{24fccbf81d78a1371d625f42c94e1ff1b7d8e841633874ddb788a552d7146be6}), backed by \path{output/itc2007-room-dive-breadth-seed17-counterbalanced-final-v2/matrix_index.json} (SHA-256 \path{aba9413209699d2eff0db431f90e971dea3dada0e675420f3d9cefeb6bc8f2f4}).
+The preceding negative report is preserved at \path{reports/itc2007_fixed_time_room_dive_breadth_seed17_2026-08-11.json} (SHA-256 \path{43560980d667a5495dda0b597ae4942f4e355ed94ec041dbdb0fcd3cd2d912d7}), and the intervening targeted deadline-correction gate is \path{reports/itc2007_fixed_time_room_dive_deadline_gate_v2_2026-08-11.json} (SHA-256 \path{d595fb73473c804e66eceba47301cc12fb4c7522ee17e1afb75c578bd624fcc2}).
+
+\paragraph{Distinct-course room-support mechanism check.}
+The opt-in support proxy was evaluated on the retained Planora-native \texttt{comp10} incumbent, not as a new cold solve.
+Two fixed-checkpoint, one-worker calls under a 2.2~s absolute post-incumbent deadline produced byte-identical official-valid schedules: 109 $(0,20,48,41)$ became 96 $(0,20,46,30)$ in 1.736~s and 1.814~s, with zero deadline overrun and exact internal/official component agreement.
+The retained CPSolver artifact independently scores 82, so this is a 13-point mechanism gain but not a competitor win.
+Increasing only the collision scalar weight produced 102, which is worse than the distinct-course proxy and is retained as a negative ablation.
+The evidence record is \path{paper/evidence/itc2007_support_proxy_comp10_2026-08-13.json}; timing excludes construction of the retained incumbent and cannot support an end-to-end runtime claim.
+
+\paragraph{Selected post-incumbent quality checks.}
+After the breadth diagnosis, five representation-derived portfolios were tested on retained Planora-native incumbents, with strict independent validation after every accepted handoff.
+They produced lower scores than the retained independently validated CPSolver artifacts on \texttt{comp02} (133 versus 137), \texttt{comp03} (162 versus 167), \texttt{comp19} (154 versus 156), \texttt{comp21} (193 versus 194), and Exam set~1 (5790 versus 5824).
+The bounded Planora calls took 4.076, 1.947, 2.240, 2.143, and 4.948 seconds respectively, all with zero reported deadline overrun.
+These are selected post-incumbent mechanism results: incumbent construction is excluded, comparator runtime is not matched, and the cases were selected after diagnosis.
+Moreover, the \texttt{comp19} and \texttt{comp21} records bind earlier implementation hashes that predate a later default-preserving API extension.
+They therefore demonstrate concrete basin-repair capability, not end-to-end or corpus-wide superiority.
+The complete score, timing, artifact-hash, and source-match boundary is recorded in \path{paper/evidence/selected_post_incumbent_quality_2026-08-13.json}.
+
+\paragraph{ITC-2019 conversion and bounded competitor matrix.}
+The ITC-2019 component parses the official XML structure and supports native Cartesian and factorized placement/sectioning formulations, official-format solution interchange, and an independent repository-local validator/scorer~\cite{itc2019official,itc2019format,muller2025itc2019}.
+A same-host matrix executed the exact 30 competition instances shown on the authenticated Results page against Planora, Gashi simulated annealing, UniTime/CPSolver, and the Lemos MaxSAT finalist: one seed, one repetition, one worker, one CPU affinity, and a nominal 10~s solver budget, for 120/120 recorded conditions.
+Only three conditions emitted complete locally valid outputs, all from CPSolver: 18,390 on \texttt{mary-spr17}, 282 on \texttt{lums-spr18}, and 35,608 on \texttt{nbi-spr18}; all are worse than the authenticated competition best scores of 14,910, 95, and 18,014.
+Authenticated official-validator uploads agreed with the independent total and all four components for 3/3 outputs.
+A separate four-solver \texttt{lums-sum17} smoke produced score 4 for every solver and official agreement for 4/4 uploads.
+The tools expose different timeout and memory mechanisms, including a CPSolver-only 768~MiB Java heap cap in this executed matrix, so this is descriptive bounded quality evidence, not an equal-wall runtime, speed, or general superiority result.
+The matrix and claim boundary are recorded in \path{output/itc2019-open-source-competition-30-seed17-10s-20260813/report.json} and \path{docs/ITC2019_COMPETITOR_MATRIX_2026-08-14.md}.
+
+\subsection{End-to-End Performance Measurement}
+The shared-backend runner exercises generation, JSON serialization, session creation, solving, independent validation and scoring, improvement, final validation/scoring, and response serialization.
+On the 3,888-activity proxy, five measured runs after one warmup were valid in each transport. Median total time was 17.668~s embedded, 28.080~s through a freshly started HTTP API process, and 6.234~s through a persistent HTTP service; the latter benefits from the exact shared solve cache.
+The embedded medians were 12.105~s for solve and 4.039~s for Improve. Every run returned all 3,888 activities with zero hard conflicts and zero validation errors.
+Replacing twelve full-instance deep copies with isolated shallow partition views reduced observed partition model construction from about 2.00~s to a 0.313~s median (approximately $6.4\times$); harder weeks now enter the four-worker queue first.
+These are single-host engineering measurements, not latency guarantees. The methods and raw evidence paths are recorded in \path{docs/PERFORMANCE_3888_2026-08-14.md}.
+
+\paragraph{GIU-scale path.}
+The local synthetic target-case generator, configured with the historically derived \texttt{giu\_target} policy layer, contains 3,888 activities, 12 weeks, 29 groups, 67 synthetic staff records, and 35 generated rooms.
+These resource counts are scale-test inputs, not institutional facts.
+In particular, the historical SS23 source contains 15 distinct nonblank room labels and 146 rows whose room is missing; the importer preserves those missing values as row-scoped placeholders, so its 161 modeled room records must not be interpreted as 161 physical rooms.
+The synthetic scale instance compiles to 3,888 compact start integers over 105,510 admissible domain values.
+The current historical replay reports 148 validation errors: 93 synthetic-staff overlaps, 39 inferred room-type or specialization mismatches, and 16 apparent room overlaps.
+Consequently, the hash-locked calibration in \path{paper/evidence/giu_ss23_calibration.json} (SHA-256 \path{c2620b38ed4535fbbeb55ca66ec3c031cf346a1a5dc6c66d62cc545c5df53b73}) establishes historical source provenance and a conservative research preset only; historical schedule/model agreement and current institutional calibration remain open.
+The repeated performance evidence establishes the implementation's current synthetic scale boundary, not institutional representativeness or an algorithmic generalization claim.
+
+\newpage
+\subsection{Current Evidence Status}
+\begin{center}
 \centering
-\footnotesize
-\setlength{\tabcolsep}{5pt}
-\begin{tabular}{lrrrrr}
+\scriptsize
+\renewcommand{\arraystretch}{0.92}
+\begin{tabular}{p{0.42\columnwidth}p{0.46\columnwidth}}
 \toprule
-Scenario & Runs & Median base penalty & Median LS penalty & Median delta & Median improvement (\%) \\
+Evidence item & Status \\
 \midrule
-block\_profs & 3 & 13220.00 & 13071.00 & 149.00 & 1.13 \\
-mixed\_large & 3 & 12920.00 & 12886.00 & 34.00 & 0.26 \\
-small\_demo & 3 & 49.00 & 49.00 & 0.00 & 0.00 \\
-target\_case & 3 & 11691.00 & 11633.00 & 58.00 & 0.50 \\
+Effective seeded generation & Implemented and unit-tested \\
+Primary-attempt isolation & Implemented \\
+Bounds, gaps, hashes, environment & Implemented \\
+Paired bootstrap/sign-test analysis & Implemented and unit-tested \\
+Exact room subproblem, contextual Hall cuts, and safe nogood fallback & Implemented, integration-tested, and exhaustively checked on tiny room domains \\
+Certificate explanation/repair scope & Implemented and unit-tested \\
+ITC-2007 variant ingestion and official-validator bridge & 21/21 officially feasible with internal/official component parity in the source-hashed breadth run \\
+ITC-2007 competitor quality & CPSolver wins 21/21; Planora/CPSolver aggregate $=5.625$ in the rescue comparison \\
+Fixed-time room-dive ablation & Corrected single-seed matrix: 42/42 official-valid and deadline-compliant; one accepted direct gain; default off \\
+Distinct-course room-support proxy & Default-off mechanism evidence: two byte-identical official-valid \texttt{comp10} improvements, 109 to 96; retained CPSolver is 82 \\
+Selected post-incumbent checks & Lower than retained CPSolver on four CTT cases and Exam set~1; diagnostic selection and non-equal timing prohibit a general superiority claim \\
+Portable institutional policy/demand metrics & Implemented and unit-tested \\
+Adaptive week partitioning and safeguards & Implemented, unit-tested, and locally smoke-tested \\
+ITC-2019 native path and competitor matrix & 120/120 bounded conditions recorded; 3 complete valid outputs, with authenticated official agreement 3/3; effective breadth remains open \\
+3,888-activity end-to-end performance & Five valid runs per transport; embedded median 17.668~s and persistent-HTTP median 6.234~s on one host \\
+Generated feasibility-architecture study & 50 paired attempts; 37--38 unique effective instances per condition; generated-feasibility gate passed \\
+Quality and certificate-guided neighborhood ablations & Not yet publication-ready \\
+Historical GIU calibration & Source-hash locked; 148 replay errors and current institutional sign-off remain open \\
 \bottomrule
 \end{tabular}
-\caption{Local-search ablation metrics (Batch B).}\label{tab:ls}
-\end{table*}
+\refstepcounter{table}\label{tab:evidence-status}
+\par\smallskip
+\footnotesize\textbf{Table~\thetable:} Separation of implemented infrastructure from empirical evidence.
+\end{center}

@@ -1,17 +1,27 @@
-This paper describes a university timetabling system that schedules academic activities on a fixed weekly grid.
-The primary goal is feasibility under hard constraints (no conflicts, availability, room eligibility), with secondary quality objectives such as reducing gaps and improving schedule stability across weeks.
+University course timetabling must place activities in time and rooms while preserving student, staff, equipment, capacity, and institutional constraints.
+The optimization problem is mature, but the operational failure mode remains difficult: a time-feasible schedule can still be impossible to room, and a bare ``infeasible'' status does not tell an administrator which activities must move.
 
-Automated timetabling is a mature research area with broad surveys on exact and heuristic methods~\cite{schaerf1999survey,lewis2008metaheuristics}.
-Benchmark-driven progress has been shaped by the International Timetabling Competitions and follow-up analyses~\cite{mccollum2010itc,bonutti2012benchmarking,bettinelli2015overview}.
+Time/room decomposition is not new.
+Bagger et al. explicitly decompose curriculum-based course timetabling into time scheduling and room allocation~\cite{bagger2018benders}; hybrid and metaheuristic approaches are also well established~\cite{muller2009hybrid,lewis2008metaheuristics,bettinelli2015overview}.
+Fair timetabling based on max--min orderings and Jain's index has likewise been studied~\cite{muhlenthaler2013fairness,muhlenthaler2013decomposition}.
+The research question in this work is therefore not whether decomposition or fairness works in general.
+It is whether a room-subproblem certificate can serve three roles in one auditable system: a valid master cut, a concise explanation, and a bounded repair neighborhood.
 
-Our contributions are:
+The implemented contributions are:
 \begin{itemize}[leftmargin=*]
-  \item A formal start-time assignment model with binary decision variables, occupancy-based non-overlap constraints, and rule constraints for institutional policies.
-  \item A hybrid rooming formulation that supports either integrated CP room assignment or a decoupled post-processing assignment, enabling strictness/runtime trade-offs.
-  \item A weighted soft-penalty objective and a feasibility-preserving local-search layer that improves timetable quality under bounded time.
-  \item A phased anytime solving policy (feasibility phase then improvement phase) with explicit budget partitioning.
-  \item A reproducible implementation in OR-Tools CP-SAT with a shared CLI/UI runtime and export pipeline~\cite{cpsatlp,ortools,ortools_cite,perron_didier_gay_cpsatlp_2023}.
+  \item a CP-SAT time master coupled to an exact, full-domain room assignment subproblem;
+  \item Hall-deficiency extraction for simultaneous room jobs, with capacity, room type, specialization, availability, closure, and lock filtering performed before the certificate is formed;
+  \item iterative certificate cuts that remove a deficient occupancy pattern, plus exact nogoods for infeasibility caused by travel, repeat-room, or lock interactions not captured by a slot-wise Hall witness;
+  \item reuse of the same certificate for human-readable explanations and a resource-linked repair neighborhood while freezing unaffected activities;
+  \item an adaptive large-instance path that validates global invariants, solves decision-independent weeks concurrently, accepts only validated room assignments, activates exact certificate decomposition on a failing week, and refuses hard cross-week coupling rather than silently weakening it;
+  \item enrollment-uncertainty policies whose nominal, scenario-quantile, worst-case, or budgeted demand is reused consistently by room domains, validators, metrics, and infeasibility certificates;
+  \item a portable distribution-constraint schema with exact evaluation for nineteen common ITC-style relations, hard CP compilation for seventeen of them, and fail-fast handling instead of silent weakening for the two evaluator-only aggregate rules;
+  \item executable institution-policy presets, including a portable baseline and a repository-derived GIU target preset that is explicitly marked as requiring local policy validation;
+  \item an exact lexicographic fairness profile that minimizes the maximum group burden before total weighted penalty, accompanied by tail, Gini, and Jain diagnostics;
+  \item a reproducible evaluation harness with effective instance/solver/local-search seeds, instance and schedule fingerprints, solver bounds and gaps, paired statistics, official ITC-2007 soft scoring, ITC-2019 schema inspection, portable metrics, disruption experiments, and verified release bundles.
 \end{itemize}
 
-All non-trivial solver claims in this paper are tied directly to the implementation and/or cited references.
-Experimental results are produced by running the released code and are not inferred.
+The systematic review falsifies the broad mathematical novelty claim: the contextual cut is an option-expanded instance of the established partial-transversal Hall system, while Benders-guided and explanation-guided LNS both have direct prior art.
+The remaining research hypothesis is a systems and empirical one: whether exact effective-domain reconstruction, conservative cut fallback, typed certificate-support transfer, reusable exact repair, and auditable lineage improve performance and operational trust when implemented together.
+A publication submission must still complete the evaluation protocol in Section~VII and an independent literature review.
+This paper deliberately separates implemented capability, verified tests, planned experiments, and unsupported claims.

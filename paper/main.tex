@@ -1,4 +1,10 @@
-\documentclass[conference]{IEEEtran}
+\IfFileExists{IEEEtran.cls}{
+  \documentclass[conference]{IEEEtran}
+}{
+  \documentclass[twocolumn]{article}
+  \newcommand{\IEEEauthorblockN}[1]{\textbf{##1}}
+  \newcommand{\IEEEauthorblockA}[1]{##1}
+}
 
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{mathtools}
@@ -8,13 +14,22 @@
 \usepackage{xurl}
 \usepackage{microtype}
 \usepackage{enumitem}
-\usepackage{algorithm}
-\usepackage{algpseudocode}
 \usepackage{placeins}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
+\providecommand{\appendices}{\appendix}
 
 \input{metadata.tex}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue,
+  pdftitle={\PaperTitle},
+  pdfauthor={\PaperAuthor},
+  pdfsubject={University course timetabling, room decomposition, explanations, and repair},
+  pdfkeywords={course timetabling, CP-SAT, Benders decomposition, Hall certificate, fairness, repair}
+}
 \title{\PaperTitle}
 \author{
 \IEEEauthorblockN{\PaperAuthor}
@@ -28,12 +43,18 @@
 \maketitle
 
 \begin{abstract}
-University course timetabling is the task of deciding when and where classes should take place while respecting the needs of students, instructors, and rooms.
-It is difficult because many requirements must be satisfied at the same time, and even small conflicts can make a timetable unusable in practice.
-This paper presents a scheduling framework for lectures, tutorials, and laboratories in realistic academic settings.
-The approach separates the problem into two stages: it first builds a timetable that satisfies the core operational constraints, then it improves the result according to softer quality goals such as more balanced and more practical weekly schedules.
-We describe the problem formulation, the main optimization strategy, and a reproducible evaluation process.
-The results show that the framework can reliably generate valid timetables and then refine them further without sacrificing feasibility, making it suitable as a practical foundation for academic scheduling tools.
+Time/room decomposition is an established approach to university course timetabling, but operational systems also need to explain why a fixed-time room assignment fails and identify a small, safe repair scope.
+We present a research prototype that connects these concerns through certificate-guided decomposition.
+A CP-SAT master assigns activity times; an exact room subproblem either returns a room assignment or emits a Hall-deficiency certificate for a capacity- and availability-sensitive room neighborhood.
+The certificate produces a standard option-expanded Hall cut with right-hand side $|\Gamma(U)|$, a human-readable counting explanation, and a resource-linked large-neighborhood repair scope.
+A separate replay checker reconstructs the effective domains and cut before insertion, while content-addressed SHA-256 identifiers link certificate-derived neighborhood traces as integrity metadata rather than signatures.
+Non-Hall failures caused by travel, repeat-room, or lock interactions yield exact schedule nogoods.
+The implementation additionally provides adaptive parallel week decomposition with explicit cross-partition safeguards, scenario-robust room demand, portable institutional distribution constraints, executable policy presets, an exact lexicographic fairness profile, deterministic experiment seeds, official ITC-2007 soft scoring, disruption trials, and a checksum-verifiable artifact workflow.
+We distinguish implementation verification from empirical evidence: earlier generated tables are quarantined because their seed labels did not change instances and their strict-room timings included retry/fallback work.
+A replacement one-worker study preserves 150 primary runs over 50 paired generated instances and passes a preregistered minimum of 30 unique feasible instances per condition under a separate repository-local post-solve validator; exact decomposition reduces paired time-to-feasible relative to the integrated room model, while greedy rooming remains faster.
+On the 21 official ITC-2007 instances, two fresh 42-row passes are fully official-validator feasible: Planora/CPSolver/tie counts are 9/10/2 and 14/7/0, and Planora has the lower mean objective in both passes, but seven instance winners change between repeats.
+A corrected, counterbalanced, single-seed fixed-time room-dive ablation is official-validator feasible and deadline-compliant in all 42 runs and lowers the ON-condition aggregate by 2.869\%; however, only one accepted dive supplies a direct within-run gain, and the feature remains disabled by default.
+The generated result is limited to feasibility latency, while repeat sensitivity still rules out a general superiority claim. Authenticated ITC-2019 validation agrees with every complete locally valid output produced by a bounded four-solver matrix, but only three of 120 competition conditions emit such an output; effective breadth, certificate-guided repair benefit, multi-seed external quality, and institutional sign-off remain open gates.
 \end{abstract}
 
 \section{Introduction}
@@ -48,7 +69,7 @@ The results show that the framework can reliably generate valid timetables and t
 \section{CP-SAT Formulation}
 \input{sections/03_model.tex}
 
-\section{Room Assignment}
+\section{Certificate-Guided Room Decomposition}
 \input{sections/04_rooms.tex}
 
 \section{Local Search Improvement Heuristic}
@@ -67,7 +88,7 @@ The results show that the framework can reliably generate valid timetables and t
 \section{Conclusion}
 \input{sections/09_conclusion.tex}
 
-\bibliographystyle{IEEEtran}
+\IfFileExists{IEEEtran.bst}{\bibliographystyle{IEEEtran}}{\bibliographystyle{ieeetr}}
 \bibliography{refs}
 
 \appendices

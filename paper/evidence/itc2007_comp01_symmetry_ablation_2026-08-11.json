@@ -1,0 +1,193 @@
+{
+  "schema_version": "planora.itc2007-symmetry-ablation.v1",
+  "evidence_status": "engineering_pilot_not_publication_claim",
+  "evaluated_on": "2026-08-11",
+  "claim_boundary": "This three-seed, one-instance ablation measures one implementation decision. It is insufficient for a superiority, generalization, or statistical-significance claim.",
+  "instance": {
+    "id": "comp01",
+    "path_at_execution": "/tmp/planora-itc2007-cpsolver/data/ctt/comp01.ctt",
+    "sha256": "57227834c435519b848543a283d765c8f82668616cf951b887dc9d77b2a7ac08"
+  },
+  "protocol": {
+    "strategy": "research_adaptive",
+    "configured_solver_seconds": 10.0,
+    "workers": 1,
+    "cpu_affinity": 0,
+    "seeds": [17, 23, 31],
+    "python_version": "3.12.3",
+    "ortools_version": "9.15.6755",
+    "platform_processor": "x86_64",
+    "official_validator_sha256": "6b991efa2195ed59f9e514532d9add65b4790791bd6de054ce6f5cbdc19546b3",
+    "variant_execution_order": "all symmetry-off runs, then all symmetry-on runs",
+    "counterbalanced": false,
+    "source_guard": "Every Python file under benchmarks, core, services, and utils was hashed. Each completed row rechecked the snapshot and both summaries report source_stable=true."
+  },
+  "variants": {
+    "symmetry_off": {
+      "artifact_directory": "output/itc2007-ablation-comp01-symmetry-off-idle-10s",
+      "planora_source_sha256": "0f044498a7bc42215b8a41f6f519d45829eda692fa41d38e848dbe37bcea0262",
+      "source_stable": true,
+      "official_validator_agreement": {
+        "feasible_runs": 3,
+        "zero_hard_violation_runs": 3,
+        "internal_external_score_matches": 3,
+        "validator_errors": 0
+      },
+      "runs": [
+        {
+          "seed": 17,
+          "official_objective": 503,
+          "components": {
+            "room_capacity": 340,
+            "minimum_working_days": 85,
+            "curriculum_compactness": 56,
+            "room_stability": 22
+          },
+          "wall_time_seconds": 12.793110583006637,
+          "cpu_time_seconds": 8.850204,
+          "worker_wall_time_seconds": 8.310281800004304,
+          "worker_cpu_time_seconds": 7.906398102
+        },
+        {
+          "seed": 23,
+          "official_objective": 365,
+          "components": {
+            "room_capacity": 243,
+            "minimum_working_days": 50,
+            "curriculum_compactness": 50,
+            "room_stability": 22
+          },
+          "wall_time_seconds": 12.656149674992776,
+          "cpu_time_seconds": 8.754434000000002,
+          "worker_wall_time_seconds": 8.159439733994077,
+          "worker_cpu_time_seconds": 7.855589413
+        },
+        {
+          "seed": 31,
+          "official_objective": 327,
+          "components": {
+            "room_capacity": 157,
+            "minimum_working_days": 50,
+            "curriculum_compactness": 96,
+            "room_stability": 24
+          },
+          "wall_time_seconds": 13.068224162008846,
+          "cpu_time_seconds": 8.656181,
+          "worker_wall_time_seconds": 8.573410337005043,
+          "worker_cpu_time_seconds": 7.7484962600000005
+        }
+      ],
+      "aggregate": {
+        "objective_mean": 398.3333333333333,
+        "objective_median": 365.0,
+        "objective_min": 327,
+        "objective_max": 503,
+        "wall_time_median_seconds": 12.793110583006637
+      }
+    },
+    "symmetry_on": {
+      "artifact_directory": "output/itc2007-ablation-comp01-symmetry-on-idle-10s",
+      "planora_source_sha256": "0f044498a7bc42215b8a41f6f519d45829eda692fa41d38e848dbe37bcea0262",
+      "source_stable": true,
+      "official_validator_agreement": {
+        "feasible_runs": 3,
+        "zero_hard_violation_runs": 3,
+        "internal_external_score_matches": 3,
+        "validator_errors": 0
+      },
+      "runs": [
+        {
+          "seed": 17,
+          "official_objective": 485,
+          "components": {
+            "room_capacity": 300,
+            "minimum_working_days": 150,
+            "curriculum_compactness": 26,
+            "room_stability": 9
+          },
+          "wall_time_seconds": 13.346673503998318,
+          "cpu_time_seconds": 8.580081,
+          "worker_wall_time_seconds": 8.76802801300073,
+          "worker_cpu_time_seconds": 7.653427862000001
+        },
+        {
+          "seed": 23,
+          "official_objective": 644,
+          "components": {
+            "room_capacity": 432,
+            "minimum_working_days": 195,
+            "curriculum_compactness": 10,
+            "room_stability": 7
+          },
+          "wall_time_seconds": 14.021023638997576,
+          "cpu_time_seconds": 9.278469000000003,
+          "worker_wall_time_seconds": 8.789312254986726,
+          "worker_cpu_time_seconds": 8.172755202000001
+        },
+        {
+          "seed": 31,
+          "official_objective": 256,
+          "components": {
+            "room_capacity": 152,
+            "minimum_working_days": 40,
+            "curriculum_compactness": 50,
+            "room_stability": 14
+          },
+          "wall_time_seconds": 13.345702386010089,
+          "cpu_time_seconds": 8.751522,
+          "worker_wall_time_seconds": 9.110054589997162,
+          "worker_cpu_time_seconds": 7.874089072
+        }
+      ],
+      "aggregate": {
+        "objective_mean": 461.6666666666667,
+        "objective_median": 485.0,
+        "objective_min": 256,
+        "objective_max": 644,
+        "wall_time_median_seconds": 13.346673503998318
+      }
+    }
+  },
+  "paired_result": {
+    "delta_definition": "symmetry_on_official_objective_minus_symmetry_off_official_objective",
+    "deltas_by_seed": {
+      "17": -18,
+      "23": 279,
+      "31": -71
+    },
+    "symmetry_on_better_seeds": 2,
+    "symmetry_off_better_seeds": 1,
+    "ties": 0
+  },
+  "verdict": {
+    "result": "negative_or_inconclusive",
+    "default": "off",
+    "reason": "The exact cut is valid, but it worsened mean objective by 63.33 points, median objective by 120 points, and median end-to-end wall time by about 0.55 seconds in this small pilot. The mixed paired deltas show high seed sensitivity.",
+    "retained_value": "Keep the cut as an explicit opt-in ablation and retain canonical lecture relabeling for correctness and future controlled studies."
+  },
+  "canonicalization_check": {
+    "source_solution": "output/itc2007-benchmark-comp01-stable-10s-seed17/runs/comp01/seed-17/cpsolver-itc2007/solution.out",
+    "courses_checked": 30,
+    "strictly_ordered_courses_after_relabeling": 30,
+    "same_official_row_multiset": true,
+    "official_score_before": 5,
+    "official_score_after": 5,
+    "hard_violations_before": 0,
+    "hard_violations_after": 0
+  },
+  "historical_competitor_context": {
+    "artifact_directory": "output/itc2007-benchmark-comp01-stable-10s-seed17",
+    "planora_source_sha256": "7204bbb7dae297acfc4d3991427641ce6454fd91c88f7cda52969900c927c3e1",
+    "seed": 17,
+    "configured_solver_seconds": 10.0,
+    "planora_official_objective": 568,
+    "cpsolver_official_objective": 5,
+    "both_officially_feasible": true,
+    "headline_eligible": false,
+    "limitation": "This is an older one-seed engineering pilot from a different Planora source snapshot. It demonstrates the remaining gap and must not be combined with the current ablation as a publication comparison."
+  },
+  "reproduction": {
+    "symmetry_off": ".venv/bin/python scripts/benchmark_itc2007.py run --instances /tmp/planora-itc2007-cpsolver/data/ctt/comp01.ctt --seeds 17 23 31 --time-limit-seconds 10 --validator /tmp/planora-itc2007-validator --cpsolver-root /tmp/planora-itc2007-cpsolver --classes /tmp/planora-itc2007-build/classes --output-directory output/itc2007-ablation-comp01-symmetry-off-idle-10s --repo-root /mnt/d/Stuff/Projects/Sites/Planora --python-command /mnt/d/Stuff/Projects/Sites/Planora/.venv/bin/python --workers 1 --cpu 0 --strategy research_adaptive --itc2007-course-symmetry off --solvers planora",
+    "symmetry_on": ".venv/bin/python scripts/benchmark_itc2007.py run --instances /tmp/planora-itc2007-cpsolver/data/ctt/comp01.ctt --seeds 17 23 31 --time-limit-seconds 10 --validator /tmp/planora-itc2007-validator --cpsolver-root /tmp/planora-itc2007-cpsolver --classes /tmp/planora-itc2007-build/classes --output-directory output/itc2007-ablation-comp01-symmetry-on-idle-10s --repo-root /mnt/d/Stuff/Projects/Sites/Planora --python-command /mnt/d/Stuff/Projects/Sites/Planora/.venv/bin/python --workers 1 --cpu 0 --strategy research_adaptive --itc2007-course-symmetry on --solvers planora"
+  }
+}

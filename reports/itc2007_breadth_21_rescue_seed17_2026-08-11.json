@@ -1,0 +1,259 @@
+{
+  "schema_version": "planora.itc2007-rescue-external-breadth-gate.v1",
+  "evidence_status": "single_seed_external_breadth_gate_with_immutable_competitor_reuse",
+  "evaluated_on": "2026-08-11",
+  "headline": "The strict-budget feasibility rescue raised Planora from 17/21 to 21/21 official feasibility on the complete ITC-2007 curriculum corpus at seed 17 and 10 seconds. CPSolver/UniTime still won all 21 feasibility-first comparisons and had a lower official objective on every instance.",
+  "claim_boundary": "The Planora rerun is complete, source-hash guarded, CPU-pinned, and officially validated, but it reuses immutable CPSolver rows from the immediately preceding breadth artifact rather than rerunning or interleaving the competitor. Both manifests match on instance hashes, seed, configured time, worker count, CPU, hardware, platform, validator, and CPSolver classes. This is still one seed and is not a statistical superiority study.",
+  "protocol": {
+    "benchmark_family": "ITC-2007 Curriculum Course Timetabling",
+    "instances": "comp01 through comp21",
+    "configured_solver_seconds": 10.0,
+    "seed": 17,
+    "workers": 1,
+    "cpu_affinity": 0,
+    "cpu_model": "AMD Ryzen 7 5800H with Radeon Graphics",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "planora_strategy": "research_adaptive",
+    "itc2007_adaptive_seeding": true,
+    "itc2007_course_symmetry": false,
+    "rescue_policy": {
+      "initial_fraction": 0.30,
+      "rescue_trigger": "no fully validated initial incumbent",
+      "rescue_objective": "none",
+      "rescue_room_mode": "same validator-compatible partitioned feasibility path",
+      "rescue_seed": "base seed plus one modulo 2147483646",
+      "finalization_reserve": "5 percent of total budget, bounded to [0.05, 0.50] seconds",
+      "acceptance": "complete all-activity, strict-room independent validation"
+    }
+  },
+  "artifacts": {
+    "planora": {
+      "directory": "output/itc2007-breadth-21-planora-rescue-seed17-10s",
+      "manifest_sha256": "4af40651b2370f7898a2484c76d816aaec19c48db897a60f9f696047e6a28254",
+      "results_sha256": "2481f6fdf757456afd5a7305d18efdcafee9f4fef7d861ab8358395cfe3bff41",
+      "summary_sha256": "7b70cb7f4030ac00327fb3e000e212f60bb9db18f03ef54737ba5051b1210ff8"
+    },
+    "immutable_cpsolver_source": {
+      "directory": "output/itc2007-breadth-21-candidate-vs-cpsolver-10s-seed17",
+      "manifest_sha256": "1964dcfcb199efd9e8a21173a9ad61a1e4a1d3b8945547b276a1c2ff009473cc",
+      "results_sha256": "4043519ab9d42052ce0102d55fa34e44629431b529de0f3460b4a929fe921cd3",
+      "summary_sha256": "eb230822923730b69f5de75d31ab0c1122e2b319f374e0524cedfd97275b67dc",
+      "rows_reused": "Only the 21 solver_id=cpsolver-itc2007 rows are used in this comparison. The old Planora rows are retained solely as the pre-rescue baseline."
+    },
+    "four_case_acceptance_gate": "output/itc2007-rescue-gate-4-v3-seed17-10s",
+    "report": "reports/itc2007_breadth_21_rescue_seed17_2026-08-11.json"
+  },
+  "snapshots": {
+    "planora_git_head": "43028f327ee94d648bb8ce3479e3bd9276aad52a",
+    "planora_source_sha256": "38ab6a3b36d66779a6772e30c369bcec18f467ab914f7a391556c518a2a899d4",
+    "planora_hashed_source_files": 66,
+    "planora_source_stable": true,
+    "planora_source_matching_records": 21,
+    "cpsolver_git_head": "354b3d551827ba60a2f21be3bf9f1ba6622c05e3",
+    "cpsolver_classes_sha256": "540f2a6059a20769c2176d978a9a858bbce5821752fbee79662d4ded5a9e578a",
+    "official_validator_sha256": "6b991efa2195ed59f9e514532d9add65b4790791bd6de054ce6f5cbdc19546b3",
+    "external_compatibility_checks": {
+      "instance_paths_and_sha256": true,
+      "seed": true,
+      "configured_time_limit": true,
+      "workers": true,
+      "cpu_affinity": true,
+      "cpu_model": true,
+      "platform": true,
+      "processor": true,
+      "python_version": true,
+      "ortools_version": true,
+      "validator_sha256": true,
+      "cpsolver_classes_sha256": true
+    }
+  },
+  "validation": {
+    "planora_records": 21,
+    "planora_produced_solutions": 21,
+    "planora_officially_feasible": 21,
+    "planora_zero_hard_violations": 21,
+    "planora_internal_external_score_matches": 21,
+    "planora_validator_errors": 0,
+    "planora_scorer_mismatches": 0,
+    "immutable_cpsolver_records": 21,
+    "immutable_cpsolver_produced_solutions": 21,
+    "immutable_cpsolver_officially_feasible": 21,
+    "immutable_cpsolver_zero_hard_violations": 21,
+    "immutable_cpsolver_reported_external_score_matches": 21,
+    "immutable_cpsolver_validator_errors": 0
+  },
+  "feasibility_rescue_result": {
+    "pre_rescue_planora_feasibility": 17,
+    "post_rescue_planora_feasibility": 21,
+    "absolute_gain": 4,
+    "newly_feasible_instances": {
+      "comp07": 1304,
+      "comp19": 660,
+      "comp20": 1637,
+      "comp21": 1084
+    },
+    "rescue_attempted_in_full_rerun": [
+      "comp07",
+      "comp19",
+      "comp20",
+      "comp21"
+    ],
+    "rescue_validated_in_full_rerun": 4,
+    "common_pre_rescue_feasible_instances": {
+      "new_score_better": 3,
+      "new_score_equal": 13,
+      "new_score_worse": 1,
+      "note": "This is a release-candidate comparison across different source hashes, not an isolated same-source rescue ablation. Score differences also reflect strict finalization reservation and timing variance."
+    }
+  },
+  "strict_total_budget": {
+    "definition": "strategy_meta.timing measures solve_instance from entry through incumbent validation, adaptive search, final quality computation, and result construction. Fresh-process wall time additionally includes Python/module/import/conversion startup; worker wall time also includes benchmark export and internal rescore.",
+    "configured_seconds": 10.0,
+    "solve_elapsed_seconds": {
+      "minimum": 7.480303743999684,
+      "median": 9.014037871005712,
+      "mean": 8.965813995095752,
+      "maximum": 9.82794428600755,
+      "sum": 188.28209389701078
+    },
+    "solve_deadline_overrun_seconds": {
+      "minimum": 0.0,
+      "median": 0.0,
+      "mean": 0.0,
+      "maximum": 0.0,
+      "sum": 0.0,
+      "zero_overrun_runs": 21
+    },
+    "planora_fresh_process_wall_seconds": {
+      "minimum": 11.932433816997218,
+      "median": 13.50281107799674,
+      "mean": 13.435530579095246,
+      "maximum": 14.383006760006538,
+      "sum": 282.14614216100017
+    },
+    "planora_fresh_process_cpu_seconds": {
+      "minimum": 8.315264999999997,
+      "median": 9.859089000000012,
+      "mean": 9.85398119047619,
+      "maximum": 10.647967999999985,
+      "sum": 206.933605
+    },
+    "planora_worker_wall_seconds": {
+      "minimum": 7.70019631300238,
+      "median": 9.199919115999364,
+      "mean": 9.15868310262158,
+      "maximum": 10.016279292001855,
+      "sum": 192.3323451550532
+    },
+    "planora_worker_cpu_seconds": {
+      "minimum": 7.454336016,
+      "median": 8.984343232,
+      "mean": 8.957615064380953,
+      "maximum": 9.758870534,
+      "sum": 188.109916352
+    },
+    "immutable_cpsolver_fresh_process_wall_seconds": {
+      "minimum": 10.619304756008205,
+      "median": 10.683110965997912,
+      "mean": 10.694374730764096,
+      "maximum": 10.853782038000645,
+      "sum": 224.581869346046
+    },
+    "immutable_cpsolver_fresh_process_cpu_seconds": {
+      "minimum": 9.955759999999975,
+      "median": 10.574313999999994,
+      "mean": 10.518905142857145,
+      "maximum": 10.728113999999994,
+      "sum": 220.89700800000006
+    }
+  },
+  "paired_result": {
+    "ranking_rule": "Feasibility first, then lower official ITC-2007 objective.",
+    "planora_wins": 0,
+    "ties": 0,
+    "cpsolver_wins": 21,
+    "planora_feasible": 21,
+    "cpsolver_feasible": 21,
+    "official_objective_sums": {
+      "planora": 20170,
+      "cpsolver_itc2007": 3586,
+      "planora_over_cpsolver": 5.624651422197434
+    },
+    "paired_absolute_gap_planora_minus_cpsolver": {
+      "minimum": 457,
+      "median": 779.0,
+      "mean": 789.7142857142857,
+      "maximum": 1440,
+      "sum": 16584
+    },
+    "paired_ratio_planora_over_cpsolver": {
+      "eligible_positive_denominator_pairs": 20,
+      "minimum": 2.125776397515528,
+      "median": 7.497888028456038,
+      "arithmetic_mean": 11.872755839060824,
+      "geometric_mean": 7.420869567396819,
+      "maximum": 99.8,
+      "undefined_or_infinite": [
+        "comp11: CPSolver objective 0, Planora objective 661"
+      ]
+    },
+    "weighted_component_sums": {
+      "planora": {
+        "room_capacity": 4885,
+        "minimum_working_days": 6400,
+        "curriculum_compactness": 8196,
+        "room_stability": 689,
+        "total": 20170
+      },
+      "cpsolver_itc2007": {
+        "room_capacity": 135,
+        "minimum_working_days": 955,
+        "curriculum_compactness": 2268,
+        "room_stability": 228,
+        "total": 3586
+      },
+      "planora_over_cpsolver": {
+        "room_capacity": 36.18518518518518,
+        "minimum_working_days": 6.701570680628272,
+        "curriculum_compactness": 3.6137566137566137,
+        "room_stability": 3.0219298245614037,
+        "total": 5.624651422197434
+      }
+    }
+  },
+  "per_instance": [
+    {"instance": "comp01", "planora": 499, "cpsolver_itc2007": 5, "winner": "cpsolver-itc2007"},
+    {"instance": "comp02", "planora": 916, "cpsolver_itc2007": 137, "winner": "cpsolver-itc2007"},
+    {"instance": "comp03", "planora": 701, "cpsolver_itc2007": 167, "winner": "cpsolver-itc2007"},
+    {"instance": "comp04", "planora": 978, "cpsolver_itc2007": 67, "winner": "cpsolver-itc2007"},
+    {"instance": "comp05", "planora": 1645, "cpsolver_itc2007": 746, "winner": "cpsolver-itc2007"},
+    {"instance": "comp06", "planora": 1172, "cpsolver_itc2007": 141, "winner": "cpsolver-itc2007"},
+    {"instance": "comp07", "planora": 1304, "cpsolver_itc2007": 99, "winner": "cpsolver-itc2007", "rescue": true},
+    {"instance": "comp08", "planora": 692, "cpsolver_itc2007": 78, "winner": "cpsolver-itc2007"},
+    {"instance": "comp09", "planora": 893, "cpsolver_itc2007": 146, "winner": "cpsolver-itc2007"},
+    {"instance": "comp10", "planora": 826, "cpsolver_itc2007": 82, "winner": "cpsolver-itc2007"},
+    {"instance": "comp11", "planora": 661, "cpsolver_itc2007": 0, "winner": "cpsolver-itc2007"},
+    {"instance": "comp12", "planora": 1369, "cpsolver_itc2007": 644, "winner": "cpsolver-itc2007"},
+    {"instance": "comp13", "planora": 1096, "cpsolver_itc2007": 114, "winner": "cpsolver-itc2007"},
+    {"instance": "comp14", "planora": 917, "cpsolver_itc2007": 109, "winner": "cpsolver-itc2007"},
+    {"instance": "comp15", "planora": 701, "cpsolver_itc2007": 139, "winner": "cpsolver-itc2007"},
+    {"instance": "comp16", "planora": 895, "cpsolver_itc2007": 104, "winner": "cpsolver-itc2007"},
+    {"instance": "comp17", "planora": 952, "cpsolver_itc2007": 146, "winner": "cpsolver-itc2007"},
+    {"instance": "comp18", "planora": 572, "cpsolver_itc2007": 115, "winner": "cpsolver-itc2007"},
+    {"instance": "comp19", "planora": 660, "cpsolver_itc2007": 156, "winner": "cpsolver-itc2007", "rescue": true},
+    {"instance": "comp20", "planora": 1637, "cpsolver_itc2007": 197, "winner": "cpsolver-itc2007", "rescue": true},
+    {"instance": "comp21", "planora": 1084, "cpsolver_itc2007": 194, "winner": "cpsolver-itc2007", "rescue": true}
+  ],
+  "verdict": {
+    "feasibility_release_blocker": "resolved for this full-corpus seed17 gate",
+    "external_quality_gate": "failed",
+    "superiority_claim": "not_supported",
+    "supported_statement": "Under the disclosed single-seed, 10-second, one-worker, CPU0 ITC-2007 protocol, strict-budget feasibility rescue raised Planora to 21/21 official feasibility with zero solve_instance deadline overrun, while immutable CPSolver/UniTime rows remained better on all 21 official objectives.",
+    "highest_value_next_target": "Room construction and capacity-aware room assignment: Planora's aggregate weighted room-capacity cost is 4,885 versus CPSolver's 135, a 36.19 ratio. Feasibility rescue should be retained, but the external quality gap is not a bandit-tuning problem alone."
+  },
+  "reproduction": {
+    "planora_launch_command": ".venv/bin/python scripts/benchmark_itc2007.py run --instances /tmp/planora-itc2007-cpsolver/data/ctt/comp01.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp02.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp03.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp04.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp05.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp06.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp07.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp08.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp09.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp10.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp11.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp12.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp13.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp14.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp15.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp16.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp17.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp18.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp19.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp20.ctt /tmp/planora-itc2007-cpsolver/data/ctt/comp21.ctt --seeds 17 --time-limit-seconds 10 --validator /tmp/planora-itc2007-validator --cpsolver-root /tmp/planora-itc2007-cpsolver --classes /tmp/planora-itc2007-build/classes --output-directory output/itc2007-breadth-21-planora-rescue-seed17-10s --repo-root /mnt/d/Stuff/Projects/Sites/Planora --python-command /mnt/d/Stuff/Projects/Sites/Planora/.venv/bin/python --workers 1 --cpu 0 --strategy research_adaptive --itc2007-course-symmetry off --itc2007-adaptive-seeding on --solvers planora",
+    "immutable_cpsolver_command_template": "java -Xmx1024m -XX:ActiveProcessorCount=1 -cp '/tmp/planora-itc2007-build/classes:/tmp/planora-itc2007-cpsolver/src:/tmp/planora-itc2007-cpsolver/lib/*' net.sf.cpsolver.itc.ItcTest ctt INPUT.ctt OUTPUT.out 10 17",
+    "rerun_note": "The harness requires a fresh output directory. A fully interleaved replicated paper gate must rerun both solvers rather than reuse these immutable CPSolver rows."
+  }
+}
