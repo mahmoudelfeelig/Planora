@@ -88,6 +88,16 @@ def _write_modern_matrix_fixture(repo: Path) -> None:
 
 
 def _stage_release_source(destination: Path) -> Path:
+    missing_output_fixtures = [
+        directory
+        for directory in OUTPUT_FIXTURES
+        if not (ROOT / "output" / directory).is_dir()
+    ]
+    if missing_output_fixtures:
+        pytest.skip(
+            "local release-evidence fixtures are unavailable: "
+            + ", ".join(missing_output_fixtures)
+        )
     repo = destination / "repo"
     repo.mkdir()
     for directory in (
