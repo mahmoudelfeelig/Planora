@@ -1632,7 +1632,7 @@ private fun ProjectRow(
   onDelete: () -> Unit,
 ) {
   Card(
-    Modifier.fillMaxWidth().clickable { onOpen(project) },
+    Modifier.fillMaxWidth(),
     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     shape = MaterialTheme.shapes.medium,
@@ -1747,6 +1747,16 @@ internal fun SettingsScreen(
           ) {
             Text("Open Planora on the web")
           }
+          Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(
+              onClick = { uriHandler.openUri("${BuildConfig.APP_WEB_URL.trimEnd('/')}/privacy") },
+              modifier = Modifier.weight(1f),
+            ) { Text("Privacy") }
+            TextButton(
+              onClick = { uriHandler.openUri("${BuildConfig.APP_WEB_URL.trimEnd('/')}/faq") },
+              modifier = Modifier.weight(1f),
+            ) { Text("FAQ") }
+          }
         }
       }
     }
@@ -1757,6 +1767,7 @@ internal fun SettingsScreen(
 @Composable
 private fun SettingsCard(title: String, icon: ImageVector, content: @Composable ColumnScope.() -> Unit) {
   Card(
+    modifier = Modifier.fillMaxWidth(),
     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     shape = MaterialTheme.shapes.large,

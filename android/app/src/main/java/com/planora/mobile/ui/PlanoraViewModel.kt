@@ -26,6 +26,8 @@ import com.planora.mobile.ui.theme.ThemeMode
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -563,7 +565,6 @@ class PlanoraViewModel(
       is GatewayResult.Success -> if (isCurrent(generation)) {
         _uiState.update { it.copy(principal = result.value) }
         bootstrap(showTutorial = false, generation = generation)
-        refreshAccount()
         showMessage("Group joined. Your permissions are up to date.")
       }
       is GatewayResult.Failure -> if (isCurrent(generation)) showFailure(result)
@@ -593,7 +594,10 @@ class PlanoraViewModel(
     when (val result = gateway.changePassword(currentPassword, newPassword)) {
       is GatewayResult.Success -> if (isCurrent(generation)) {
         showMessage("Password changed. Other sessions were revoked.")
-        refreshAccount()
+        when (val account = gateway.loadAccount()) {
+          is GatewayResult.Success -> if (isCurrent(generation)) _uiState.update { it.copy(account = account.value) }
+          is GatewayResult.Failure -> if (isCurrent(generation)) showFailure(account)
+        }
       }
       is GatewayResult.Failure -> if (isCurrent(generation)) showFailure(result)
     }
@@ -751,9 +755,12 @@ class PlanoraViewModel(
 
   private suspend fun bootstrap(showTutorial: Boolean, generation: Long) {
     if (!isCurrent(generation)) return
-    val catalog = gateway.loadCatalog()
-    if (!isCurrent(generation)) return
-    val projects = gateway.listProjects()
+    val (catalog, projects, account) = coroutineScope {
+      val catalogRequest = async { gateway.loadCatalog() }
+      val projectsRequest = async { gateway.listProjects() }
+      val accountRequest = async { gateway.loadAccount() }
+      Triple(catalogRequest.await(), projectsRequest.await(), accountRequest.await())
+    }
     if (!isCurrent(generation)) return
     if (catalog is GatewayResult.Failure) {
       if (catalog.requiresSignIn) {
@@ -774,6 +781,7 @@ class PlanoraViewModel(
         catalog = (catalog as GatewayResult.Success).value,
         projects = (projects as? GatewayResult.Success)?.value.orEmpty(),
         projectsLoadError = projectsFailure?.message,
+        account = (account as? GatewayResult.Success)?.value ?: it.account,
         destination = if (showTutorial) Destination.TUTORIAL else Destination.HOME,
         tutorialReturn = Destination.HOME,
         selectedModeId = (catalog.value.modes.firstOrNull { mode -> mode.recommended }

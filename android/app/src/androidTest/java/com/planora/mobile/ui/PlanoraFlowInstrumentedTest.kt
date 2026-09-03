@@ -168,6 +168,7 @@ class PlanoraFlowInstrumentedTest {
     composeRule.onNodeWithText("Register").performScrollTo().assertIsDisplayed().performClick()
     composeRule.onAllNodes(hasText("Create account"))[0].assertIsDisplayed()
     composeRule.onNodeWithText("Display name").assertIsDisplayed()
+    capture("planora-register.png")
   }
 
   @Test
@@ -184,6 +185,10 @@ class PlanoraFlowInstrumentedTest {
     composeRule.onNodeWithText("Fairness and utilization").assertIsDisplayed()
     composeRule.onNodeWithText("Account and organizations").assertIsDisplayed()
     composeRule.onNodeWithText("Platform parity").assertIsDisplayed()
+    capture("planora-tools.png")
+    composeRule.onNodeWithText("Data and scenarios").performClick()
+    composeRule.onNodeWithText("CSV column mapping").performScrollTo().assertIsDisplayed()
+    capture("planora-data.png")
   }
 
   @Test
