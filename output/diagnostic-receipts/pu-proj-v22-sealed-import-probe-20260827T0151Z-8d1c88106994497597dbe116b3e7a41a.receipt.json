@@ -1,0 +1,131 @@
+{
+  "schema": "planora.itc2019.diagnostic-authorization-receipt.v1",
+  "instance": "pu-proj-fal19",
+  "diagnostic_chain": "puproj_v22",
+  "probe_id": "8d1c88106994497597dbe116b3e7a41a",
+  "captured_utc": "2026-08-27T01:51:50Z",
+  "completed_utc": "2026-08-27T01:53:10Z",
+  "receipt_completed_utc": "2026-08-27T01:54:01Z",
+  "decision": "GO_FOR_EXACTLY_ONE_ISOLATED_OFFICIAL_LAUNCH",
+  "launch_authorization_completed_utc": "2026-08-27T02:02:43Z",
+  "independent_launch_review": {
+    "reviewer_count": 2,
+    "unanimous_decision": "GO_FOR_EXACTLY_ONE_ISOLATED_OFFICIAL_LAUNCH",
+    "automatic_retry_authorized": false,
+    "resource_cap_raise_authorized": false,
+    "launch_safety": "GO",
+    "likelihood_of_solving": "UNCERTAIN",
+    "mandatory_conditions": [
+      "Recompute every frozen pin immediately before launch.",
+      "Use the exact frozen v22 sealed chain and official input.",
+      "Use a fresh private initially empty 0700 output root.",
+      "Require two fresh MemAvailable samples of at least 1900000 KiB at least five seconds apart.",
+      "Require no competing heavy WSL workload.",
+      "Keep all resource and deadline caps unchanged.",
+      "Execute exactly once with no automatic retry or cap increase.",
+      "Fail closed on any hash, resource, deadline, validation, publication, or cleanup failure."
+    ]
+  },
+  "control_plane": {
+    "supervisor_sha256": "1a097fdbd3cf6728f243cfb864136a402e7af5a5313f2c35a941b3e302198323",
+    "launcher_sha256": "5a4c0a319e130817bed19fc9ddea411dd45eaaa3c3086b8d51420d83f96a02c9",
+    "runner_sha256": "4b18f5de8da5593cb6c9c4201ae11395c4888734ee0dfd6db54213a2b0db2538",
+    "focused_tests_sha256": "4540ccb8122d13e53cfa10ee0a168a819d7049864011b8dcc5bfc889be98fcdd",
+    "freeze_manifest_sha256": "fedf9e51de0e7b9eaf1d48d50ff5dc4ddbaaadca6becf63ddafc4590c8d80fb1"
+  },
+  "source_closure": {
+    "itc2019_decomposed_sha256": "3f4b92f91867cd1205f1702f36923b3c19cb8ad8d39b43d34a3b15e07f502e05",
+    "itc2019_sparse_joint_sha256": "2f2a40180f86fdcc7b76d9c10730cecbda7114713d504ecfe6b98008f105c2c2",
+    "itc2019_violation_lns_sha256": "9f1e4f66c4fadea2813ec86de451206102928c5c7b1dfdf786d900c8dc137343"
+  },
+  "verification_before_probe": {
+    "control_and_runtime_rows": 7,
+    "control_hashes_and_sizes": "PASS",
+    "source_and_test_rows": 5,
+    "source_and_test_hashes": "PASS",
+    "python_ast_and_json_parse": "PASS",
+    "ruff": "PASS",
+    "powershell_builder_parse": "PASS",
+    "retained_focused_test": {
+      "path": "output/diagnostic-receipts/pu-proj-v22-final-static-tests-20260827T0149Z.log",
+      "size": 42,
+      "sha256": "a091980070fe99ade720372a1a46279bfa610d55584fda58d1e0b90bd5c07e08",
+      "result": "PASS"
+    },
+    "complete_lightweight_itc2019": "450_PASS_2_EXPECTED_SKIP"
+  },
+  "prelaunch_memory_samples_kib": [
+    2302388,
+    2308348
+  ],
+  "prelaunch_memory_sample_interval_seconds": 5.200412034988403,
+  "prelaunch_memory_floor_kib": 1900000,
+  "heavy_wsl_process_gate": "PASS_EMPTY",
+  "host_output_root": {
+    "path": "/tmp/planora-puproj-v22-probe-8d1c88106994497597dbe116b3e7a41a",
+    "fresh": true,
+    "initially_empty": true,
+    "mode": "0700"
+  },
+  "process_exit_code": 0,
+  "stdout_evidence": {
+    "path": "output/diagnostic-receipts/pu-proj-v22-sealed-import-probe-20260827T0151Z-8d1c88106994497597dbe116b3e7a41a.stdout.json",
+    "size": 201002,
+    "sha256": "6d42add0c26e302bc7d5b7bc98bc16891339f50c3defc139c1c6a707fcf281f9"
+  },
+  "stderr_evidence": {
+    "path": "output/diagnostic-receipts/pu-proj-v22-sealed-import-probe-20260827T0151Z-8d1c88106994497597dbe116b3e7a41a.stderr.log",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "accepted_envelope": {
+    "schema": "planora.puproj.frontier-joint-v19-sealed-import-probe.v1",
+    "status": "PASS",
+    "errors": [],
+    "breach": null,
+    "child_exit_code": 0,
+    "child_status": "PASS",
+    "child_solve_call_count": 0,
+    "official_instance_opened": false,
+    "checkpoint_or_incumbent_opened": false,
+    "solver_child_process_started": false,
+    "solver_execution_started": false,
+    "official_solution_xml_published": false,
+    "child_elapsed_seconds": 2.6571432720011217,
+    "final_elapsed_before_stdout_envelope_seconds": 22.863419779998367,
+    "peak_process_group_rss_kib": 134132,
+    "peak_process_group_vmswap_kib": 0,
+    "process_group_rss_limit_kib": 1200000,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 201000,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1300000,
+    "whole_launch_pid_union_no_double_count": true,
+    "process_group_cleanup_empty": true,
+    "cleanup_final_owned_pids": [],
+    "cleanup_errors": [],
+    "leader_generation_gone": true,
+    "descriptor_sha256": "28a20dbfd1d36ce749b2dee904d85ac76f08fc5a8fdbb1ac171f8e295203276f",
+    "descriptor_named_publication": false,
+    "descriptor_seals": 15,
+    "runtime_bundle_file_count": 3077,
+    "runtime_bundle_total_bytes": 191956270,
+    "chain_traversed": [
+      "native_bootstrap",
+      "sealed_launcher",
+      "sealed_supervisor",
+      "sealed_runner_import_child"
+    ]
+  },
+  "post_exit": {
+    "matching_processes": 0,
+    "memavailable_kib": 2314228
+  },
+  "official_launch_authorized": true,
+  "revocation_conditions": [
+    "Independent launch review does not return GO.",
+    "Any pinned artifact hash or size changes.",
+    "Either fresh launch memory sample is below 1900000 KiB.",
+    "Another heavy WSL task is active at launch time.",
+    "The exact frozen v22 chain, fresh output root, official input, argv, or unchanged resource caps are not used.",
+    "Any output, cleanup, resource, hash, local-validator, or official-validator acceptance check fails."
+  ]
+}

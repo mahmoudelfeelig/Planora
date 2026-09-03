@@ -1,0 +1,64 @@
+{
+  "schema": "planora.itc2019.canonical-test-authorization.v1",
+  "created_at_utc": "2026-08-27T04:17:46Z",
+  "instance": "muni-fspsx-fal17",
+  "candidate": "muni_v27",
+  "test_id": "656c1c3fd68f4866bc61714de29e35fd",
+  "decision": "GO_FOR_ONE_CANONICAL_READ_ONLY_SUITE",
+  "retained_probe_authorized": false,
+  "official_input_authorized": false,
+  "official_launch_authorized": false,
+  "automatic_retry_authorized": false,
+  "independent_review": {
+    "verdict": "GO",
+    "scope": "exactly one canonical read-only suite; retained probe and official launch remain unauthorized",
+    "windows_safe_tests_passed": 13,
+    "focused_final_acceptance_tests_passed": 1,
+    "canonical_tests_discovered": 119,
+    "expected_passes": 117,
+    "expected_skips": 2,
+    "expected_failures": 0,
+    "expected_errors": 0,
+    "artifact_closure_rows": 12,
+    "source_closure_rows": 21,
+    "runtime_record_rows": 9,
+    "preserved_v12_v15_rows": 48,
+    "direct_v26_parent_rows": 3
+  },
+  "pinned_files": {
+    "builder": {
+      "path": "scripts/build_muni_v27_chain.ps1",
+      "size": 41990,
+      "sha256": "d332174875e7bf458876e050c936cd00ccc28ef6f3ee54f0940d54b1c69002d9"
+    },
+    "tests": {
+      "path": "benchmarks/probe_diagnostics/muni_v27/planora-muni-fspsx-frontier-v27-tests.py",
+      "size": 175866,
+      "sha256": "6699f5d59b9218613fd7261fb6d68cda808e10b9967d05ebe24d505cc0d68aa5"
+    },
+    "certificate": {
+      "path": "benchmarks/probe_diagnostics/muni_v27/planora-muni-fspsx-frontier-v27-certificate.json",
+      "size": 27113,
+      "sha256": "05b6ba7852706d3328bf8ab1622986828c412f9b6549cda07d526e2eea2d3639"
+    },
+    "freeze_manifest": {
+      "path": "benchmarks/probe_diagnostics/muni_v27/planora-muni-fspsx-frontier-v27-freeze-manifest.json",
+      "size": 32465,
+      "sha256": "1777d903c8105c0d76397503ad3667a5b9a21defa2fff16d17388c3ca22c32ee"
+    }
+  },
+  "pinned_v26_rejection": {
+    "receipt_sha256": "cc2c00f55d5682ae5c9aca11e2d5d9449a62a9c41073c47179ef06c51f2316d0",
+    "stderr_sha256": "a8fa2770f9e4715fdfbad7f873689c4a17edc64b9f7f63e73eb463a62297b04c",
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "plan_sha256": "b8776382708c372e7c7597f00a9c9b6298d021372e5ef5dab56852223f50ccb0"
+  },
+  "mandatory_conditions": [
+    "Extract and replay exactly the 48 unique v12-v15 preserved artifact paths and hashes from the pinned v27 canonical test constants.",
+    "Use a fresh private 0700 host directory bound to /tmp, read-only root, cleared environment, and dropped capabilities.",
+    "Set PLANORA_MUNI_V27_SKIP_HEAVY=1 and stage no official input, progress, checkpoint, solution, or derivation-audit-only probe payload.",
+    "Require two MemAvailable samples of at least 1900000 KiB at least five seconds apart with no competing heavy WSL workload.",
+    "Execute once and accept only 117 passes, exactly two intentional heavy-test skips, and zero failures or errors.",
+    "Retain stdout, stderr, exit status, hashes, staging inventory, and post-exit cleanup evidence."
+  ]
+}

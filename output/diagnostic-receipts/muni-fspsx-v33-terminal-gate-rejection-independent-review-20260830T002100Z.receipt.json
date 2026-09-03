@@ -1,0 +1,151 @@
+{
+  "schema": "planora.muni-v33.terminal-gate-rejection-independent-review.v1",
+  "status": "GO_FOR_EXACT_V33_REJECTION_CUSTODY",
+  "successor_admission_status": "NO_GO_ACTIVE_HOST_WSL_STORAGE_INSTABILITY",
+  "reviewed_at_utc": "2026-08-30T00:24:41.4434867Z",
+  "reviewer_tasks": [
+    "/root/v33_gate_failure_custody",
+    "/root/wsl_cold_start_forensics"
+  ],
+  "candidate": "muni_v33",
+  "run_id": "2339df35f57e441a8f92bd1f890fa68f",
+  "verdict": "FREEZE_REJECTION_NO_RETRY_NO_WSL_HEAVY_EXECUTION_BUILD_V34_DRAFT_ONLY",
+  "frozen_rejection_pair": {
+    "receipt": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v33-terminal-gate-rejection-20260830T000900Z.receipt.json",
+      "size": 8680,
+      "sha256": "dcd267009e2a440cc120886a1e01aad3d643971336f7935a70454e89c81cdc1e",
+      "file_id": "0000000000000000011700000018c551",
+      "last_write_utc_ticks": 639236459346898563
+    },
+    "custody_test": {
+      "path": "tests/test_muni_v33_terminal_gate_rejection.py",
+      "size": 8501,
+      "sha256": "2533e6f7c881f3259abed8b179211bbc62a085fdf6c322f5f3fb28d2f7699b22",
+      "file_id": "0000000000000000056000000019b1bc",
+      "last_write_utc_ticks": 639236459199560797
+    }
+  },
+  "custody_review": {
+    "strict_json_and_no_case_aliases": true,
+    "all_embedded_live_pins_replayed": true,
+    "source_order_replayed": true,
+    "lifecycle_semantics_replayed": true,
+    "raw_transcript_limitation_preserved": true,
+    "v33_root_unknown_limitation_preserved": true,
+    "tests_passed": 8,
+    "ruff_check_passed": true,
+    "ruff_format_passed": true,
+    "canonical_namespace_artifact_count": 0,
+    "shared_lock_present": false,
+    "terminal_gate_invocation_authority_exhausted": true,
+    "runner_default_authorization_claim_consumed": false,
+    "runner_authorization_reuse_authorized": false,
+    "default_runner_invocation_attempted": false,
+    "canonical_launch_attempted": false,
+    "canonical_suite_executed": false
+  },
+  "host_forensics": {
+    "classification": "CORRELATED_ACTIVE_WSL_STORAGE_PATH_FAILURE_NOT_SOLVER_FAILURE",
+    "confidence": "HIGH",
+    "system_event_log": {
+      "provider": "Ntfs",
+      "event_id": 141,
+      "closed_window_start_utc": "2026-08-29T16:11:52.1478144Z",
+      "closed_window_end_utc_inclusive": "2026-08-30T00:20:37.0862155Z",
+      "matching_event_count": 4211,
+      "first_matching_event_utc": "2026-08-29T16:11:52.1478144Z",
+      "last_matching_event_utc": "2026-08-30T00:20:37.0862155Z",
+      "last_matching_record_id": 223072,
+      "path": "D:\\Docker\\wsl\\disk\\docker_data.vhdx",
+      "message_status": "DELAYED_WRITE_FAILED_BUFFERED_DATA_LOST",
+      "gate_window_start_utc": "2026-08-30T00:04:00Z",
+      "gate_window_end_utc": "2026-08-30T00:07:00Z",
+      "gate_window_matching_event_count": 19,
+      "gate_window_first_event_utc": "2026-08-30T00:04:03.3561426Z",
+      "gate_window_last_event_utc": "2026-08-30T00:06:31.9366977Z",
+      "raw_binary_contains_little_endian_c0000098_twice": true,
+      "local_windows_sdk_mapping": "STATUS_FILE_INVALID",
+      "local_windows_sdk_value": "0xC0000098"
+    },
+    "path_observations": [
+      {
+        "path": "D:\\Docker\\wsl\\disk\\docker_data.vhdx",
+        "attributes": "Archive, Compressed",
+        "size": 85651881984,
+        "last_write_utc": "2026-08-29T17:42:38.8301976Z"
+      },
+      {
+        "path": "D:\\Docker\\wsl\\disk",
+        "attributes": "Directory, Compressed"
+      },
+      {
+        "path": "D:\\WSL\\Ubuntu\\ext4.vhdx",
+        "attributes": "Archive, Compressed",
+        "size": 170960879616,
+        "last_write_utc": "2026-08-29T19:46:01.2185410Z"
+      },
+      {
+        "path": "D:\\WSL\\Ubuntu",
+        "attributes": "Directory, Compressed"
+      }
+    ],
+    "volume_observation": {
+      "drive_letter": "D",
+      "file_system": "NTFS",
+      "health_status": "Healthy",
+      "operational_status": "OK",
+      "size_bytes": 1785632649216,
+      "size_remaining_bytes": 662165295104
+    },
+    "causality_limits": {
+      "event_141_strongly_correlates_with_gate_timeout": true,
+      "event_141_proves_ubuntu_vhd_root_cause": false,
+      "compression_proven_as_initiating_cause": false,
+      "docker_proven_as_initiating_cause": false,
+      "filter_driver_or_volume_transition_proven_as_initiating_cause": false,
+      "root_cause_below_degraded_shared_wsl_storage_path": "UNPROVEN"
+    }
+  },
+  "minimum_safe_successor_admission": {
+    "docker_and_docker_owned_wsl_processes_absent_before_stabilization": true,
+    "windows_only_event_log_samples": 3,
+    "minimum_event_log_quiet_window_minutes": 15,
+    "no_new_ntfs_event_141": true,
+    "no_new_paired_application_popup_event_26": true,
+    "both_wsl_vhdx_paths_present_and_identity_stable": true,
+    "compression_encryption_sparse_attributes_audited": true,
+    "do_not_change_vhdx_attributes_while_live": true,
+    "d_volume_online_writable_and_healthy_without_new_storage_warnings": true,
+    "wslservice_vmcompute_hns_hvhost_stable_across_windows_samples": true,
+    "ubuntu_activation_requires_separate_explicit_authorization": true,
+    "ubuntu_activation_host_deadline_bounded": true,
+    "ubuntu_activation_stdout_exact_stderr_empty_exit_zero": true,
+    "ubuntu_readiness_samples": 3,
+    "minimum_ubuntu_sample_separation_seconds": 5,
+    "same_boot_id_wsl_version_distribution_identity_and_tools": true,
+    "memory_and_process_census_bound": true,
+    "zero_canonical_artifacts_and_no_shared_lock": true,
+    "authenticated_v33_root_reconciliation_required": true,
+    "existing_v33_root_must_be_inventoried_and_retained_read_only": true,
+    "successful_readiness_receipt_and_independent_review_bound_into_v34": true,
+    "terminal_authority_exactly_one_default_runner_invocation": true,
+    "environment_admission_must_not_consume_default_runner_authority": true,
+    "every_wsl_call_has_bounded_host_timeout": true,
+    "automatic_retry_forbidden": true
+  },
+  "review_scope": {
+    "workspace_files_edited_by_reviewers": false,
+    "wsl_command_executed_by_reviewers": false,
+    "service_or_docker_action_performed": false,
+    "workload_launched": false,
+    "canonical_execution_performed": false
+  },
+  "receipt_publication_blockers": [],
+  "successor_admission_blockers": [
+    "active_ntfs_event_141_wsl_vhdx_delayed_write_failures",
+    "docker_and_wsl_storage_path_not_stabilized",
+    "compressed_live_wsl_vhdx_state_not_safely_reconciled",
+    "authenticated_v33_root_reconciliation_pending"
+  ]
+}

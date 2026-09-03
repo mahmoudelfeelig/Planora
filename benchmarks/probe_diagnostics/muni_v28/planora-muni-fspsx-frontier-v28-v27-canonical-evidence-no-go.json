@@ -1,0 +1,83 @@
+{
+  "schema": "planora.muni-fspsx.frontier-v28.v27-canonical-evidence-no-go.v1",
+  "reviewed_run_id": "656c1c3fd68f4866bc61714de29e35fd",
+  "verdict": "NO_GO_FOR_RETAINED_NO_SOLVER_PROBE",
+  "official_input_and_launch_verdict": "NO_GO",
+  "severity": "P1",
+  "confidence": "HIGH",
+  "independent_finding": "v27 reported root_unchanged_at_48_exact_files but mounted the staged root read-write at /tmp and checked only final names and regular-file types; neither final content identity nor transient immutability was proven",
+  "observed_v27_contract": {
+    "staged_file_count": 48,
+    "sandbox_mount": "BWRAP_READ_WRITE_BIND_TO_TMP",
+    "post_exit_checks": [
+      "exact_final_name_set",
+      "regular_file_type"
+    ],
+    "post_exit_content_rehash_count": 0,
+    "transient_mutation_watch": "ABSENT",
+    "receipt_claim": "root_unchanged_at_48_exact_files=true",
+    "retained_probe_authorization_from_receipt_accepted_by_independent_review": false
+  },
+  "passing_canonical_result": {
+    "tests_run": 119,
+    "passed": 117,
+    "skipped": 2,
+    "failures": 0,
+    "errors": 0,
+    "exact_skip_reasons": [
+      "heavy sealed-runtime import probe disabled by test contract",
+      "real sealed chain admission disabled by test contract"
+    ]
+  },
+  "pinned_v27_evidence": {
+    "canonical_runner": {
+      "path": "scripts/run_muni_v27_canonical_tests.ps1",
+      "sha256": "cbd78d3286a5f763e0af041b923e721d55fd3d9c2dd8e5bc2f0857c7d2a4a19e"
+    },
+    "authorization": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v27-canonical-tests-authorization-20260827T041746Z.receipt.json",
+      "sha256": "bd01fe863cec792ba7660b2d2fdd2694b531fda593f196a998c8f0a788b54d2f"
+    },
+    "plan": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v27-canonical-readonly-tests-656c1c3fd68f4866bc61714de29e35fd.plan.json",
+      "sha256": "335296412e2d8ce9a328acf9b4943af5bf94f7feca7a7e2212aba6feeca24c00"
+    },
+    "receipt": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v27-canonical-readonly-tests-656c1c3fd68f4866bc61714de29e35fd.receipt.json",
+      "sha256": "a9ec00f3bffafb81f51ad3806d178d936ad246ec2b759c55bf745f1a67cd433c"
+    },
+    "stderr": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v27-canonical-readonly-tests-656c1c3fd68f4866bc61714de29e35fd.stderr.log",
+      "sha256": "6cb0a42eff44bbbed0fe89ed6ed07bf6ff77249318adb96c5bc25c01c0bb0998"
+    },
+    "stdout": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v27-canonical-readonly-tests-656c1c3fd68f4866bc61714de29e35fd.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "exit_code": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v27-canonical-readonly-tests-656c1c3fd68f4866bc61714de29e35fd.exit-code.txt",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    "cleanup": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v27-canonical-readonly-tests-656c1c3fd68f4866bc61714de29e35fd.cleanup.json",
+      "sha256": "32a70344cdad59148e08a4f90b3aa2c7c2fe2488a045ae4107a221043658d554"
+    }
+  },
+  "mandatory_next_external_canonical_runner": {
+    "staged_allowlist": "extract exactly 48 unique v12-v15 paths and SHA-256 values from the pinned v28 tests",
+    "immutable_mount": "bind the staged 48-file root read-only at /tmp using --ro-bind or use an equivalently immutable content-addressed snapshot with no write-capable alias",
+    "post_exit_rehash": "rehash all 48 regular files after process exit and compare path hash and count against the extracted allowlist",
+    "transient_mutation_rejection": "retain kernel-enforced immutable-mount proof plus mutation-watch or immutable-snapshot evidence covering pre-launch through post-exit rehash; any mutation event or observation uncertainty rejects",
+    "final_mutation_rejection": "any missing extra non-regular renamed or hash-mismatched entry rejects",
+    "runner_self_pin": "authorization plan and receipt must carry one identical SHA-256 for the external canonical runner; the file must replay before launch and after evidence finalization",
+    "cleanup": "retain post-exit cleanup evidence bound to the canonical receipt hash and proving the exact staged target absent",
+    "acceptance": "119 unique tests with 117 passes exactly two pinned heavy skips zero failures zero errors and no solver official input progress checkpoint or publication"
+  },
+  "authorization": {
+    "canonical_test_authorized": false,
+    "retained_probe_authorized": false,
+    "official_input_authorized": false,
+    "official_launch_authorized": false,
+    "automatic_retry_authorized": false
+  }
+}

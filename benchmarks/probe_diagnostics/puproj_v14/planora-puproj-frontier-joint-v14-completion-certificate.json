@@ -1,0 +1,81 @@
+{
+  "schema": "planora.pu-proj.frontier-joint-v14.completion-certificate.v1",
+  "created_utc": "2026-08-26T16:59:54Z",
+  "verdict": "GO_FOR_INDEPENDENT_CODE_REVIEW_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "freeze_manifest": {
+    "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v14/planora-puproj-frontier-joint-v14-freeze.json",
+    "sha256": "a3ec337d9d02e137655141654fccb5cceab7949fc528776d98d546452cf46b40"
+  },
+  "artifacts": {
+    "bootstrap": "ced513c673e12cc0923e2261bff37287011eb52d9501ef1aa99d830f8a5e5c7b",
+    "bootstrap_source": "5e2e00881d0a5a0873999747019411aa0184df1f5945dbacda4f320f0d997425",
+    "launcher": "c75e0236a99dc60ec9b5bf1426e25fd61864540adad721b339b1dd605366b849",
+    "supervisor": "995d592eff641800c01b1621e06ff13bcfbffb1fe4106ad9ab93fa44f294e20f",
+    "runner": "a5983d898eee5240bca1e23901f4f6d5e0ee3025b730b42205ea530f509bd9de",
+    "generic_validator": "6a0809dab1787967147f02d788511705ef7eca661e07edc128ad66792ce9a2af",
+    "tests": "c8ecb191a17fe6733d757518f04306e854dd9c86ec151f7bfc79f4571c409dc5"
+  },
+  "implemented": {
+    "trusted_named_supervisor_report_eliminated": true,
+    "sealed_memfd_is_sole_internal_authority": true,
+    "retained_descriptor_pread_exact_bytes": true,
+    "publisher_returns_unconsumed_descriptor_capability": true,
+    "post_publisher_return_aliases_non_authoritative": true,
+    "during_pread_aliases_non_authoritative": true,
+    "post_final_descriptor_replay_aliases_purged": true,
+    "all_supervisor_report_pathnames_absent_before_acceptance": true,
+    "single_final_stdout_json_envelope": true,
+    "stdout_deadline_checked_after_envelope_write": true,
+    "non_authoritative_audit_copy_emitted": false,
+    "core_solution_and_runner_report_last_preserved": true,
+    "strict_nested_probe_schema_preserved": true,
+    "complete_stdout_envelope_elapsed_wall_acceptance_preserved": true,
+    "identity_pinned_accounting_preserved": true,
+    "generation_bound_cleanup_preserved": true,
+    "probe_child_rejection_diagnostics_precede_success_schema_admission": true,
+    "empty_stdout_json_decode_non_object_and_exact_key_mismatch_distinguished": true,
+    "child_exit_and_stderr_failures_distinguished": true,
+    "stderr_tail_is_bounded_base64_exact_bytes": true,
+    "probe_pycache_prefix_single_output_bound_value": true,
+    "v13_failure_root_cause_repaired_without_relaxing_provenance_checks": true
+  },
+  "verification": {
+    "python_compile": "PASS",
+    "lightweight_synthetic_and_adversarial_tests": "60_of_60_PASS",
+    "full_lightweight_itc2019_suite": "NOT_RUN_FOR_V14_DIAGNOSTIC_REPAIR_CHAIN",
+    "post_return_and_during_pread_alias_regressions": "PASS_ORIGINAL_DESCRIPTOR_BYTES_ACCEPTED_ALIASES_ABSENT",
+    "post_final_replay_alias_regression": "PASS_ORIGINAL_DESCRIPTOR_BYTES_ACCEPTED_ALIAS_ABSENT",
+    "retained_fd_only_byte_read_regression": "PASS_NO_NAMED_PUBLICATION",
+    "strict_schema_nan_inf_null_regressions": "PASS_FAIL_CLOSED",
+    "late_descriptor_consumption_regression": "PASS_FAIL_CLOSED_AND_ALIASES_ABSENT",
+    "native_static_elf_rebuild": "PASS_BYTE_IDENTICAL",
+    "native_sealed_self_test": "PASS",
+    "v13_probe_failure": "runner private-pycache/sys.path/output binding rejected",
+    "v13_probe_stderr_sha256": "4f5b7050c4246721da4448bf9a5b99d1017be701f224a59567b118a1697d2349",
+    "v13_probe_peak_kib": 178236,
+    "v14_probe_chain": "NOT_RUN_BY_REQUEST",
+    "probe_chain_traversed": [],
+    "probe_chain_official_input_opened": false,
+    "probe_chain_checkpoint_opened": false,
+    "probe_chain_solver_child_started": false,
+    "probe_chain_solution_published": false,
+    "ruff_check": "PASS",
+    "full_sealed_runtime_import_probe": "NOT_RUN_BY_REQUEST",
+    "full_probe_minimum_memavailable_kib": 1900000,
+    "official_launch_or_solve": "NOT_RUN"
+  },
+  "preservation": {
+    "puproj_v13_all_named_artifact_hashes": "PASS_UNCHANGED",
+    "files_outside_diagnostic_directory_modified": false
+  },
+  "limits": {
+    "probe_initial_memavailable_floor_kib": 1900000,
+    "probe_runtime_memavailable_floor_kib": 600000,
+    "probe_hard_wall_seconds": 180.0,
+    "probe_process_group_rss_limit_kib": 1200000,
+    "probe_process_group_vmswap_limit_kib": 131072,
+    "probe_whole_launch_vmrss_plus_vmswap_limit_kib": 1300000,
+    "independent_code_review_required": true,
+    "official_launch_authorized": false
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "schema": "planora.itc2019.diagnostic-authorization-receipt.v1",
+  "instance": "pu-proj-fal19",
+  "diagnostic_chain": "puproj_v19",
+  "captured_utc": "2026-08-26T23:34:41Z",
+  "completed_utc": "2026-08-26T23:35:03Z",
+  "decision": "GO_FOR_OFFICIAL_LAUNCH",
+  "decision_scope": "Authorize one isolated v19 --launch attempt only while all pinned artifact hashes remain unchanged.",
+  "frozen_artifacts": {
+    "bootstrap_sha256": "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de",
+    "launcher_sha256": "a31a189c8aec149c527ac91a83c099c581949aa26f0f8326bd706e7982d46e21",
+    "freeze_manifest_sha256": "163fbf0e9cea0ce25e881fb3ea563286c97c6d7291ef93338088acfff24b0ac9",
+    "supervisor_sha256": "6ef096d3708352096aade8289a094a5640fff18df8994d46c5e3c96c483318f9",
+    "runner_sha256": "43772c50e4804a56fc995542c1fbe61bef66e9e360eae7d7c24aeda8f0023548",
+    "itc2019_violation_lns_sha256": "af902e522b980cd511f4633c39d7f76ccddcd417f94b8cdc8785f389a831317b",
+    "itc2019_decomposed_sha256": "a96e5fcd98b30ce69ff0a51e6fb1b65243d84d502f5873854423780de68b4b63",
+    "repository_violation_lns_test_sha256": "a738894d4393d8d5bf8a240f493fa92e2e12e820cd885b40518e13cc0d91efdb"
+  },
+  "launch_isolation": {
+    "outer_timeout_seconds": 240,
+    "bubblewrap_unshare_all": true,
+    "bubblewrap_cap_drop_all": true,
+    "root_read_only": true,
+    "tmpfs_tmp": true,
+    "environment_cleared": true,
+    "mode": "--sealed-import-probe"
+  },
+  "prelaunch_memory_samples_kib": [
+    2103832,
+    2097552
+  ],
+  "prelaunch_memory_floor_kib": 1900000,
+  "process_exit_code": 0,
+  "stdout_evidence": {
+    "path": "output/diagnostic-receipts/pu-proj-v19-sealed-import-probe-20260826T233441Z.stdout.json",
+    "size": 200975,
+    "sha256": "0da09d1188a436b900119d120ad5d6c9a0fbe0333ee1ee6a3b5842948a83f1d7"
+  },
+  "stderr_evidence": {
+    "path": "output/diagnostic-receipts/pu-proj-v19-sealed-import-probe-20260826T233441Z.stderr.log",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "accepted_envelope": {
+    "schema": "planora.puproj.frontier-joint-v19-sealed-import-probe.v1",
+    "status": "PASS",
+    "errors": [],
+    "child_exit_code": 0,
+    "child_status": "PASS",
+    "child_solve_call_count": 0,
+    "official_instance_opened": false,
+    "checkpoint_or_incumbent_opened": false,
+    "solver_child_process_started": false,
+    "solver_execution_started": false,
+    "official_solution_xml_published": false,
+    "child_stderr_bytes": 0,
+    "compile_warning_count": 2,
+    "compile_warning_status": "ADMITTED",
+    "peak_process_group_rss_kib": 133872,
+    "peak_process_group_vmswap_kib": 0,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 200952,
+    "process_group_rss_limit_kib": 1200000,
+    "process_group_vmswap_limit_kib": 131072,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1300000,
+    "final_stdout_envelope_deadline_bound": true,
+    "publication_deadline_accepted": true,
+    "whole_launch_pid_union_no_double_count": true,
+    "peak_accounting_snapshot_reconciled": true,
+    "process_group_cleanup_empty": true,
+    "cleanup_errors": [],
+    "leader_generation_gone": true,
+    "descriptor_transport": "sealed_memfd_creation_binding_retained_fd_pread",
+    "descriptor_sha256": "fe4a89e7d27c380439303451b18ab78e29f62798a773d6d015ca8e26cb8ac8be",
+    "descriptor_named_publication": false,
+    "chain_traversed": [
+      "native_bootstrap",
+      "sealed_launcher",
+      "sealed_supervisor",
+      "sealed_runner_import_child"
+    ]
+  },
+  "post_exit": {
+    "memavailable_kib": 2094996,
+    "puproj_processes_found": 0
+  },
+  "revocation_conditions": [
+    "Any pinned artifact hash changes.",
+    "Either required prelaunch memory sample is below 1900000 KiB.",
+    "The official launch cannot use a unique host-backed /tmp directory and the same containment flags.",
+    "Any output, cleanup, resource, hash, or local-validator acceptance check fails."
+  ]
+}

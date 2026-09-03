@@ -1,0 +1,2422 @@
+{
+  "address_space_cap_bytes": 2800000000,
+  "child_acceptance_cooperative_deadline_seconds": 300.0,
+  "host_swap_counters_telemetry_only": true,
+  "initial_min_mem_available_kib": 1900000,
+  "native_bootstrap_freeze_manifest_entry": {
+    "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v20/planora-puproj-frontier-joint-v20-freeze.json",
+    "protocol": "planora.native-sealed-python-bootstrap.v1",
+    "sealed_device": 1,
+    "sealed_inode": 124596,
+    "sealed_size": 5432,
+    "seals": 15,
+    "sha256": "bd00a02015867d7c7ea9339e8a26966babca6e71c5c531a22756c25337dd5be8",
+    "source_identity": [
+      121,
+      2814749768622395,
+      5432,
+      32768,
+      511,
+      1000,
+      1,
+      1787789229672012100,
+      1787789229672012100
+    ],
+    "transport": "native_bootstrap_sealed_memfd_before_target_execution"
+  },
+  "native_bootstrap_freeze_manifest_final": {
+    "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v20/planora-puproj-frontier-joint-v20-freeze.json",
+    "protocol": "planora.native-sealed-python-bootstrap.v1",
+    "sealed_device": 1,
+    "sealed_inode": 124596,
+    "sealed_size": 5432,
+    "seals": 15,
+    "sha256": "bd00a02015867d7c7ea9339e8a26966babca6e71c5c531a22756c25337dd5be8",
+    "source_identity": [
+      121,
+      2814749768622395,
+      5432,
+      32768,
+      511,
+      1000,
+      1,
+      1787789229672012100,
+      1787789229672012100
+    ],
+    "transport": "native_bootstrap_sealed_memfd_before_target_execution"
+  },
+  "native_bootstrap_launcher_entry": {
+    "bootstrap_sha256": "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de",
+    "mutation_watch_clear": true,
+    "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v20/planora-puproj-frontier-joint-v20-launcher.py",
+    "sealed_device": 1,
+    "sealed_inode": 124595,
+    "sealed_size": 6518,
+    "seals": 15,
+    "sha256": "8a66a2d82fe0e48dd76514142ae2986d5230a57d4e31d16d682a65f7d3b188ea",
+    "source_identity": [
+      121,
+      2814749768622388,
+      6518,
+      32768,
+      511,
+      1000,
+      1,
+      1787789008043493000,
+      1787789008043493000
+    ],
+    "transport": "native_bootstrap_sealed_memfd_before_launcher_execution"
+  },
+  "native_bootstrap_launcher_final": {
+    "bootstrap_sha256": "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de",
+    "mutation_watch_clear": true,
+    "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v20/planora-puproj-frontier-joint-v20-launcher.py",
+    "sealed_device": 1,
+    "sealed_inode": 124595,
+    "sealed_size": 6518,
+    "seals": 15,
+    "sha256": "8a66a2d82fe0e48dd76514142ae2986d5230a57d4e31d16d682a65f7d3b188ea",
+    "source_identity": [
+      121,
+      2814749768622388,
+      6518,
+      32768,
+      511,
+      1000,
+      1,
+      1787789008043493000,
+      1787789008043493000
+    ],
+    "transport": "native_bootstrap_sealed_memfd_before_launcher_execution"
+  },
+  "official_instance_opened": false,
+  "official_solution_xml_published": false,
+  "pdeathsig": 9,
+  "process_group_monitoring": true,
+  "process_group_rss_limit_kib": 1550000,
+  "process_group_vmswap_limit_kib": 131072,
+  "repo_modules_execution": "sealed_memfd_exact_bytes",
+  "runner_execution": "sealed_memfd_exact_bytes",
+  "self_test_whole_launch_pids": [
+    1,
+    2
+  ],
+  "self_test_whole_launch_rss_kib": 28620,
+  "self_test_whole_launch_vmswap_kib": 0,
+  "solver_child_process_started": false,
+  "solver_execution_started": false,
+  "status": "PASS",
+  "supervisor_execution_transport": "external_captured_exact_bytes",
+  "supervisor_hard_wall_seconds": 330.0,
+  "supervisor_hash_stable": true,
+  "supervisor_sha256_end": "2b9b1c797f26b472eee66fd82a674e85b3951828307fdc653aa5878fe6db6e09",
+  "supervisor_sha256_start": "2b9b1c797f26b472eee66fd82a674e85b3951828307fdc653aa5878fe6db6e09",
+  "system_python_provenance_comparison": {
+    "end_row_count": 69,
+    "new_admitted_rows": [
+      "/usr/lib/python3.12/_compression.py",
+      "/usr/lib/python3.12/bz2.py",
+      "/usr/lib/python3.12/encodings/ascii.py",
+      "/usr/lib/python3.12/lib-dynload/_bz2.cpython-312-x86_64-linux-gnu.so",
+      "/usr/lib/python3.12/lib-dynload/_lzma.cpython-312-x86_64-linux-gnu.so",
+      "/usr/lib/python3.12/lzma.py",
+      "/usr/lib/python3.12/shutil.py"
+    ],
+    "start_row_count": 62,
+    "start_subset_stable": true
+  },
+  "system_python_provenance_entry": {
+    "argparse_path": "/usr/lib/python3.12/argparse.py",
+    "argparse_sha256": "29395feb61bc376ca4ff9d44069af8d914ec2a1f25a4bd7978f6e2afef5bc07f",
+    "imported_subset_file_count": 62,
+    "imported_subset_sha256": "a5fcf7c84f1031f5a63d840f8cdfbaa676da7b1933872d736ac0e22e8c6607fd",
+    "live_pyc_rejected": true,
+    "phase": "entry",
+    "private_pycache_prefix": "/tmp/planora-puproj-frontier-joint-v19-bootstrap-pycache",
+    "row_count": 62,
+    "rows": [
+      {
+        "identity": [
+          2096,
+          1947,
+          5218,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/__future__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "981d4c398849f9ebcab72300d9c1fe288fd6d7f28957b3b3fa3a493a5836d95c",
+        "size": 5218
+      },
+      {
+        "identity": [
+          2096,
+          2279,
+          32082,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/_collections_abc.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "90324ee3e1c4ca5319f7242d4b7c1e90eb8418b3f999d07c853aa488356282e6",
+        "size": 32082
+      },
+      {
+        "identity": [
+          2096,
+          10116,
+          5893,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/_weakrefset.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "91895a451d06e9f521a1171b31b9b19bc9740f35af00d4fa106338ab7167c9ac",
+        "size": 5893
+      },
+      {
+        "identity": [
+          2096,
+          10117,
+          6538,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/abc.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "e558702a95cdce3febd289da021715d2b92bc43995b8a1bc58dfa1c3d8010287",
+        "size": 6538
+      },
+      {
+        "identity": [
+          2096,
+          10118,
+          101750,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/argparse.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "29395feb61bc376ca4ff9d44069af8d914ec2a1f25a4bd7978f6e2afef5bc07f",
+        "size": 101750
+      },
+      {
+        "identity": [
+          2096,
+          10120,
+          20602,
+          32768,
+          493,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/base64.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "65c70b5b6361c6f7a71ecc2df0f55315474b669221dd8d81d7c1ae8d56748ada",
+        "size": 20602
+      },
+      {
+        "identity": [
+          2096,
+          10123,
+          36870,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/codecs.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "7b7839e53a77961153240aecfe11edc8054d05b1dedd83894450dae21ec05785",
+        "size": 36870
+      },
+      {
+        "identity": [
+          2096,
+          10124,
+          52378,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/collections/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "0af967cd58036507b3d0fbc33b7a996c61dbb52a94b0b738c8bef12cd4cc7dd4",
+        "size": 52378
+      },
+      {
+        "identity": [
+          2096,
+          10125,
+          119,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/collections/abc.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "9cb4208f99128a0489b6c8e6c61637617dd7d4250c59e065491957eda084dd10",
+        "size": 119
+      },
+      {
+        "identity": [
+          2096,
+          10128,
+          27637,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/contextlib.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8b7a477f978a8532852fd81e241c78182516bc4975d672d580a5848a76e11eb6",
+        "size": 27637
+      },
+      {
+        "identity": [
+          2096,
+          10130,
+          7614,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/copyreg.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c8eda41f05c6bf95a4da4726a530409d2485ae060b8d019b3a8034389a15d3e9",
+        "size": 7614
+      },
+      {
+        "identity": [
+          2096,
+          10131,
+          16386,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/csv.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "46004923196e98a67f87d30da64d070027c81f144f5ac91242fbfae33507dda8",
+        "size": 16386
+      },
+      {
+        "identity": [
+          2096,
+          10790,
+          18182,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/ctypes/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "0782592567ad71097198a3afe985ac3e2ea0b9b5e75452402c9460c89a86318a",
+        "size": 18182
+      },
+      {
+        "identity": [
+          2096,
+          10792,
+          2535,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/ctypes/_endian.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c5d692bdce10dfee242752620061bab684633bc72445a3def484961ef1bdbf3a",
+        "size": 2535
+      },
+      {
+        "identity": [
+          2096,
+          10132,
+          268,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/datetime.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "ef20dc6b3554cd585dddffdc573f1f9a7a54c522f2a3fb4576c44edbb1e14238",
+        "size": 268
+      },
+      {
+        "identity": [
+          2096,
+          10198,
+          5884,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/encodings/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "78c4744d407690f321565488710b5aaf6486b5afa8d185637aa1e7633ab59cd8",
+        "size": 5884
+      },
+      {
+        "identity": [
+          2096,
+          10200,
+          15677,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/encodings/aliases.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "6fdcc49ba23a0203ae6cf28e608f8e6297d7c4d77d52e651db3cb49b9564c6d2",
+        "size": 15677
+      },
+      {
+        "identity": [
+          2096,
+          10450,
+          1005,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/encodings/utf_8.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "ba0cac060269583523ca9506473a755203037c57d466a11aa89a30a5f6756f3d",
+        "size": 1005
+      },
+      {
+        "identity": [
+          2096,
+          10454,
+          81636,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/enum.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c8ead615c159598370295649eb296819ad4b40d50b200c4fec2d4269bf7af9ae",
+        "size": 81636
+      },
+      {
+        "identity": [
+          2096,
+          10456,
+          5999,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/fnmatch.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "6683da36e47af523f3f41e18ad244d837783e19e98911cc0b7415dea81494ebc",
+        "size": 5999
+      },
+      {
+        "identity": [
+          2096,
+          10457,
+          38126,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/functools.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "cca971c456e1bec8b751aecdf41466f34dbf72321ee0840627280ba2ccf9d033",
+        "size": 38126
+      },
+      {
+        "identity": [
+          2096,
+          10458,
+          5572,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/genericpath.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "2b0b35d2206778af4081cf81dd9b513876e72c35a55bec941402e1fa62b1f1aa",
+        "size": 5572
+      },
+      {
+        "identity": [
+          2096,
+          10814,
+          21747,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/gettext.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "1cc6fd33bdce3bb29c0c37ec9a2f5bf15a315e9776b329247e6675c028a8af39",
+        "size": 21747
+      },
+      {
+        "identity": [
+          2096,
+          10461,
+          9349,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/hashlib.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "6dbdebf270868b391080e21dc9687eddfaf321c965ad979f68d3f5c423c613ab",
+        "size": 9349
+      },
+      {
+        "identity": [
+          2096,
+          10466,
+          69175,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/importlib/_bootstrap_external.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "949e115a77dd6b25280195c30b6f5146a303212816b3221430ad82467d4f3133",
+        "size": 69175
+      },
+      {
+        "identity": [
+          2096,
+          10520,
+          3582,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/io.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "7cec3cb8ac004058dd0a5af246e6d950fb59c7ddd0058fda48bcb3fcb98d8822",
+        "size": 3582
+      },
+      {
+        "identity": [
+          2096,
+          10521,
+          78294,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/ipaddress.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "cc9831e239bd81c1480a12733bded744002d93815fd0d083c77aea348c956e67",
+        "size": 78294
+      },
+      {
+        "identity": [
+          2096,
+          10828,
+          14020,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/json/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "d5d41e2c29049515d295d81a6d40b4890fbec8d8482cfb401630f8ef2f77e4d5",
+        "size": 14020
+      },
+      {
+        "identity": [
+          2096,
+          10829,
+          12473,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/json/decoder.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "9f02654649816145bc76f8c210a5fe3ba1de142d4d97a1c93105732e747c285b",
+        "size": 12473
+      },
+      {
+        "identity": [
+          2096,
+          10831,
+          16070,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/json/encoder.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "af7bd40a0d0d0a3e726a9b4b3a2a543019f6ab97a340d0162a9c29ca9da97869",
+        "size": 16070
+      },
+      {
+        "identity": [
+          2096,
+          10832,
+          2425,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/json/scanner.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8604d9d03786d0d509abb49e9f069337278ea988c244069ae8ca2c89acc2cb08",
+        "size": 2425
+      },
+      {
+        "identity": [
+          2096,
+          10522,
+          1073,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/keyword.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "18c2be738c04ad20ad375f6a71db34b3823c7f40b0340f5294d0e89f3c9b093b",
+        "size": 1073
+      },
+      {
+        "identity": [
+          2096,
+          10844,
+          137968,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lib-dynload/_ctypes.cpython-312-x86_64-linux-gnu.so",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "99d7998349b1a868fbbfd23b782015205a27ea841595d784ca478873d30ccb8a",
+        "size": 137968
+      },
+      {
+        "identity": [
+          2096,
+          10523,
+          64368,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lib-dynload/_hashlib.cpython-312-x86_64-linux-gnu.so",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "4f8e3e7100ba83dfb202f24fc3e5c32805ed32f9285b34a3803e8886d94a5c22",
+        "size": 64368
+      },
+      {
+        "identity": [
+          2096,
+          10850,
+          48952,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lib-dynload/_json.cpython-312-x86_64-linux-gnu.so",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "86adefd58de5d9c739951d839431c239c4ef050c1865f77c4b4a6ac2f9f85e39",
+        "size": 48952
+      },
+      {
+        "identity": [
+          2096,
+          10933,
+          19432,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lib-dynload/resource.cpython-312-x86_64-linux-gnu.so",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "9025fcfbe13f5c348b1e2480a43d8045270aafbea542de3b67993d8d136b7dd7",
+        "size": 19432
+      },
+      {
+        "identity": [
+          2096,
+          10526,
+          78562,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/locale.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "d1134b7212bad37b7b81339061dc37a19a194aa183ec2cb60412cf365993b151",
+        "size": 78562
+      },
+      {
+        "identity": [
+          2096,
+          11077,
+          30027,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/ntpath.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c4dd79bf103677daaad873952b89fc1f973425e7b250006cc35af4c164181da8",
+        "size": 30027
+      },
+      {
+        "identity": [
+          2096,
+          10531,
+          10965,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/operator.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "b2af20f67667203c1730e686cc5d0427becc94db4c97f1d3efe3ed2158473f6a",
+        "size": 10965
+      },
+      {
+        "identity": [
+          2096,
+          10533,
+          39786,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/os.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "316d1b7307fd851bded3423c9d437e0a383c725d993f0fcff2e8b749fe560b62",
+        "size": 39786
+      },
+      {
+        "identity": [
+          2096,
+          10534,
+          51153,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/pathlib.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "b43e134bf7479759838b4ecec3d78e0e67fdfde2d671c5c2d7886a47da93885d",
+        "size": 51153
+      },
+      {
+        "identity": [
+          2096,
+          10539,
+          43331,
+          32768,
+          493,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/platform.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "ed0defe8ff7c116710493ffd099b566d3de686ab1b431a3d5401056798e59341",
+        "size": 43331
+      },
+      {
+        "identity": [
+          2096,
+          10540,
+          17623,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/posixpath.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c443d7b8afad1717e7060ce49b3e04423058de56cd4246ee6bcc1ac962eb5c2b",
+        "size": 17623
+      },
+      {
+        "identity": [
+          2096,
+          10544,
+          16315,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/re/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8ff3c37c63b917fcf8dc8d50993a502292a3dc159e41de4f4018c72a53d1c07b",
+        "size": 16315
+      },
+      {
+        "identity": [
+          2096,
+          10545,
+          5446,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/re/_casefix.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "41572ac50cf96b04496e676d8a6708898bb8e752e06dad34ed4c50c5d8f1fe40",
+        "size": 5446
+      },
+      {
+        "identity": [
+          2096,
+          10546,
+          26089,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/re/_compiler.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c05067f8bfa4c13cbbf1eedc4d5cafc9b621bcb6ebc5771ba0518a18095af15a",
+        "size": 26089
+      },
+      {
+        "identity": [
+          2096,
+          10547,
+          5930,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/re/_constants.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "fa4fdb200f238f9e7817b63892b0d69833d8165134801e775e10cc113348a375",
+        "size": 5930
+      },
+      {
+        "identity": [
+          2096,
+          10548,
+          41201,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/re/_parser.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "a51a85b37cf3f44ba7ff25754da5f31306e4ccfa6eb3c017f9d37bdf4e770840",
+        "size": 41201
+      },
+      {
+        "identity": [
+          2096,
+          10549,
+          6569,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/reprlib.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8da31054076803065758311f54b18b8a616824941977d907dc3ee729228e9015",
+        "size": 6569
+      },
+      {
+        "identity": [
+          2096,
+          10551,
+          19671,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/selectors.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "1eeb102373e18c96311203f30c516e785bd8642275aa0bd66e43a284c9692385",
+        "size": 19671
+      },
+      {
+        "identity": [
+          2096,
+          10552,
+          2495,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/signal.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "0363c964c90ac0b3e515de5749205e6e6454051a1211058375d84d91eab6071a",
+        "size": 2495
+      },
+      {
+        "identity": [
+          2096,
+          10559,
+          5485,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/stat.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "052af0327eae6941b69b05c088b3e748f79995635f80ac4cc7125eb333eb4c77",
+        "size": 5485
+      },
+      {
+        "identity": [
+          2096,
+          10562,
+          257,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/struct.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "9c231f9497caf513a22dee8f790b07f969b0e45854a0bdd6dd84b492e08c2856",
+        "size": 257
+      },
+      {
+        "identity": [
+          2096,
+          10563,
+          88725,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/subprocess.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "baa9f9138d8d20df6284f67e7d2e790f847f65e2c5370de322d54cccd737f2d9",
+        "size": 88725
+      },
+      {
+        "identity": [
+          2096,
+          10567,
+          60123,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/threading.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8273b4cf5b6f274b4993f5cae08634dd272c6952af9867ff9aa13ed446f1549b",
+        "size": 60123
+      },
+      {
+        "identity": [
+          2096,
+          10572,
+          10993,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/types.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "345474ef027a1273f353da9bdc1f7c18f65335e72e681bcc0376774cc51f2405",
+        "size": 10993
+      },
+      {
+        "identity": [
+          2096,
+          10573,
+          117428,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/typing.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c45d935c17234b1d6ae42d2d5499d3e03b4e2548fae0c4fce15477e23502214d",
+        "size": 117428
+      },
+      {
+        "identity": [
+          2096,
+          10574,
+          0,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/urllib/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      {
+        "identity": [
+          2096,
+          10576,
+          45591,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/urllib/parse.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "a67b5694763137dbac085adbf0c22821d435ec8ca22d3bd3786d2c9f4ee748d5",
+        "size": 45591
+      },
+      {
+        "identity": [
+          2096,
+          11354,
+          29656,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/uuid.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "fe357bff7241e9fd6f86ee81567fd20aeec2e17460428ea9b7924bebf57301fc",
+        "size": 29656
+      },
+      {
+        "identity": [
+          2096,
+          10581,
+          21760,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/warnings.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8eb1bb88d0beb82ebecfe7ee5cf54ed9b77b4a7acee1989e392a65de42017c49",
+        "size": 21760
+      },
+      {
+        "identity": [
+          2096,
+          10587,
+          28132,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/zipimport.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "4ac94d92219c2e1c0d67ad3fff3753ec3a3756af62a36a2f696f02cd12d518f0",
+        "size": 28132
+      }
+    ],
+    "stdlib_manifest": {
+      "file_count": 619,
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-stdlib.sha256",
+      "sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+      "size": 67004,
+      "source_identity": [
+        121,
+        3377699722043613,
+        67004,
+        32768,
+        511,
+        1000,
+        1
+      ],
+      "transport": "stable_named_source_before_supervisor_sealed_capture"
+    },
+    "stdlib_manifest_file_count": 619,
+    "stdlib_manifest_sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+    "system_python_owner_uid": 65534,
+    "system_python_root": "/usr/lib/python3.12"
+  },
+  "system_python_provenance_final": {
+    "argparse_path": "/usr/lib/python3.12/argparse.py",
+    "argparse_sha256": "29395feb61bc376ca4ff9d44069af8d914ec2a1f25a4bd7978f6e2afef5bc07f",
+    "imported_subset_file_count": 69,
+    "imported_subset_sha256": "da8141c50f1cf5e34a68270177ce76bd1db1e5e480ad5676e79ac9b440d91b3a",
+    "live_pyc_rejected": true,
+    "phase": "final",
+    "private_pycache_prefix": "/tmp/planora-puproj-frontier-joint-v19-bootstrap-pycache",
+    "row_count": 69,
+    "rows": [
+      {
+        "identity": [
+          2096,
+          1947,
+          5218,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/__future__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "981d4c398849f9ebcab72300d9c1fe288fd6d7f28957b3b3fa3a493a5836d95c",
+        "size": 5218
+      },
+      {
+        "identity": [
+          2096,
+          2279,
+          32082,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/_collections_abc.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "90324ee3e1c4ca5319f7242d4b7c1e90eb8418b3f999d07c853aa488356282e6",
+        "size": 32082
+      },
+      {
+        "identity": [
+          2096,
+          10483,
+          5681,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/_compression.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "3ad5d60627477a60939ee44fc1bb3a05dbe8fb52f0f75039b8f5d8f1a278b981",
+        "size": 5681
+      },
+      {
+        "identity": [
+          2096,
+          10116,
+          5893,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/_weakrefset.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "91895a451d06e9f521a1171b31b9b19bc9740f35af00d4fa106338ab7167c9ac",
+        "size": 5893
+      },
+      {
+        "identity": [
+          2096,
+          10117,
+          6538,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/abc.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "e558702a95cdce3febd289da021715d2b92bc43995b8a1bc58dfa1c3d8010287",
+        "size": 6538
+      },
+      {
+        "identity": [
+          2096,
+          10118,
+          101750,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/argparse.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "29395feb61bc376ca4ff9d44069af8d914ec2a1f25a4bd7978f6e2afef5bc07f",
+        "size": 101750
+      },
+      {
+        "identity": [
+          2096,
+          10120,
+          20602,
+          32768,
+          493,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/base64.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "65c70b5b6361c6f7a71ecc2df0f55315474b669221dd8d81d7c1ae8d56748ada",
+        "size": 20602
+      },
+      {
+        "identity": [
+          2096,
+          10772,
+          11847,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/bz2.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "76ab3252924e71e859d7d90e8d3db13b6554975cfcac0fdadced4de7f8779330",
+        "size": 11847
+      },
+      {
+        "identity": [
+          2096,
+          10123,
+          36870,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/codecs.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "7b7839e53a77961153240aecfe11edc8054d05b1dedd83894450dae21ec05785",
+        "size": 36870
+      },
+      {
+        "identity": [
+          2096,
+          10124,
+          52378,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/collections/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "0af967cd58036507b3d0fbc33b7a996c61dbb52a94b0b738c8bef12cd4cc7dd4",
+        "size": 52378
+      },
+      {
+        "identity": [
+          2096,
+          10125,
+          119,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/collections/abc.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "9cb4208f99128a0489b6c8e6c61637617dd7d4250c59e065491957eda084dd10",
+        "size": 119
+      },
+      {
+        "identity": [
+          2096,
+          10128,
+          27637,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/contextlib.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8b7a477f978a8532852fd81e241c78182516bc4975d672d580a5848a76e11eb6",
+        "size": 27637
+      },
+      {
+        "identity": [
+          2096,
+          10130,
+          7614,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/copyreg.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c8eda41f05c6bf95a4da4726a530409d2485ae060b8d019b3a8034389a15d3e9",
+        "size": 7614
+      },
+      {
+        "identity": [
+          2096,
+          10131,
+          16386,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/csv.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "46004923196e98a67f87d30da64d070027c81f144f5ac91242fbfae33507dda8",
+        "size": 16386
+      },
+      {
+        "identity": [
+          2096,
+          10790,
+          18182,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/ctypes/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "0782592567ad71097198a3afe985ac3e2ea0b9b5e75452402c9460c89a86318a",
+        "size": 18182
+      },
+      {
+        "identity": [
+          2096,
+          10792,
+          2535,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/ctypes/_endian.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c5d692bdce10dfee242752620061bab684633bc72445a3def484961ef1bdbf3a",
+        "size": 2535
+      },
+      {
+        "identity": [
+          2096,
+          10132,
+          268,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/datetime.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "ef20dc6b3554cd585dddffdc573f1f9a7a54c522f2a3fb4576c44edbb1e14238",
+        "size": 268
+      },
+      {
+        "identity": [
+          2096,
+          10198,
+          5884,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/encodings/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "78c4744d407690f321565488710b5aaf6486b5afa8d185637aa1e7633ab59cd8",
+        "size": 5884
+      },
+      {
+        "identity": [
+          2096,
+          10200,
+          15677,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/encodings/aliases.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "6fdcc49ba23a0203ae6cf28e608f8e6297d7c4d77d52e651db3cb49b9564c6d2",
+        "size": 15677
+      },
+      {
+        "identity": [
+          2096,
+          10203,
+          1248,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/encodings/ascii.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "578aa1173f7cc60dad2895071287fe6182bd14787b3fbf47a6c7983dfe3675e3",
+        "size": 1248
+      },
+      {
+        "identity": [
+          2096,
+          10450,
+          1005,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/encodings/utf_8.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "ba0cac060269583523ca9506473a755203037c57d466a11aa89a30a5f6756f3d",
+        "size": 1005
+      },
+      {
+        "identity": [
+          2096,
+          10454,
+          81636,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/enum.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c8ead615c159598370295649eb296819ad4b40d50b200c4fec2d4269bf7af9ae",
+        "size": 81636
+      },
+      {
+        "identity": [
+          2096,
+          10456,
+          5999,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/fnmatch.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "6683da36e47af523f3f41e18ad244d837783e19e98911cc0b7415dea81494ebc",
+        "size": 5999
+      },
+      {
+        "identity": [
+          2096,
+          10457,
+          38126,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/functools.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "cca971c456e1bec8b751aecdf41466f34dbf72321ee0840627280ba2ccf9d033",
+        "size": 38126
+      },
+      {
+        "identity": [
+          2096,
+          10458,
+          5572,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/genericpath.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "2b0b35d2206778af4081cf81dd9b513876e72c35a55bec941402e1fa62b1f1aa",
+        "size": 5572
+      },
+      {
+        "identity": [
+          2096,
+          10814,
+          21747,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/gettext.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "1cc6fd33bdce3bb29c0c37ec9a2f5bf15a315e9776b329247e6675c028a8af39",
+        "size": 21747
+      },
+      {
+        "identity": [
+          2096,
+          10461,
+          9349,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/hashlib.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "6dbdebf270868b391080e21dc9687eddfaf321c965ad979f68d3f5c423c613ab",
+        "size": 9349
+      },
+      {
+        "identity": [
+          2096,
+          10466,
+          69175,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/importlib/_bootstrap_external.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "949e115a77dd6b25280195c30b6f5146a303212816b3221430ad82467d4f3133",
+        "size": 69175
+      },
+      {
+        "identity": [
+          2096,
+          10520,
+          3582,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/io.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "7cec3cb8ac004058dd0a5af246e6d950fb59c7ddd0058fda48bcb3fcb98d8822",
+        "size": 3582
+      },
+      {
+        "identity": [
+          2096,
+          10521,
+          78294,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/ipaddress.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "cc9831e239bd81c1480a12733bded744002d93815fd0d083c77aea348c956e67",
+        "size": 78294
+      },
+      {
+        "identity": [
+          2096,
+          10828,
+          14020,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/json/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "d5d41e2c29049515d295d81a6d40b4890fbec8d8482cfb401630f8ef2f77e4d5",
+        "size": 14020
+      },
+      {
+        "identity": [
+          2096,
+          10829,
+          12473,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/json/decoder.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "9f02654649816145bc76f8c210a5fe3ba1de142d4d97a1c93105732e747c285b",
+        "size": 12473
+      },
+      {
+        "identity": [
+          2096,
+          10831,
+          16070,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/json/encoder.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "af7bd40a0d0d0a3e726a9b4b3a2a543019f6ab97a340d0162a9c29ca9da97869",
+        "size": 16070
+      },
+      {
+        "identity": [
+          2096,
+          10832,
+          2425,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/json/scanner.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8604d9d03786d0d509abb49e9f069337278ea988c244069ae8ca2c89acc2cb08",
+        "size": 2425
+      },
+      {
+        "identity": [
+          2096,
+          10522,
+          1073,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/keyword.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "18c2be738c04ad20ad375f6a71db34b3823c7f40b0340f5294d0e89f3c9b093b",
+        "size": 1073
+      },
+      {
+        "identity": [
+          2096,
+          10835,
+          32112,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lib-dynload/_bz2.cpython-312-x86_64-linux-gnu.so",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c9e6b91f9ebcdf863a9fd9d1591f93090fbcd7fc4beed35e9be8354e0c9267c3",
+        "size": 32112
+      },
+      {
+        "identity": [
+          2096,
+          10844,
+          137968,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lib-dynload/_ctypes.cpython-312-x86_64-linux-gnu.so",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "99d7998349b1a868fbbfd23b782015205a27ea841595d784ca478873d30ccb8a",
+        "size": 137968
+      },
+      {
+        "identity": [
+          2096,
+          10523,
+          64368,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lib-dynload/_hashlib.cpython-312-x86_64-linux-gnu.so",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "4f8e3e7100ba83dfb202f24fc3e5c32805ed32f9285b34a3803e8886d94a5c22",
+        "size": 64368
+      },
+      {
+        "identity": [
+          2096,
+          10850,
+          48952,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lib-dynload/_json.cpython-312-x86_64-linux-gnu.so",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "86adefd58de5d9c739951d839431c239c4ef050c1865f77c4b4a6ac2f9f85e39",
+        "size": 48952
+      },
+      {
+        "identity": [
+          2096,
+          10852,
+          49256,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lib-dynload/_lzma.cpython-312-x86_64-linux-gnu.so",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "7f9a27cc8eb4e6ed6a6596553aafebc5bdb5ae62400036e47daf24034d529722",
+        "size": 49256
+      },
+      {
+        "identity": [
+          2096,
+          10933,
+          19432,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lib-dynload/resource.cpython-312-x86_64-linux-gnu.so",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "9025fcfbe13f5c348b1e2480a43d8045270aafbea542de3b67993d8d136b7dd7",
+        "size": 19432
+      },
+      {
+        "identity": [
+          2096,
+          10526,
+          78562,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/locale.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "d1134b7212bad37b7b81339061dc37a19a194aa183ec2cb60412cf365993b151",
+        "size": 78562
+      },
+      {
+        "identity": [
+          2096,
+          10938,
+          13277,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/lzma.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "58fb9d2fdc8a8af7b25e218f17ea3b51bdfa53bdf40f440ab33c605974ca5c2e",
+        "size": 13277
+      },
+      {
+        "identity": [
+          2096,
+          11077,
+          30027,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/ntpath.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c4dd79bf103677daaad873952b89fc1f973425e7b250006cc35af4c164181da8",
+        "size": 30027
+      },
+      {
+        "identity": [
+          2096,
+          10531,
+          10965,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/operator.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "b2af20f67667203c1730e686cc5d0427becc94db4c97f1d3efe3ed2158473f6a",
+        "size": 10965
+      },
+      {
+        "identity": [
+          2096,
+          10533,
+          39786,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/os.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "316d1b7307fd851bded3423c9d437e0a383c725d993f0fcff2e8b749fe560b62",
+        "size": 39786
+      },
+      {
+        "identity": [
+          2096,
+          10534,
+          51153,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/pathlib.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "b43e134bf7479759838b4ecec3d78e0e67fdfde2d671c5c2d7886a47da93885d",
+        "size": 51153
+      },
+      {
+        "identity": [
+          2096,
+          10539,
+          43331,
+          32768,
+          493,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/platform.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "ed0defe8ff7c116710493ffd099b566d3de686ab1b431a3d5401056798e59341",
+        "size": 43331
+      },
+      {
+        "identity": [
+          2096,
+          10540,
+          17623,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/posixpath.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c443d7b8afad1717e7060ce49b3e04423058de56cd4246ee6bcc1ac962eb5c2b",
+        "size": 17623
+      },
+      {
+        "identity": [
+          2096,
+          10544,
+          16315,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/re/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8ff3c37c63b917fcf8dc8d50993a502292a3dc159e41de4f4018c72a53d1c07b",
+        "size": 16315
+      },
+      {
+        "identity": [
+          2096,
+          10545,
+          5446,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/re/_casefix.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "41572ac50cf96b04496e676d8a6708898bb8e752e06dad34ed4c50c5d8f1fe40",
+        "size": 5446
+      },
+      {
+        "identity": [
+          2096,
+          10546,
+          26089,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/re/_compiler.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c05067f8bfa4c13cbbf1eedc4d5cafc9b621bcb6ebc5771ba0518a18095af15a",
+        "size": 26089
+      },
+      {
+        "identity": [
+          2096,
+          10547,
+          5930,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/re/_constants.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "fa4fdb200f238f9e7817b63892b0d69833d8165134801e775e10cc113348a375",
+        "size": 5930
+      },
+      {
+        "identity": [
+          2096,
+          10548,
+          41201,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/re/_parser.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "a51a85b37cf3f44ba7ff25754da5f31306e4ccfa6eb3c017f9d37bdf4e770840",
+        "size": 41201
+      },
+      {
+        "identity": [
+          2096,
+          10549,
+          6569,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/reprlib.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8da31054076803065758311f54b18b8a616824941977d907dc3ee729228e9015",
+        "size": 6569
+      },
+      {
+        "identity": [
+          2096,
+          10551,
+          19671,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/selectors.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "1eeb102373e18c96311203f30c516e785bd8642275aa0bd66e43a284c9692385",
+        "size": 19671
+      },
+      {
+        "identity": [
+          2096,
+          11125,
+          58120,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/shutil.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "819e518cb7a539d09b2526138015541b34d2646afb9c2f6ae4ffd476d6a0fcf4",
+        "size": 58120
+      },
+      {
+        "identity": [
+          2096,
+          10552,
+          2495,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/signal.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "0363c964c90ac0b3e515de5749205e6e6454051a1211058375d84d91eab6071a",
+        "size": 2495
+      },
+      {
+        "identity": [
+          2096,
+          10559,
+          5485,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/stat.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "052af0327eae6941b69b05c088b3e748f79995635f80ac4cc7125eb333eb4c77",
+        "size": 5485
+      },
+      {
+        "identity": [
+          2096,
+          10562,
+          257,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/struct.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "9c231f9497caf513a22dee8f790b07f969b0e45854a0bdd6dd84b492e08c2856",
+        "size": 257
+      },
+      {
+        "identity": [
+          2096,
+          10563,
+          88725,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/subprocess.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "baa9f9138d8d20df6284f67e7d2e790f847f65e2c5370de322d54cccd737f2d9",
+        "size": 88725
+      },
+      {
+        "identity": [
+          2096,
+          10567,
+          60123,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/threading.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8273b4cf5b6f274b4993f5cae08634dd272c6952af9867ff9aa13ed446f1549b",
+        "size": 60123
+      },
+      {
+        "identity": [
+          2096,
+          10572,
+          10993,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/types.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "345474ef027a1273f353da9bdc1f7c18f65335e72e681bcc0376774cc51f2405",
+        "size": 10993
+      },
+      {
+        "identity": [
+          2096,
+          10573,
+          117428,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/typing.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "c45d935c17234b1d6ae42d2d5499d3e03b4e2548fae0c4fce15477e23502214d",
+        "size": 117428
+      },
+      {
+        "identity": [
+          2096,
+          10574,
+          0,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/urllib/__init__.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      {
+        "identity": [
+          2096,
+          10576,
+          45591,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/urllib/parse.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "a67b5694763137dbac085adbf0c22821d435ec8ca22d3bd3786d2c9f4ee748d5",
+        "size": 45591
+      },
+      {
+        "identity": [
+          2096,
+          11354,
+          29656,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/uuid.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "fe357bff7241e9fd6f86ee81567fd20aeec2e17460428ea9b7924bebf57301fc",
+        "size": 29656
+      },
+      {
+        "identity": [
+          2096,
+          10581,
+          21760,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/warnings.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "8eb1bb88d0beb82ebecfe7ee5cf54ed9b77b4a7acee1989e392a65de42017c49",
+        "size": 21760
+      },
+      {
+        "identity": [
+          2096,
+          10587,
+          28132,
+          32768,
+          420,
+          65534,
+          1
+        ],
+        "owner_uid": 65534,
+        "path": "/usr/lib/python3.12/zipimport.py",
+        "read_only_filesystem": true,
+        "root": "/usr/lib/python3.12",
+        "sha256": "4ac94d92219c2e1c0d67ad3fff3753ec3a3756af62a36a2f696f02cd12d518f0",
+        "size": 28132
+      }
+    ],
+    "stdlib_manifest": {
+      "file_count": 619,
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-stdlib.sha256",
+      "sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+      "size": 67004,
+      "source_identity": [
+        121,
+        3377699722043613,
+        67004,
+        32768,
+        511,
+        1000,
+        1
+      ],
+      "transport": "stable_named_source_before_supervisor_sealed_capture"
+    },
+    "stdlib_manifest_file_count": 619,
+    "stdlib_manifest_sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+    "system_python_owner_uid": 65534,
+    "system_python_root": "/usr/lib/python3.12"
+  },
+  "whole_launch_memory_limit_kib": 1600000,
+  "whole_launch_pid_union_no_double_count": true,
+  "whole_launch_vmrss_plus_vmswap_enforced": true
+}

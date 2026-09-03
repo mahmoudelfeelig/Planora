@@ -1,0 +1,116 @@
+{
+  "schema": "planora.itc2019.official-launch-result-receipt.v1",
+  "instance": "pu-proj-fal19",
+  "diagnostic_chain": "puproj_v22",
+  "launch_id": "2ef32306a20f483e9482fcd1c81c695a",
+  "completed_utc": "2026-08-27T02:13:50Z",
+  "decision": "REJECTED_CONTROLLED_UNKNOWN",
+  "counted_as_validator_clean": false,
+  "automatic_retry_authorized": false,
+  "resource_cap_raise_authorized": false,
+  "launch_plan": {
+    "path": "launch-plan.json",
+    "size": 4846,
+    "sha256": "56ac1918a544c2102cbfb528712214376308375296d89acab609e48469f579b8"
+  },
+  "authorization_receipt": {
+    "path": "../../diagnostic-receipts/pu-proj-v22-sealed-import-probe-20260827T0151Z-8d1c88106994497597dbe116b3e7a41a.receipt.json",
+    "sha256": "37b691149c3541cd17eb4a2e1c02a1ce7e4fb77135cee3837347d62c00c8015b"
+  },
+  "process_exit_code": 0,
+  "accepted_envelope": {
+    "schema": "planora.pu-proj.frontier-joint-v19-supervisor.v1",
+    "status": "CONTROLLED_UNKNOWN",
+    "admissible_as_solution": false,
+    "errors": [],
+    "breach": null,
+    "child_exit_code": 3,
+    "observed_child_elapsed_seconds": 269.2341183930039,
+    "official_instance_opened": true,
+    "solver_execution_started": true,
+    "official_solution_xml_published": false,
+    "peak_process_group_rss_kib": 1525052,
+    "peak_process_group_vmswap_kib": 0,
+    "process_group_rss_limit_kib": 1550000,
+    "process_group_vmswap_limit_kib": 131072,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 1590600,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1600000,
+    "process_group_cleanup_empty": true,
+    "cleanup_final_owned_pids": [],
+    "cleanup_errors": [],
+    "leader_generation_gone": true,
+    "scratch_directory_final_entries": []
+  },
+  "runner_result": {
+    "status": "CONTROLLED_UNKNOWN",
+    "admissible_as_solution": false,
+    "complete_timetable": false,
+    "model_build_seconds": 258.94884728099714,
+    "solver_wall_time_seconds": 0.0,
+    "wall_time_seconds": 259.0588893150052,
+    "effective_formulation": "decomposed",
+    "formulation_selection_reason": "decomposed_sparse_semantics_admitted",
+    "raw_cartesian_domain_values": 1937292,
+    "branches": 0,
+    "conflicts": 0,
+    "status_from_solver": "UNKNOWN",
+    "official_solution_xml_published": false,
+    "memory_release_after_solve": {
+      "before_rss_kib": 1450932,
+      "after_rss_kib": 632900,
+      "released_rss_kib": 818032,
+      "gc_collected": 736,
+      "malloc_trim_result": 1
+    },
+    "fresh_solve_return_guard": {
+      "metric": "proc_self_status_VmRSS",
+      "current_rss_kib": 632900,
+      "historical_peak_rss_kib": 1525052,
+      "limit_kib": 1400000,
+      "result": "PASS"
+    }
+  },
+  "root_cause": {
+    "classification": "MODEL_BUILD_EXHAUSTED_COOPERATIVE_SOLVE_BUDGET",
+    "evidence": "The decomposed model build consumed 258.949 seconds; the solver received 0.0 seconds and returned UNKNOWN without branching.",
+    "v22_finalization_fix_effective": true,
+    "resource_containment_effective": true,
+    "next_required_work": "Reduce or bypass decomposed model-build cost before any separately reviewed future attempt."
+  },
+  "artifacts": {
+    "launch_stdout": {
+      "path": "launch.stdout.json",
+      "size": 195521,
+      "sha256": "33ab794fa34cb5be42b030e25583e6d599a662a3c3e9091418fe52704f6478f0"
+    },
+    "launch_stderr": {
+      "path": "launch.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "child_stdout": {
+      "path": "child.stdout.log",
+      "size": 678,
+      "sha256": "472d111e080816f3223369f67f80e3155f0f6d4bce829eb3016dc3bebe14b888"
+    },
+    "child_stderr": {
+      "path": "child.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "runner_report": {
+      "path": "runner-report.json",
+      "size": 28391,
+      "sha256": "d8f64fd52d5e904c41e856c1f243ca367d5d19ea2a2b47a4ef789b4f96e61640"
+    }
+  },
+  "post_exit": {
+    "matching_processes": 0,
+    "memavailable_kib": 2331908
+  },
+  "validation": {
+    "local_generic_validator_run": false,
+    "official_website_validator_run": false,
+    "reason": "No solution.xml was published."
+  }
+}

@@ -1,0 +1,131 @@
+{
+  "created_utc": "2026-08-26T17:31:45Z",
+  "files": {
+    "/tmp/agent-aghfal17-native-v11-bootstrap.py": "618a2f2fb09be8c25d023d1c17887ac45efd207885321b6b783ce87d56146389",
+    "/tmp/agent-aghfal17-native-v11-generic-validator.py": "19ca8fbe7c699ee454b90352577d0e6995a592059cd241aeb8ea6d8484f5437f",
+    "/tmp/agent-aghfal17-native-v11-launcher.sh": "82a250dbd03d1f21fa3164fbbbfd5ac0ca79bb4ab9ac2029bb4032d2a089aa9f",
+    "/tmp/agent-aghfal17-native-v11-minimal-tcb.sha256": "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+    "/tmp/agent-aghfal17-native-v11-probe-harness.py": "0b3ffadca8f37282a50e9460ddaf431fc2c92dae23743163f8387e795554db1a",
+    "/tmp/agent-aghfal17-native-v11-runner.py": "785cf5b950653894d82e9f118f4373faf1f68ef605c3a19bab67c996ffad4cb1",
+    "/tmp/agent-aghfal17-native-v11-stdlib.sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+    "/tmp/agent-aghfal17-native-v11-supervisor.py": "0ff6364de655f1972cedf94072e707b3caad0bfa345b4ee856b1c40e8eeb80eb",
+    "/tmp/agent-aghfal17-native-v11-tests.py": "3cc897688e283b61ac3d1618a05b6ad34d9d24aa80802b697c0f46266ed1f7b3"
+  },
+  "official_input": {
+    "expected_classes": 5081,
+    "expected_sha256": "bae3363ed68e895280cd33bc20686bf396932f532c2b197f7b863f4167437528",
+    "opened_during_v11_build_or_review": false
+  },
+  "official_launch_status": "NO_GO",
+  "outer_containment": {
+    "all_post_spawn_exceptions_enter_unconditional_drain": true,
+    "cgroup_v2_detected": true,
+    "cgroup_v2_writable": false,
+    "contained_root_pdeathsig": "SIGKILL",
+    "containment_mode": "linux_subreaper_exact_generation_registry",
+    "descendant_parent_death_chain_preserved": true,
+    "end_to_end_wall_seconds": 240.0,
+    "external_stop_runs_cleanup": true,
+    "inner_probe_wall_seconds": 180.0,
+    "numeric_process_group_signal_sent": false,
+    "post_exit_empty_required": true,
+    "sigkill_harness_root_grandchild_residual_regression": "PASS_ZERO_RESIDUAL",
+    "term_kill_pidfd_escalation": true
+  },
+  "planora_closure": {
+    "benchmarks/__init__.py": "be6f5557e4565d1de24b4ced5a56a610fd935fc8320f1ffe5014255a59e3b84a",
+    "benchmarks/corpus.py": "74d23c0940713b8a40a9f789d4c0ece7402e5d9b81514587d3015d497d4112b3",
+    "benchmarks/itc2019.py": "5577c6227037fa615df741a4b0b351b05ec11c7c4ce4ebe9a4489554122b2c1f",
+    "benchmarks/itc2019_compact_joint.py": "427264334276fb48ce5b54c151a42d4a85b75055c0bea96f47a928b1fe28362a",
+    "benchmarks/itc2019_decomposed.py": "a96e5fcd98b30ce69ff0a51e6fb1b65243d84d502f5873854423780de68b4b63",
+    "benchmarks/itc2019_decomposed_quality.py": "534622d096728ff4e4e9b53fd8d58ec3827ec09540d4c95a3e3dcad271c7f78b",
+    "benchmarks/itc2019_factorized.py": "a773110756e612e26dfd792ea6f289ca9a36d526fc807f790f674233ec8df1bf",
+    "benchmarks/itc2019_generalized_occurrences.py": "7ed4224c0f338f9f983a358babb5dfdb6b90d5026383283cd0d805aef733d85f",
+    "benchmarks/itc2019_global_components.py": "c2d158dc9434f8da4f3e9478b1526face365702cf317fd14e693af75769e7f11",
+    "benchmarks/itc2019_global_quality.py": "397d308a4fb368aaab96db1789394e1b9f289a8f6b8d87b9ce5b4a569f8ccc7f",
+    "benchmarks/itc2019_grouped_calendar.py": "37b82b7f01fb47a655bb76ae0d6734315b00bf58ec7ebf28c66bb701c00a6ee5",
+    "benchmarks/itc2019_resource_seed.py": "8d497bc609ec5b717b0d9e2b77406e89c45c6eaef378148c0bebadd6a429d665",
+    "benchmarks/itc2019_sparse_joint.py": "393f13042ef84e3040b17caefa407c63be32a50913f7edc456cbad836af9ccfe",
+    "benchmarks/itc2019_structural.py": "db4ac0adbfe38f1b618b2e8f7a5a9e5a613000a62034017819cca2c20640d024",
+    "benchmarks/itc2019_violation_lns.py": "af902e522b980cd511f4633c39d7f76ccddcd417f94b8cdc8785f389a831317b"
+  },
+  "preserved_v10_hashes": {
+    "bootstrap": "7e5df97e30de91df1f804f7ca4b72b342f8f88c397fa4b9243dd011bdf34b39f",
+    "generic_validator": "5a64e57fb81d088e97dd6f471657b9a5599d31e9fbf014dce2b31f3fd0bf09b6",
+    "launcher": "eeeb93396b7ae48ba9dd86544c5230dc8113b4b8a99a5d07b72903c276b0a1b2",
+    "minimal_tcb": "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+    "probe_harness": "131fad18891ebbfd9140290dfb95c83dc64060c8645a84df801bb5786238af43",
+    "review_freeze": "42f7fb65d339148f0714f749c59fc1bcd6fee0a8102830a2b750de7e9c386c9b",
+    "runner": "a12bd626aab4d74212aa63c6c202504ec3994d200cdacf1faa53581ef6fdcf32",
+    "stdlib": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+    "supervisor": "ca162e1e72054837c4dd0d505d6ba037a8516e805011aabbd7b9e42374c714a0",
+    "tests": "06cfe6d1f363ac6b23ae8da8ce7f3eec3fec84ba4ec87f9d792daf3ef767c7cd"
+  },
+  "probe_accounting": {
+    "deduplicated": true,
+    "identity_replay": "before_and_after_single_status_read_or_prior_identity_bound_sample_plus_successful_reap_and_final_proc_absence",
+    "identity_drift_fails_closed": true,
+    "numeric_pgid_rescan_allowed": false,
+    "per_pid_identity_vmrss_vmswap_total_reported": true,
+    "sample_set": "exact_generation_admitted_identities_plus_supervisor_pid",
+    "successful_reap_zero_accounting_requires_exact_admitted_identity": true,
+    "successful_reap_zero_accounting_requires_prior_valid_sample": true,
+    "successful_reap_zero_accounting_requires_zero_exit": true
+  },
+  "probe_envelope": {
+    "inner_stdout_contract": "exactly_one_utf8_json_object_no_suffix",
+    "non_pass_status_propagates_nonzero": true,
+    "nonzero_child_exit_propagates_nonzero": true,
+    "retained_parent_created_report_descriptor": true,
+    "retained_parent_created_stderr_descriptor": true,
+    "retained_parent_created_stdout_descriptor": true
+  },
+  "probe_truth_schema": {
+    "official_opened": false,
+    "probe_child_process_started": true,
+    "publication": false,
+    "solver_child_process_started": false
+  },
+  "resources": {
+    "inner_probe_hard_wall_seconds": 180.0,
+    "launch_mem_available_floor_kib": 1900000,
+    "observed_mem_available_kib_at_freeze": null,
+    "outer_end_to_end_wall_seconds": 240.0,
+    "process_generation_vmrss_plus_vmswap_limit_kib": 368640,
+    "runtime_mem_available_floor_kib": 900000,
+    "whole_launch_limit_status": "PROVISIONAL_UNMEASURED",
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 614400
+  },
+  "schema": "planora.agh-fal17.native-v11-review-freeze.v1",
+  "scope": "review-only; never an authorization to open the official input, run a heavy probe below the floor, or launch a solver",
+  "sealed_probe_command": {
+    "bootstrap_constructed_only": true,
+    "canonical_encoding": "json_utf8_ensure_ascii_compact_separators",
+    "exact_forwarded_argv": ["--sealed-import-probe"],
+    "forbidden_flags": ["--execute-completion", "--allow-official-input", "--allow-publication", "--allow-solver"],
+    "harness_execution": "/proc/self/exe -I -S -B /proc/self/fd/<sealed-harness-fd>",
+    "harness_sha256": "0b3ffadca8f37282a50e9460ddaf431fc2c92dae23743163f8387e795554db1a",
+    "inner_command_template": ["/proc/self/fd/<sealed-bash-exec-fd>", "/proc/self/fd/<sealed-launcher-fd>", "--sealed-import-probe"],
+    "runtime_exact_command_sha256_required": true
+  },
+  "status": "GO_FOR_ONE_BOUNDED_DIAGNOSTIC_SEALED_IMPORT_PROBE_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "trust_and_report_boundaries": {
+    "descriptor_bound_generic_report": true,
+    "minimal_tcb_file_count": 50,
+    "minimal_tcb_manifest_sha256": "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+    "stdlib_file_count": 619,
+    "stdlib_manifest_sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327"
+  },
+  "verification": {
+    "attested_below_floor_no_go_replay": "NOT_RUN_BY_SCOPE",
+    "bash_syntax": "PASS",
+    "heavy_probe": "NOT_RUN_BY_SCOPE",
+    "lightweight_adversarial_tests": "51/51 PASS IN READ_ONLY BUBBLEWRAP BOUNDARY; TWO BOUNDARY TESTS ALSO REPLAYED EXPLICITLY 2/2 PASS",
+    "official_input_opened": false,
+    "official_solve": "NEVER_LAUNCHED",
+    "planora_closure_replay": "STATIC HASH PINS CONSISTENT",
+    "preserved_v10_replay": "10/10 HASHES PASS",
+    "python_compile": "PASS; 6 PYTHON FILES PARSED UNDER PYTHON 3.12 -I -S -B",
+    "sealed_bootstrap_launcher_supervisor_self_test": "PASS_IN_BUBBLEWRAP_READ_ONLY_BOUNDARY"
+  }
+}

@@ -1,0 +1,84 @@
+import ctypes,fcntl,hashlib,os,stat,sys
+PY="c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273"
+TCB="/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v23/planora-muni-fspsx-frontier-v23-minimal-tcb.sha256"
+TCBH="825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea"
+ALL=0x0F
+MASK=0x00000002|0x00000004|0x00000008|0x00000400|0x00000800
+if len(sys.argv)<5 or sys.argv[1]!="--inline-trust-v1": raise RuntimeError("inline trust argv schema rejected")
+path,expected,payload_hash=sys.argv[2:5]
+def ident(s): return (s.st_dev,s.st_ino,s.st_size,stat.S_IFMT(s.st_mode),stat.S_IMODE(s.st_mode),s.st_uid,s.st_nlink,s.st_mtime_ns,s.st_ctime_ns)
+def read(fd,maximum,hook=False):
+ s=os.fstat(fd)
+ if s.st_size<0 or s.st_size>maximum: raise RuntimeError("inline trust source size rejected")
+ out=[]; off=0
+ while off<s.st_size:
+  b=os.pread(fd,min(1024,s.st_size-off),off)
+  if not b: raise RuntimeError("inline trust source ended early")
+  out.append(b); off+=len(b)
+  if hook and off==len(b): pause("during_capture")
+ if ident(os.fstat(fd))!=ident(s): raise RuntimeError("inline trust descriptor drift")
+ return b"".join(out)
+def pause(phase):
+ if os.environ.get("PLANORA_V10_TRUST_TEST_PHASE")!=phase: return
+ ready=int(os.environ["PLANORA_V10_TRUST_TEST_READY_FD"]); proceed=int(os.environ["PLANORA_V10_TRUST_TEST_CONTINUE_FD"])
+ os.write(ready,b"1")
+ if os.read(proceed,1)!=b"1": raise RuntimeError("inline trust test synchronization failed")
+exe=os.open("/proc/self/exe",os.O_RDONLY)
+try: python_raw=read(exe,16<<20)
+finally: os.close(exe)
+if hashlib.sha256(python_raw).hexdigest()!=PY or not sys.flags.isolated or not sys.flags.no_site or not sys.dont_write_bytecode: raise RuntimeError("inline trust interpreter rejected")
+root_ro=False
+for line in open("/proc/self/mountinfo",encoding="utf-8"):
+ pre=line.split(" - ",1)[0].split()
+ if len(pre)>=6 and pre[4]=="/" and "ro" in pre[5].split(","): root_ro=True
+if not root_ro: raise RuntimeError("inline trust root filesystem is not read-only")
+tcb_fd=os.open(TCB,os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+try: tcb_raw=read(tcb_fd,1<<20)
+finally: os.close(tcb_fd)
+if hashlib.sha256(tcb_raw).hexdigest()!=TCBH: raise RuntimeError("inline trust minimal TCB manifest drift")
+tcb={}
+for line in tcb_raw.decode("utf-8").splitlines():
+ h,p=line.split("  ",1)
+ if len(h)!=64 or not p.startswith("/usr/lib/python3.12/") or p in tcb: raise RuntimeError("inline trust minimal TCB row rejected")
+ tcb[p]=h
+for p,h in tcb.items():
+ current=p
+ while True:
+  s=os.stat(current,follow_symlinks=False)
+  if s.st_uid!=65534 or s.st_gid!=65534 or stat.S_IMODE(s.st_mode)&0o022: raise RuntimeError("inline trust minimal TCB permissions rejected")
+  if current=="/": break
+  current=os.path.dirname(current)
+ f=os.open(p,os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+ try: b=read(f,32<<20)
+ finally: os.close(f)
+ if hashlib.sha256(b).hexdigest()!=h: raise RuntimeError("inline trust minimal TCB file drift")
+for m in tuple(sys.modules.values()):
+ p=getattr(m,"__file__",None)
+ if isinstance(p,str) and not p.startswith("<frozen ") and (os.path.realpath(p)!=p or p not in tcb): raise RuntimeError("inline trust live module outside minimal TCB")
+libc=ctypes.CDLL(None,use_errno=True); watch=int(libc.inotify_init1(getattr(os,"O_NONBLOCK",0x800)))
+if watch<0: raise OSError(ctypes.get_errno(),os.strerror(ctypes.get_errno()))
+wd=int(libc.inotify_add_watch(watch,ctypes.c_char_p(os.fsencode(path)),ctypes.c_uint32(MASK)))
+if wd<0: raise OSError(ctypes.get_errno(),os.strerror(ctypes.get_errno()),path)
+fd=os.open(path,os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+try:
+ before=os.fstat(fd)
+ if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1: raise RuntimeError("inline trust bootstrap source rejected")
+ raw=read(fd,1<<20,True); after=os.fstat(fd); named=os.lstat(path)
+finally: os.close(fd)
+if ident(before)!=ident(after) or ident(after)!=ident(named): raise RuntimeError("inline trust bootstrap identity drift")
+try: event=os.read(watch,4096)
+except BlockingIOError: event=b""
+if event: raise RuntimeError("inline trust bootstrap mutation event")
+if hashlib.sha256(raw).hexdigest()!=expected: raise RuntimeError("inline trust bootstrap hash drift")
+sealed=os.memfd_create("planora-muni-v23-bootstrap",getattr(os,"MFD_ALLOW_SEALING",2)); view=memoryview(raw)
+while view:
+ n=os.write(sealed,view)
+ if n<=0: raise RuntimeError("inline trust memfd write failed")
+ view=view[n:]
+os.fchmod(sealed,0o400); fcntl.fcntl(sealed,fcntl.F_ADD_SEALS,ALL)
+if fcntl.fcntl(sealed,fcntl.F_GET_SEALS)&ALL!=ALL or hashlib.sha256(os.pread(sealed,len(raw),0)).hexdigest()!=expected: raise RuntimeError("inline trust seal failed")
+tcb_sealed=os.memfd_create("planora-muni-v23-minimal-tcb",getattr(os,"MFD_ALLOW_SEALING",2)); os.write(tcb_sealed,tcb_raw); os.fchmod(tcb_sealed,0o400); fcntl.fcntl(tcb_sealed,fcntl.F_ADD_SEALS,ALL)
+pause("after_seal")
+sys.argv=["sealed:muni-v23-bootstrap",*sys.argv[5:]]
+scope={"__name__":"__main__","__package__":None,"__file__":"sealed:muni-v23-bootstrap","__planora_inline_trust_evidence__":{"fd":sealed,"bootstrap_sha256":expected,"inline_payload_sha256":payload_hash,"minimal_tcb_fd":tcb_sealed,"minimal_tcb_sha256":TCBH,"argv_schema":"planora.muni-fspsx.frontier-v23.inline-trust-argv.v1","transport":"inline_argv_to_sealed_memfd"}}
+exec(compile(raw,"sealed:muni-v23-bootstrap","exec",dont_inherit=True),scope)

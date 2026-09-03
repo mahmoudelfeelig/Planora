@@ -1,0 +1,612 @@
+{
+  "schema": "planora.agh-fal17.native-v12-freeze.v1",
+  "created_utc": "2026-08-27T02:16:15Z",
+  "status": "GO_FOR_LIGHTWEIGHT_STATIC_REVIEW_NO_GO_FOR_PROBE_OR_OFFICIAL_LAUNCH",
+  "scope": "AGH-FAL17 v12 authoritative outer control plane; official input never opened by this builder",
+  "artifacts": {
+    "outer_controller": {
+      "path": "/tmp/agent-aghfal17-native-v12-outer-controller.py",
+      "size_bytes": 45357,
+      "sha256": "f993c5cc72a41d9bdebbd82e500a20e250351a684a80beabf0c4c82cbb412cb5"
+    },
+    "bootstrap": {
+      "path": "/tmp/agent-aghfal17-native-v12-bootstrap.py",
+      "size_bytes": 12889,
+      "sha256": "da76a079cacfc5b9014718ac07a75ac229547abf662a90225b58a15826436faa"
+    },
+    "launcher": {
+      "path": "/tmp/agent-aghfal17-native-v12-launcher.sh",
+      "size_bytes": 10942,
+      "sha256": "b596a04fda0595ca77c0f0936f850503e7c87087f10ffef992415c85b7113cd5"
+    },
+    "supervisor": {
+      "path": "/tmp/agent-aghfal17-native-v12-supervisor.py",
+      "size_bytes": 149387,
+      "sha256": "3735de9d59f90bd1c8782d6f10d7b914cdbfd3765f56e88b3f589cffca468939"
+    },
+    "runner": {
+      "path": "/tmp/agent-aghfal17-native-v12-runner.py",
+      "size_bytes": 71673,
+      "sha256": "11801fd9cc5f853058f8e1c57a269efcae702237522c47c26a14f823d3e9044a"
+    },
+    "generic_validator": {
+      "path": "/tmp/agent-aghfal17-native-v12-generic-validator.py",
+      "size_bytes": 6053,
+      "sha256": "9864bcc2222f3ca676f5226b46c8d832bcaf5031d9e3e90e3e272ae1c2fea742"
+    },
+    "minimal_tcb_manifest": {
+      "path": "/tmp/agent-aghfal17-native-v12-minimal-tcb.sha256",
+      "size_bytes": 5119,
+      "sha256": "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea"
+    },
+    "stdlib_manifest": {
+      "path": "/tmp/agent-aghfal17-native-v12-stdlib.sha256",
+      "size_bytes": 67004,
+      "sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327"
+    },
+    "tests": {
+      "path": "/tmp/agent-aghfal17-native-v12-tests.py",
+      "size_bytes": 29916,
+      "sha256": "a97d6dd629ef5ce69be4d8888ec5b757ba529c41e1c826be83f598e1b69f6b28"
+    }
+  },
+  "source_closure": {
+    "benchmarks/__init__.py": {
+      "size_bytes": 6975,
+      "sha256": "be6f5557e4565d1de24b4ced5a56a610fd935fc8320f1ffe5014255a59e3b84a"
+    },
+    "benchmarks/corpus.py": {
+      "size_bytes": 10995,
+      "sha256": "74d23c0940713b8a40a9f789d4c0ece7402e5d9b81514587d3015d497d4112b3"
+    },
+    "benchmarks/itc2019.py": {
+      "size_bytes": 142021,
+      "sha256": "5577c6227037fa615df741a4b0b351b05ec11c7c4ce4ebe9a4489554122b2c1f"
+    },
+    "benchmarks/itc2019_compact_joint.py": {
+      "size_bytes": 35402,
+      "sha256": "427264334276fb48ce5b54c151a42d4a85b75055c0bea96f47a928b1fe28362a"
+    },
+    "benchmarks/itc2019_decomposed.py": {
+      "size_bytes": 132226,
+      "sha256": "3f4b92f91867cd1205f1702f36923b3c19cb8ad8d39b43d34a3b15e07f502e05"
+    },
+    "benchmarks/itc2019_decomposed_quality.py": {
+      "size_bytes": 76030,
+      "sha256": "534622d096728ff4e4e9b53fd8d58ec3827ec09540d4c95a3e3dcad271c7f78b"
+    },
+    "benchmarks/itc2019_factorized.py": {
+      "size_bytes": 97255,
+      "sha256": "a773110756e612e26dfd792ea6f289ca9a36d526fc807f790f674233ec8df1bf"
+    },
+    "benchmarks/itc2019_generalized_occurrences.py": {
+      "size_bytes": 16871,
+      "sha256": "7ed4224c0f338f9f983a358babb5dfdb6b90d5026383283cd0d805aef733d85f"
+    },
+    "benchmarks/itc2019_global_components.py": {
+      "size_bytes": 22141,
+      "sha256": "c2d158dc9434f8da4f3e9478b1526face365702cf317fd14e693af75769e7f11"
+    },
+    "benchmarks/itc2019_global_quality.py": {
+      "size_bytes": 26372,
+      "sha256": "397d308a4fb368aaab96db1789394e1b9f289a8f6b8d87b9ce5b4a569f8ccc7f"
+    },
+    "benchmarks/itc2019_grouped_calendar.py": {
+      "size_bytes": 22700,
+      "sha256": "37b82b7f01fb47a655bb76ae0d6734315b00bf58ec7ebf28c66bb701c00a6ee5"
+    },
+    "benchmarks/itc2019_resource_seed.py": {
+      "size_bytes": 32338,
+      "sha256": "8d497bc609ec5b717b0d9e2b77406e89c45c6eaef378148c0bebadd6a429d665"
+    },
+    "benchmarks/itc2019_sparse_joint.py": {
+      "size_bytes": 43287,
+      "sha256": "2f2a40180f86fdcc7b76d9c10730cecbda7114713d504ecfe6b98008f105c2c2"
+    },
+    "benchmarks/itc2019_structural.py": {
+      "size_bytes": 25151,
+      "sha256": "db4ac0adbfe38f1b618b2e8f7a5a9e5a613000a62034017819cca2c20640d024"
+    },
+    "benchmarks/itc2019_violation_lns.py": {
+      "size_bytes": 37594,
+      "sha256": "9f1e4f66c4fadea2813ec86de451206102928c5c7b1dfdf786d900c8dc137343"
+    }
+  },
+  "runtime_records": {
+    "runtime_ortools_record": {
+      "path": ".venv/lib/python3.12/site-packages/ortools-9.15.6755.dist-info/RECORD",
+      "size_bytes": 42834,
+      "sha256": "4175009141f97e2dc7e4f453d67cb3fee6034f1f9df269e67a9b2abb3bd70a10"
+    },
+    "runtime_numpy_record": {
+      "path": ".venv/lib/python3.12/site-packages/numpy-2.4.2.dist-info/RECORD",
+      "size_bytes": 110366,
+      "sha256": "6cc44a275ff3c9b440a33271c7038b98622fd58fd68a2cabd931932a1741fb81"
+    },
+    "runtime_pandas_record": {
+      "path": ".venv/lib/python3.12/site-packages/pandas-3.0.1.dist-info/RECORD",
+      "size_bytes": 244958,
+      "sha256": "c65f6019e7d8089476318471d636a54a231254e1a9b009db093b9877fe12f0b6"
+    },
+    "runtime_dateutil_record": {
+      "path": ".venv/lib/python3.12/site-packages/python_dateutil-2.9.0.post0.dist-info/RECORD",
+      "size_bytes": 3125,
+      "sha256": "0c26b4b1542dbd1ebd8d2babdd501aed583d6ada9595517f936f00fe4ff9d254"
+    },
+    "runtime_six_record": {
+      "path": ".venv/lib/python3.12/site-packages/six-1.17.0.dist-info/RECORD",
+      "size_bytes": 561,
+      "sha256": "d834e846ba51c0e7371968d0b5a0cdebdaa2f9ea2f0447a40b594fa96ca5d89f"
+    },
+    "runtime_lxml_record": {
+      "path": ".venv/lib/python3.12/site-packages/lxml-6.1.0.dist-info/RECORD",
+      "size_bytes": 16806,
+      "sha256": "aebff199cfc81d017be51e09b0c0fb1be49e5ddff0f7e777b3cc56b27f8cd07d"
+    },
+    "runtime_absl_record": {
+      "path": ".venv/lib/python3.12/site-packages/absl_py-2.4.0.dist-info/RECORD",
+      "size_bytes": 3736,
+      "sha256": "526b41384f796af7d02a92ec84d1a8e7a2f3fd42880a349e91c96723f780a216"
+    },
+    "runtime_immutabledict_record": {
+      "path": ".venv/lib/python3.12/site-packages/immutabledict-4.3.1.dist-info/RECORD",
+      "size_bytes": 639,
+      "sha256": "32fa24e0bd6e8481bd654ce6e020dcd9466d0d6b63e71c4588bbd25749257ec6"
+    },
+    "runtime_protobuf_record": {
+      "path": ".venv/lib/python3.12/site-packages/protobuf-6.33.5.dist-info/RECORD",
+      "size_bytes": 8856,
+      "sha256": "6f8088dd0fb04edc0b64983a573b4d91c7374d1b0fc8546035cc6b2635aaec46"
+    },
+    "runtime_typing_extensions_record": {
+      "path": ".venv/lib/python3.12/site-packages/typing_extensions-4.15.0.dist-info/RECORD",
+      "size_bytes": 580,
+      "sha256": "02f70a4ed6f81c3298a0024ca9dcc6807360938d388360ce3b768243f719cdce"
+    }
+  },
+  "runtime_pins": {
+    "bash": {
+      "path": "/usr/bin/bash",
+      "size_bytes": 1446024,
+      "sha256": "bc5945feb8bd26203ebfafea5ce1878bb2e32cb8fb50ab7ae395cfb1e1aaaef1"
+    },
+    "python": {
+      "path": "/usr/bin/python3.12",
+      "size_bytes": 8020928,
+      "sha256": "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273"
+    },
+    "runtime_bundle_file_count": 3077,
+    "runtime_bundle_bytes": 191956270
+  },
+  "sealed_entry_loader": {
+    "protocol": "planora.aghfal17.native-v12-sealed-entry-loader.v1",
+    "source": "import errno,fcntl,hashlib,os,stat,sys\nrequired=fcntl.F_SEAL_SEAL|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_WRITE\nidentity=lambda row:(int(row.st_dev),int(row.st_ino),int(row.st_size),stat.S_IFMT(row.st_mode),stat.S_IMODE(row.st_mode),int(row.st_uid),int(row.st_nlink))\ndef capture(path,expected,target,label):\n if len(expected)!=64 or any(c not in '0123456789abcdef' for c in expected): raise RuntimeError(label+' expected hash rejected')\n try: os.fstat(target)\n except OSError as exc:\n  if exc.errno!=errno.EBADF: raise\n else: raise RuntimeError(label+' fixed descriptor occupied')\n parent=os.path.dirname(path);name=os.path.basename(path);parent_fd=os.open(parent,os.O_RDONLY|os.O_DIRECTORY|getattr(os,'O_NOFOLLOW',0));parent_row=os.fstat(parent_fd);source_fd=os.open(name,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0),dir_fd=parent_fd);before=os.fstat(source_fd)\n if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1 or before.st_size>(4<<20): raise RuntimeError(label+' source contract rejected')\n raw=os.pread(source_fd,before.st_size,0);after=os.fstat(source_fd);named=os.stat(name,dir_fd=parent_fd,follow_symlinks=False)\n os.close(source_fd);os.close(parent_fd)\n if len(raw)!=before.st_size or identity(before)!=identity(after) or identity(after)!=identity(named) or hashlib.sha256(raw).hexdigest()!=expected: raise RuntimeError(label+' source drift')\n descriptor=os.memfd_create('aghfal17-v12-'+label,getattr(os,'MFD_ALLOW_SEALING',0x0002));view=memoryview(raw)\n while view:\n  written=os.write(descriptor,view)\n  if written<=0: raise RuntimeError(label+' sealed write failed')\n  view=view[written:]\n os.fchmod(descriptor,0o400);fcntl.fcntl(descriptor,fcntl.F_ADD_SEALS,required)\n if int(fcntl.fcntl(descriptor,fcntl.F_GET_SEALS))&required!=required: raise RuntimeError(label+' sealing failed')\n os.dup2(descriptor,target,inheritable=True);os.close(descriptor);return len(raw)\nouter_path,outer_hash,freeze_path,freeze_hash=sys.argv[1:5];forwarded=sys.argv[5:]\ncapture(outer_path,outer_hash,196,'outer-controller');capture(freeze_path,freeze_hash,197,'freeze-manifest')\nenvironment={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8','TZ':'UTC'}\nargv=['/proc/self/exe','-I','-S','-B','/proc/self/fd/196',*forwarded]\nos.execve('/proc/self/exe',argv,environment)",
+    "source_sha256": "156bfdc3dce01ed1270c16e60f8ba7255fe8feccd5ba3eaf11ac8af71777a574",
+    "controller_fd": 196,
+    "freeze_manifest_fd": 197,
+    "controller_and_freeze_captured_to_sealed_memfds_before_execution": true
+  },
+  "official_input": {
+    "path": "/mnt/d/Stuff/Projects/Sites/Planora/data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/agh-fal17.xml",
+    "size_bytes": 44961985,
+    "sha256": "bae3363ed68e895280cd33bc20686bf396932f532c2b197f7b863f4167437528",
+    "expected_classes": 5081,
+    "opened_by_builder": false
+  },
+  "commands": {
+    "probe": {
+      "mode": "--sealed-import-probe",
+      "canonical_encoding": "utf8_nul_joined",
+      "canonical_argv_sha256": "0cb60bc78cca0aa3d75afbca4173d7a72aa097b64bde9423dc11a9361cecb394",
+      "argv": [
+        "/usr/bin/python3.12",
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        "import os,sys;fd=int(sys.argv[1]);token=os.read(fd,1);os.close(fd);token==b'G' or (_ for _ in ()).throw(RuntimeError('outer barrier rejected'));marker=sys.argv.index('--');argv=sys.argv[marker+1:];argv or (_ for _ in ()).throw(RuntimeError('inner argv missing'));os.execve(argv[0],argv,dict(os.environ))",
+        "198",
+        "--",
+        "/usr/bin/python3.12",
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        "import fcntl, hashlib, os, stat, sys\r\npath=sys.argv[1]; expected=sys.argv[2]; expected_python=sys.argv[3]; forwarded=sys.argv[4:]\r\nrequired=fcntl.F_SEAL_SEAL|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_WRITE\r\nidentity=lambda row:(int(row.st_dev),int(row.st_ino),int(row.st_size),stat.S_IFMT(row.st_mode),stat.S_IMODE(row.st_mode),int(row.st_uid),int(row.st_nlink))\r\ntcb_path='/tmp/agent-aghfal17-native-v12-minimal-tcb.sha256'; tcb_expected='825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea'\r\nroot_ro=False\r\nwith open('/proc/self/mountinfo',encoding='utf-8') as mountinfo:\r\n for line in mountinfo:\r\n  fields=line.split(' - ',1)[0].split()\r\n  if len(fields)>=6 and fields[4]=='/' and 'ro' in fields[5].split(','): root_ro=True\r\nif not root_ro: raise RuntimeError('bootstrap minimal TCB filesystem is not read-only')\r\ntcb_fd=os.open(tcb_path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)); tcb_row=os.fstat(tcb_fd); tcb_raw=os.pread(tcb_fd,tcb_row.st_size,0)\r\nif hashlib.sha256(tcb_raw).hexdigest()!=tcb_expected: raise RuntimeError('bootstrap minimal TCB manifest drift')\r\ntcb={line.split('  ',1)[1]:line.split('  ',1)[0] for line in tcb_raw.decode().splitlines()}\r\nfor module in tuple(sys.modules.values()):\r\n module_path=getattr(module,'__file__',None)\r\n if not isinstance(module_path,str) or module_path.startswith('<frozen '): continue\r\n resolved=os.path.realpath(module_path)\r\n if resolved!=module_path or resolved not in tcb: raise RuntimeError('bootstrap module outside minimal TCB: '+str(module_path))\r\n current=resolved\r\n while True:\r\n  ownership=os.stat(current,follow_symlinks=False)\r\n  if ownership.st_uid!=65534 or ownership.st_gid!=65534 or stat.S_IMODE(ownership.st_mode)&0o022: raise RuntimeError('bootstrap minimal TCB permissions rejected: '+current)\r\n  if current=='/': break\r\n  current=os.path.dirname(current)\r\n module_fd=os.open(resolved,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)); module_raw=os.pread(module_fd,os.fstat(module_fd).st_size,0); os.close(module_fd)\r\n if hashlib.sha256(module_raw).hexdigest()!=tcb[resolved]: raise RuntimeError('bootstrap minimal TCB module drift: '+resolved)\r\ntcb_sealed=os.memfd_create('aghfal17-v12-minimal-tcb',getattr(os,'MFD_ALLOW_SEALING',0x0002)); os.write(tcb_sealed,tcb_raw); os.fchmod(tcb_sealed,0o400); fcntl.fcntl(tcb_sealed,fcntl.F_ADD_SEALS,required)\r\npython_fd=os.open('/proc/self/exe',os.O_RDONLY); python_raw=b''; offset=0; python_row=os.fstat(python_fd)\r\nwhile offset<python_row.st_size:\r\n block=os.pread(python_fd,min(1<<20,python_row.st_size-offset),offset)\r\n if not block: raise RuntimeError('bootstrap loader Python ended early')\r\n python_raw+=block; offset+=len(block)\r\nos.close(python_fd)\r\nif hashlib.sha256(python_raw).hexdigest()!=expected_python: raise RuntimeError('bootstrap loader Python hash drift')\r\nparent=os.path.dirname(path); name=os.path.basename(path); parent_before=os.lstat(parent); parent_fd=os.open(parent,os.O_RDONLY|os.O_DIRECTORY|getattr(os,'O_NOFOLLOW',0)); parent_open=os.fstat(parent_fd)\r\nsource_fd=os.open(name,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0),dir_fd=parent_fd); before=os.fstat(source_fd)\r\nif not stat.S_ISREG(before.st_mode) or before.st_nlink!=1: raise RuntimeError('bootstrap loader source rejected')\r\nchunks=[]; offset=0\r\nwhile offset<before.st_size:\r\n block=os.pread(source_fd,min(1<<20,before.st_size-offset),offset)\r\n if not block: raise RuntimeError('bootstrap loader source ended early')\r\n chunks.append(block); offset+=len(block)\r\nafter=os.fstat(source_fd); named=os.stat(name,dir_fd=parent_fd,follow_symlinks=False); parent_after=os.lstat(parent); raw=b''.join(chunks); actual=hashlib.sha256(raw).hexdigest()\r\nif identity(parent_before)!=identity(parent_open) or identity(parent_open)!=identity(parent_after) or identity(before)!=identity(after) or identity(after)!=identity(named) or actual!=expected: raise RuntimeError('bootstrap loader source drift')\r\nsealed=os.memfd_create('aghfal17-v12-bootstrap',getattr(os,'MFD_ALLOW_SEALING',0x0002)); view=memoryview(raw)\r\nwhile view:\r\n written=os.write(sealed,view)\r\n if written<=0: raise RuntimeError('bootstrap loader sealed write failed')\r\n view=view[written:]\r\nos.fchmod(sealed,0o400); fcntl.fcntl(sealed,fcntl.F_ADD_SEALS,required); sealed_raw=os.pread(sealed,len(raw),0)\r\nif int(fcntl.fcntl(sealed,fcntl.F_GET_SEALS))&required!=required or sealed_raw!=raw: raise RuntimeError('bootstrap loader sealing failed')\r\nos.close(source_fd); os.close(parent_fd); filename=f'<sealed-aghfal17-v12-bootstrap:{actual}>'; sys.argv=[filename,*forwarded]\r\nnamespace={'__name__':'__main__','__file__':filename,'__package__':None,'__cached__':None,'__captured_sha256__':actual,'__captured_fd__':sealed,'__captured_source_path__':path,'__bootstrap_loader_protocol__':'planora.aghfal17.native-v12-bootstrap-loader.v1','__minimal_tcb_evidence__':{'fd':tcb_sealed,'sha256':tcb_expected,'file_count':len(tcb),'uid':65534,'gid':65534,'root_mount_read_only':True,'non_writable_ancestors':True,'admitted_before_bootstrap_exec':True}}\r\nexec(compile(sealed_raw,filename,'exec',dont_inherit=True),namespace)",
+        "/tmp/agent-aghfal17-native-v12-bootstrap.py",
+        "da76a079cacfc5b9014718ac07a75ac229547abf662a90225b58a15826436faa",
+        "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273",
+        "--expected-bootstrap-sha256",
+        "da76a079cacfc5b9014718ac07a75ac229547abf662a90225b58a15826436faa",
+        "--launcher",
+        "/tmp/agent-aghfal17-native-v12-launcher.sh",
+        "--expected-launcher-sha256",
+        "b596a04fda0595ca77c0f0936f850503e7c87087f10ffef992415c85b7113cd5",
+        "--bash",
+        "/usr/bin/bash",
+        "--expected-bash-sha256",
+        "bc5945feb8bd26203ebfafea5ce1878bb2e32cb8fb50ab7ae395cfb1e1aaaef1",
+        "--",
+        "--sealed-import-probe"
+      ]
+    },
+    "launch": {
+      "mode": "--launch",
+      "canonical_encoding": "utf8_nul_joined",
+      "canonical_argv_sha256": "0f3510a948bbe789707fe31e08219ed13c3354e913b047dde19f96298d494181",
+      "argv": [
+        "/usr/bin/python3.12",
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        "import os,sys;fd=int(sys.argv[1]);token=os.read(fd,1);os.close(fd);token==b'G' or (_ for _ in ()).throw(RuntimeError('outer barrier rejected'));marker=sys.argv.index('--');argv=sys.argv[marker+1:];argv or (_ for _ in ()).throw(RuntimeError('inner argv missing'));os.execve(argv[0],argv,dict(os.environ))",
+        "198",
+        "--",
+        "/usr/bin/python3.12",
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        "import fcntl, hashlib, os, stat, sys\r\npath=sys.argv[1]; expected=sys.argv[2]; expected_python=sys.argv[3]; forwarded=sys.argv[4:]\r\nrequired=fcntl.F_SEAL_SEAL|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_WRITE\r\nidentity=lambda row:(int(row.st_dev),int(row.st_ino),int(row.st_size),stat.S_IFMT(row.st_mode),stat.S_IMODE(row.st_mode),int(row.st_uid),int(row.st_nlink))\r\ntcb_path='/tmp/agent-aghfal17-native-v12-minimal-tcb.sha256'; tcb_expected='825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea'\r\nroot_ro=False\r\nwith open('/proc/self/mountinfo',encoding='utf-8') as mountinfo:\r\n for line in mountinfo:\r\n  fields=line.split(' - ',1)[0].split()\r\n  if len(fields)>=6 and fields[4]=='/' and 'ro' in fields[5].split(','): root_ro=True\r\nif not root_ro: raise RuntimeError('bootstrap minimal TCB filesystem is not read-only')\r\ntcb_fd=os.open(tcb_path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)); tcb_row=os.fstat(tcb_fd); tcb_raw=os.pread(tcb_fd,tcb_row.st_size,0)\r\nif hashlib.sha256(tcb_raw).hexdigest()!=tcb_expected: raise RuntimeError('bootstrap minimal TCB manifest drift')\r\ntcb={line.split('  ',1)[1]:line.split('  ',1)[0] for line in tcb_raw.decode().splitlines()}\r\nfor module in tuple(sys.modules.values()):\r\n module_path=getattr(module,'__file__',None)\r\n if not isinstance(module_path,str) or module_path.startswith('<frozen '): continue\r\n resolved=os.path.realpath(module_path)\r\n if resolved!=module_path or resolved not in tcb: raise RuntimeError('bootstrap module outside minimal TCB: '+str(module_path))\r\n current=resolved\r\n while True:\r\n  ownership=os.stat(current,follow_symlinks=False)\r\n  if ownership.st_uid!=65534 or ownership.st_gid!=65534 or stat.S_IMODE(ownership.st_mode)&0o022: raise RuntimeError('bootstrap minimal TCB permissions rejected: '+current)\r\n  if current=='/': break\r\n  current=os.path.dirname(current)\r\n module_fd=os.open(resolved,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)); module_raw=os.pread(module_fd,os.fstat(module_fd).st_size,0); os.close(module_fd)\r\n if hashlib.sha256(module_raw).hexdigest()!=tcb[resolved]: raise RuntimeError('bootstrap minimal TCB module drift: '+resolved)\r\ntcb_sealed=os.memfd_create('aghfal17-v12-minimal-tcb',getattr(os,'MFD_ALLOW_SEALING',0x0002)); os.write(tcb_sealed,tcb_raw); os.fchmod(tcb_sealed,0o400); fcntl.fcntl(tcb_sealed,fcntl.F_ADD_SEALS,required)\r\npython_fd=os.open('/proc/self/exe',os.O_RDONLY); python_raw=b''; offset=0; python_row=os.fstat(python_fd)\r\nwhile offset<python_row.st_size:\r\n block=os.pread(python_fd,min(1<<20,python_row.st_size-offset),offset)\r\n if not block: raise RuntimeError('bootstrap loader Python ended early')\r\n python_raw+=block; offset+=len(block)\r\nos.close(python_fd)\r\nif hashlib.sha256(python_raw).hexdigest()!=expected_python: raise RuntimeError('bootstrap loader Python hash drift')\r\nparent=os.path.dirname(path); name=os.path.basename(path); parent_before=os.lstat(parent); parent_fd=os.open(parent,os.O_RDONLY|os.O_DIRECTORY|getattr(os,'O_NOFOLLOW',0)); parent_open=os.fstat(parent_fd)\r\nsource_fd=os.open(name,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0),dir_fd=parent_fd); before=os.fstat(source_fd)\r\nif not stat.S_ISREG(before.st_mode) or before.st_nlink!=1: raise RuntimeError('bootstrap loader source rejected')\r\nchunks=[]; offset=0\r\nwhile offset<before.st_size:\r\n block=os.pread(source_fd,min(1<<20,before.st_size-offset),offset)\r\n if not block: raise RuntimeError('bootstrap loader source ended early')\r\n chunks.append(block); offset+=len(block)\r\nafter=os.fstat(source_fd); named=os.stat(name,dir_fd=parent_fd,follow_symlinks=False); parent_after=os.lstat(parent); raw=b''.join(chunks); actual=hashlib.sha256(raw).hexdigest()\r\nif identity(parent_before)!=identity(parent_open) or identity(parent_open)!=identity(parent_after) or identity(before)!=identity(after) or identity(after)!=identity(named) or actual!=expected: raise RuntimeError('bootstrap loader source drift')\r\nsealed=os.memfd_create('aghfal17-v12-bootstrap',getattr(os,'MFD_ALLOW_SEALING',0x0002)); view=memoryview(raw)\r\nwhile view:\r\n written=os.write(sealed,view)\r\n if written<=0: raise RuntimeError('bootstrap loader sealed write failed')\r\n view=view[written:]\r\nos.fchmod(sealed,0o400); fcntl.fcntl(sealed,fcntl.F_ADD_SEALS,required); sealed_raw=os.pread(sealed,len(raw),0)\r\nif int(fcntl.fcntl(sealed,fcntl.F_GET_SEALS))&required!=required or sealed_raw!=raw: raise RuntimeError('bootstrap loader sealing failed')\r\nos.close(source_fd); os.close(parent_fd); filename=f'<sealed-aghfal17-v12-bootstrap:{actual}>'; sys.argv=[filename,*forwarded]\r\nnamespace={'__name__':'__main__','__file__':filename,'__package__':None,'__cached__':None,'__captured_sha256__':actual,'__captured_fd__':sealed,'__captured_source_path__':path,'__bootstrap_loader_protocol__':'planora.aghfal17.native-v12-bootstrap-loader.v1','__minimal_tcb_evidence__':{'fd':tcb_sealed,'sha256':tcb_expected,'file_count':len(tcb),'uid':65534,'gid':65534,'root_mount_read_only':True,'non_writable_ancestors':True,'admitted_before_bootstrap_exec':True}}\r\nexec(compile(sealed_raw,filename,'exec',dont_inherit=True),namespace)",
+        "/tmp/agent-aghfal17-native-v12-bootstrap.py",
+        "da76a079cacfc5b9014718ac07a75ac229547abf662a90225b58a15826436faa",
+        "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273",
+        "--expected-bootstrap-sha256",
+        "da76a079cacfc5b9014718ac07a75ac229547abf662a90225b58a15826436faa",
+        "--launcher",
+        "/tmp/agent-aghfal17-native-v12-launcher.sh",
+        "--expected-launcher-sha256",
+        "b596a04fda0595ca77c0f0936f850503e7c87087f10ffef992415c85b7113cd5",
+        "--bash",
+        "/usr/bin/bash",
+        "--expected-bash-sha256",
+        "bc5945feb8bd26203ebfafea5ce1878bb2e32cb8fb50ab7ae395cfb1e1aaaef1",
+        "--",
+        "--launch"
+      ]
+    }
+  },
+  "sealed_storage_contract": {
+    "probe": {
+      "allocations": [
+        {
+          "allocation_id": "outer-controller-sealed",
+          "size_bytes": 45357,
+          "source": "/tmp/agent-aghfal17-native-v12-outer-controller.py"
+        },
+        {
+          "allocation_id": "freeze-manifest-sealed",
+          "size_bytes": 37121,
+          "source": "/tmp/agent-aghfal17-native-v12-review-freeze.json"
+        },
+        {
+          "allocation_id": "minimal-tcb-loader-sealed",
+          "size_bytes": 5119,
+          "source": "/tmp/agent-aghfal17-native-v12-minimal-tcb.sha256"
+        },
+        {
+          "allocation_id": "bootstrap-source-sealed",
+          "size_bytes": 12889,
+          "source": "/tmp/agent-aghfal17-native-v12-bootstrap.py"
+        },
+        {
+          "allocation_id": "launcher-source-sealed",
+          "size_bytes": 10942,
+          "source": "/tmp/agent-aghfal17-native-v12-launcher.sh"
+        },
+        {
+          "allocation_id": "bash-binary-sealed",
+          "size_bytes": 1446024,
+          "source": "/usr/bin/bash"
+        },
+        {
+          "allocation_id": "runner-capture-sealed",
+          "size_bytes": 71673,
+          "source": "/tmp/agent-aghfal17-native-v12-runner.py"
+        },
+        {
+          "allocation_id": "python-binary-capture-sealed",
+          "size_bytes": 8020928,
+          "source": "/usr/bin/python3.12"
+        },
+        {
+          "allocation_id": "stdlib-manifest-capture-sealed",
+          "size_bytes": 67004,
+          "source": "/tmp/agent-aghfal17-native-v12-stdlib.sha256"
+        },
+        {
+          "allocation_id": "runtime_ortools_record-capture-sealed",
+          "size_bytes": 42834,
+          "source": ".venv/lib/python3.12/site-packages/ortools-9.15.6755.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_numpy_record-capture-sealed",
+          "size_bytes": 110366,
+          "source": ".venv/lib/python3.12/site-packages/numpy-2.4.2.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_pandas_record-capture-sealed",
+          "size_bytes": 244958,
+          "source": ".venv/lib/python3.12/site-packages/pandas-3.0.1.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_dateutil_record-capture-sealed",
+          "size_bytes": 3125,
+          "source": ".venv/lib/python3.12/site-packages/python_dateutil-2.9.0.post0.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_six_record-capture-sealed",
+          "size_bytes": 561,
+          "source": ".venv/lib/python3.12/site-packages/six-1.17.0.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_lxml_record-capture-sealed",
+          "size_bytes": 16806,
+          "source": ".venv/lib/python3.12/site-packages/lxml-6.1.0.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_absl_record-capture-sealed",
+          "size_bytes": 3736,
+          "source": ".venv/lib/python3.12/site-packages/absl_py-2.4.0.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_immutabledict_record-capture-sealed",
+          "size_bytes": 639,
+          "source": ".venv/lib/python3.12/site-packages/immutabledict-4.3.1.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_protobuf_record-capture-sealed",
+          "size_bytes": 8856,
+          "source": ".venv/lib/python3.12/site-packages/protobuf-6.33.5.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_typing_extensions_record-capture-sealed",
+          "size_bytes": 580,
+          "source": ".venv/lib/python3.12/site-packages/typing_extensions-4.15.0.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime-bundle-sealed-files",
+          "size_bytes": 191956270,
+          "source": "frozen-runtime-record-closure"
+        }
+      ],
+      "report_bytes": "measured from unique outer-created memfd inode identities"
+    },
+    "launch": {
+      "allocations": [
+        {
+          "allocation_id": "outer-controller-sealed",
+          "size_bytes": 45357,
+          "source": "/tmp/agent-aghfal17-native-v12-outer-controller.py"
+        },
+        {
+          "allocation_id": "freeze-manifest-sealed",
+          "size_bytes": 37121,
+          "source": "/tmp/agent-aghfal17-native-v12-review-freeze.json"
+        },
+        {
+          "allocation_id": "minimal-tcb-loader-sealed",
+          "size_bytes": 5119,
+          "source": "/tmp/agent-aghfal17-native-v12-minimal-tcb.sha256"
+        },
+        {
+          "allocation_id": "bootstrap-source-sealed",
+          "size_bytes": 12889,
+          "source": "/tmp/agent-aghfal17-native-v12-bootstrap.py"
+        },
+        {
+          "allocation_id": "launcher-source-sealed",
+          "size_bytes": 10942,
+          "source": "/tmp/agent-aghfal17-native-v12-launcher.sh"
+        },
+        {
+          "allocation_id": "bash-binary-sealed",
+          "size_bytes": 1446024,
+          "source": "/usr/bin/bash"
+        },
+        {
+          "allocation_id": "runner-capture-sealed",
+          "size_bytes": 71673,
+          "source": "/tmp/agent-aghfal17-native-v12-runner.py"
+        },
+        {
+          "allocation_id": "python-binary-capture-sealed",
+          "size_bytes": 8020928,
+          "source": "/usr/bin/python3.12"
+        },
+        {
+          "allocation_id": "stdlib-manifest-capture-sealed",
+          "size_bytes": 67004,
+          "source": "/tmp/agent-aghfal17-native-v12-stdlib.sha256"
+        },
+        {
+          "allocation_id": "runtime_ortools_record-capture-sealed",
+          "size_bytes": 42834,
+          "source": ".venv/lib/python3.12/site-packages/ortools-9.15.6755.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_numpy_record-capture-sealed",
+          "size_bytes": 110366,
+          "source": ".venv/lib/python3.12/site-packages/numpy-2.4.2.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_pandas_record-capture-sealed",
+          "size_bytes": 244958,
+          "source": ".venv/lib/python3.12/site-packages/pandas-3.0.1.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_dateutil_record-capture-sealed",
+          "size_bytes": 3125,
+          "source": ".venv/lib/python3.12/site-packages/python_dateutil-2.9.0.post0.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_six_record-capture-sealed",
+          "size_bytes": 561,
+          "source": ".venv/lib/python3.12/site-packages/six-1.17.0.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_lxml_record-capture-sealed",
+          "size_bytes": 16806,
+          "source": ".venv/lib/python3.12/site-packages/lxml-6.1.0.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_absl_record-capture-sealed",
+          "size_bytes": 3736,
+          "source": ".venv/lib/python3.12/site-packages/absl_py-2.4.0.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_immutabledict_record-capture-sealed",
+          "size_bytes": 639,
+          "source": ".venv/lib/python3.12/site-packages/immutabledict-4.3.1.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_protobuf_record-capture-sealed",
+          "size_bytes": 8856,
+          "source": ".venv/lib/python3.12/site-packages/protobuf-6.33.5.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime_typing_extensions_record-capture-sealed",
+          "size_bytes": 580,
+          "source": ".venv/lib/python3.12/site-packages/typing_extensions-4.15.0.dist-info/RECORD"
+        },
+        {
+          "allocation_id": "runtime-bundle-sealed-files",
+          "size_bytes": 191956270,
+          "source": "frozen-runtime-record-closure"
+        },
+        {
+          "allocation_id": "generic-validator-capture-sealed",
+          "size_bytes": 6053,
+          "source": "/tmp/agent-aghfal17-native-v12-generic-validator.py"
+        },
+        {
+          "allocation_id": "minimal-tcb-supervisor-capture-sealed",
+          "size_bytes": 5119,
+          "source": "/tmp/agent-aghfal17-native-v12-minimal-tcb.sha256"
+        },
+        {
+          "allocation_id": "official-input-capture-sealed",
+          "size_bytes": 44961985,
+          "source": "data/input/ITC-2019/agh-fal17.xml"
+        },
+        {
+          "allocation_id": "planora_benchmarks_init-capture-sealed",
+          "size_bytes": 6975,
+          "source": "benchmarks/__init__.py"
+        },
+        {
+          "allocation_id": "planora_benchmarks_corpus-capture-sealed",
+          "size_bytes": 10995,
+          "source": "benchmarks/corpus.py"
+        },
+        {
+          "allocation_id": "planora_itc2019-capture-sealed",
+          "size_bytes": 142021,
+          "source": "benchmarks/itc2019.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_compact_joint-capture-sealed",
+          "size_bytes": 35402,
+          "source": "benchmarks/itc2019_compact_joint.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_decomposed-capture-sealed",
+          "size_bytes": 132226,
+          "source": "benchmarks/itc2019_decomposed.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_decomposed_quality-capture-sealed",
+          "size_bytes": 76030,
+          "source": "benchmarks/itc2019_decomposed_quality.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_factorized-capture-sealed",
+          "size_bytes": 97255,
+          "source": "benchmarks/itc2019_factorized.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_generalized_occurrences-capture-sealed",
+          "size_bytes": 16871,
+          "source": "benchmarks/itc2019_generalized_occurrences.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_global_components-capture-sealed",
+          "size_bytes": 22141,
+          "source": "benchmarks/itc2019_global_components.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_global_quality-capture-sealed",
+          "size_bytes": 26372,
+          "source": "benchmarks/itc2019_global_quality.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_grouped_calendar-capture-sealed",
+          "size_bytes": 22700,
+          "source": "benchmarks/itc2019_grouped_calendar.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_resource_seed-capture-sealed",
+          "size_bytes": 32338,
+          "source": "benchmarks/itc2019_resource_seed.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_sparse_joint-capture-sealed",
+          "size_bytes": 43287,
+          "source": "benchmarks/itc2019_sparse_joint.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_structural-capture-sealed",
+          "size_bytes": 25151,
+          "source": "benchmarks/itc2019_structural.py"
+        },
+        {
+          "allocation_id": "planora_itc2019_violation_lns-capture-sealed",
+          "size_bytes": 37594,
+          "source": "benchmarks/itc2019_violation_lns.py"
+        }
+      ],
+      "report_bytes": "measured from unique outer-created memfd inode identities"
+    }
+  },
+  "resource_contract": {
+    "authoritative_component": "outer_controller",
+    "process_generation_vmrss_plus_vmswap_limit_kib": 368640,
+    "whole_launch_process_plus_sealed_plus_report_limit_kib": 614400,
+    "initial_memavailable_floor_kib": 1900000,
+    "initial_sample_count": 2,
+    "initial_sample_interval_seconds": 5.0,
+    "runtime_memavailable_floor_kib": 900000,
+    "probe_outer_wall_seconds": 240.0,
+    "probe_inner_wall_seconds": 180.0,
+    "launch_outer_wall_seconds": 1800.0,
+    "launch_inner_wall_seconds": 1780.0,
+    "child_cooperative_deadline_seconds": 1680.0,
+    "barrier_fd": 198,
+    "exact_identity": "pid_plus_starttime_plus_pidfd",
+    "mutable_topology": "ppid_pgid_sid_refreshed_without_generation_invalidation",
+    "proc_observation": "only_enoent_esrch_mean_vanished_all_other_failures_fail_closed",
+    "descendant_boundary": "fresh_fixed_point_parent_chain_plus_subreaper_orphans_across_sessions",
+    "cleanup": "pidfd_term_kill_then_reap_refresh_and_two_successive_zero_snapshots",
+    "final_zero_snapshots_required": 2,
+    "numeric_process_group_signalling": false
+  },
+  "truth_contract": {
+    "probe_official_input_opened": false,
+    "probe_solver_child_started": false,
+    "probe_solver_execution_started": false,
+    "probe_publication": false,
+    "outer_status_overrides_inner_status": true,
+    "outer_post_exit_empty_required": true
+  },
+  "verification": {
+    "builder_platform": "windows_powershell",
+    "adversarial_tests_present": true,
+    "static_checks": "NOT_RUN",
+    "linux_adversarial_tests": "NOT_RUN",
+    "sealed_import_probe": "NOT_RUN",
+    "official_input_opened": false,
+    "solver_started": false,
+    "official_launch_authorized": false
+  }
+}

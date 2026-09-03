@@ -1,0 +1,114 @@
+{
+  "verdict": "NO_GO_UNPROVEN",
+  "methods": [
+    "sha256_file_replay",
+    "json_metadata_lineage_walk",
+    "producer_report_index",
+    "transitive_import_hash_scan",
+    "static_external_schedule_input_scan",
+    "resume_metadata_consistency_scan"
+  ],
+  "target": {
+    "progress_path": "/tmp/planora-muni-fspsx-hall-objective-v35-progress.json",
+    "progress_sha256": "5cf7e3450ff96d79b3a5dbac1baa784a585b777397603d379a91513ada35cedf",
+    "progress_hash_matches": true,
+    "report_path": "/tmp/planora-muni-fspsx-hall-objective-v35-report.json",
+    "report_sha256": "0ce1ea79934dff36d5ef46f8bfb3cb3075a4636169fc50776d43c01867a563b3",
+    "report_binds_progress": true,
+    "runner_source_path": "/tmp/planora_muni_fspsx_singleton_occupancy_repair.py",
+    "runner_sha256": "f382b58cdad05514bcf9681bbd1eea24877c0d8fe0ccf14a1cc0c1afa302dc4f",
+    "runner_hash_matches": true,
+    "input_path": "/mnt/d/stuff/projects/sites/planora/data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/muni-fspsx-fal17.xml",
+    "input_sha256": "151664dfc27f377e5048cf0bf8ad48fac350c46a7db6ca7181fed6d1933960b6",
+    "input_hash_matches": true
+  },
+  "bound_parents": {
+    "source_checkpoint_path": "/tmp/planora-muni-fspsx-singleton-repair-checkpoint.json",
+    "source_checkpoint_sha256": "b068e072610ec6e626d0bab6c17215969dd780d1e2f516eca370bc15805c03bb",
+    "source_checkpoint_hash_matches": true,
+    "resume_progress_path": "/tmp/planora-muni-fspsx-hall-allcells-v23-progress.json",
+    "resume_progress_sha256": "fa493c9d88773c4c23e4d0f8350c685e7a87f93180a62d1c42008e65b7f99771",
+    "resume_progress_hash_matches": true,
+    "resume_report_path": "/tmp/planora-muni-fspsx-hall-allcells-v23-report.json",
+    "resume_report_sha256": "d25ba3a14cdbc80b31c85bd968c8d3a417896377561d251bb5fa7a5196ef4166",
+    "resume_report_binds_progress": true
+  },
+  "component_checkpoint": {
+    "checkpoint_path": "/tmp/planora-muni-fspsx-component-time-cp-v2-checkpoint.json",
+    "checkpoint_sha256": "b462c82cddaf78f43002cc4ce1f357a64e06876665f587d072bab6aa78e1aa80",
+    "checkpoint_hash_matches": true,
+    "producer_report_path": "/tmp/planora-muni-fspsx-component-time-cp-v2-report.json",
+    "producer_report_sha256": "54e3992228ae98c81e7249dd6840b520b21f5ab77887a1273a73ccf651f62b52",
+    "producer_report_binds_checkpoint": true,
+    "runner_source_path": "/tmp/planora_muni_fspsx_component_time_cp.py",
+    "runner_sha256": "5729b2403895a457489902481deb21b476936af0603e850c6025ba83b219702b",
+    "runner_hash_matches": true,
+    "domain_source_path": "/tmp/planora_muni_fspsx_time_room_benders.py",
+    "domain_source_sha256": "6983d40e8253668364545d1cbcc3c60bb40da5201ee5ecb23cd0474355d3d44f",
+    "domain_source_hash_matches": true,
+    "direct_producer_is_planora_source": true,
+    "available_source_external_schedule_reads_found": false,
+    "available_source_domain_computed_hint_only": true,
+    "transitive_imports_bound_by_producer_report": false,
+    "planora_only_derivation_fully_proven": false,
+    "safe_restart_without_fresh_sealed_replay": false
+  },
+  "available_transitive_sources": [
+    {
+      "source_path": "/tmp/planora_muni_fspsx_legacy_continuous.py",
+      "source_sha256": "60c33214019527f2614c39ea73834858f1a920b30cb286b5be345309cc1fc3ff"
+    },
+    {
+      "source_path": "/tmp/planora_muni_pdf_spr16_legacy_preflight.py",
+      "source_sha256": "c781cc3d7808632be04797570972ab1ef1bc8a92ba240d1a8967f9fca5f97e99"
+    },
+    {
+      "source_path": "/tmp/planora_pu_d9_legacy_official.py",
+      "source_sha256": "7affdb471cee51665f6df6f12ae18f5165bc434437a014774a07d75eab67c8d2"
+    },
+    {
+      "source_path": "/tmp/planora_legacy_room_propagator.py",
+      "source_sha256": "8a930440d2e056c8ebe2fe9f9c119622388e685ae4246a9942014c5b405dcd6e"
+    },
+    {
+      "source_path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019.py",
+      "source_sha256": "5577c6227037fa615df741a4b0b351b05ec11c7c4ce4ebe9a4489554122b2c1f"
+    }
+  ],
+  "missing_boundaries": [
+    {
+      "artifact_path": "/tmp/planora-muni-fspsx-hall-property-v20-progress.json",
+      "artifact_sha256": "0882058614875f5e1edd3b9dd2a811da5b8d15b671ee607b02888c381c189ba5",
+      "producer_report_present": false,
+      "self_recorded_runner_sha256": "5c9a915050e28ec9de77c72ead7f671c662853d7f34522e95e06a1d26eeca521",
+      "matching_runner_source_present": false
+    },
+    {
+      "producer_report_path": "/tmp/planora-muni-fspsx-singleton-repair-report.json",
+      "producer_report_sha256": "fcf30b3ac515c1b54ae31f1ac2fb49c6d5759d01ef917af412be8e49e41e6dd2",
+      "runner_sha256": "5f6f2f38d9a4bb0ab9c0553ead4b1c563546c8ec4b9763ed275627411ae84b43",
+      "matching_runner_source_present": false
+    },
+    {
+      "producer_report_path": "/tmp/planora-muni-fspsx-hall-allcells-v23-report.json",
+      "producer_report_sha256": "d25ba3a14cdbc80b31c85bd968c8d3a417896377561d251bb5fa7a5196ef4166",
+      "runner_sha256": "95cac37f973618059fd9633a80ea0a2bf84dd5d2a382f8eff36af9ea0501fde9",
+      "matching_runner_source_present": false
+    },
+    {
+      "producer_report_path": "/tmp/planora-muni-fspsx-hall-property-v21-report.json",
+      "producer_report_sha256": "7157fd32c66cdc61e9774deecb86675e44b1fdcfd0c8ed02848a06950eac666f",
+      "runner_sha256": "5c9a915050e28ec9de77c72ead7f671c662853d7f34522e95e06a1d26eeca521",
+      "matching_runner_source_present": false
+    }
+  ],
+  "fairness": {
+    "available_source_static_scan_found_competitor_solution_read": false,
+    "available_source_static_scan_found_competitor_schedule_read": false,
+    "available_source_static_scan_found_external_placement_hint": false,
+    "component_hint_is_computed_from_planora_instance_domains": true,
+    "v35_hints_are_computed_from_planora_checkpoint_and_resume_state": true,
+    "competitor_or_external_schedule_absence_fully_proven_for_recursive_lineage": false,
+    "derivation_admissible": false
+  }
+}

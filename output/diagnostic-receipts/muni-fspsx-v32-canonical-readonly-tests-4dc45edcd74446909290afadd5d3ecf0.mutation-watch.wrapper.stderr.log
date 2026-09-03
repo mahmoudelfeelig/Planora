@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "<stdin>", line 132, in <module>
+  File "<stdin>", line 124, in await_control
+RuntimeError: watcher stopped before cleanup authorization

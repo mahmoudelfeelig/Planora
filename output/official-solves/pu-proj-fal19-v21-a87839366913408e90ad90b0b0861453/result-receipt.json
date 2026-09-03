@@ -1,0 +1,83 @@
+{
+  "schema": "planora.itc2019.official-launch-result.v1",
+  "instance": "pu-proj-fal19",
+  "diagnostic_chain": "puproj_v21",
+  "launch_id": "a87839366913408e90ad90b0b0861453",
+  "completed_utc": "2026-08-27T01:27:28Z",
+  "evidence_completed_utc": "2026-08-27T01:31:00Z",
+  "decision": "REJECTED_FAIL_CLOSED",
+  "admissible_as_solution": false,
+  "automatic_retry_authorized": false,
+  "outer_exit_code": 2,
+  "supervisor_status": "FAILED",
+  "breach": null,
+  "child_exit_code": 1,
+  "observed_child_elapsed_seconds": 267.7216440609991,
+  "official_instance_opened": true,
+  "official_solution_xml_published": false,
+  "solver_child_process_started": false,
+  "solver_execution_started": false,
+  "failure": {
+    "type": "RUNNER_RSS_PEAK_GUARD_AFTER_SOLVE_RETURN",
+    "exception": "MemoryError",
+    "message": "runner RSS ceiling reached during fresh solve return",
+    "runner_guard_metric": "RUSAGE_SELF_RU_MAXRSS",
+    "runner_guard_limit_kib": 1400000,
+    "phase": "fresh solve return"
+  },
+  "resource_evidence": {
+    "peak_process_group_rss_kib": 1523728,
+    "peak_process_group_vmswap_kib": 0,
+    "process_group_rss_limit_kib": 1550000,
+    "peak_whole_launch_rss_kib": 1590004,
+    "peak_whole_launch_vmswap_kib": 0,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 1590004,
+    "whole_launch_memory_limit_kib": 1600000,
+    "remaining_whole_launch_headroom_kib": 9996,
+    "resource_cap_breach": false,
+    "post_exit_memavailable_kib": 2341400
+  },
+  "cleanup_evidence": {
+    "supervisor_reported_empty": true,
+    "supervisor_initial_owned_pids": [],
+    "supervisor_final_owned_pids": [],
+    "supervisor_leader_generation_gone": true,
+    "cleanup_errors": [],
+    "post_outer_exit_matching_processes": 0,
+    "scratch_directory_final_entries": []
+  },
+  "hash_evidence": {
+    "prelaunch_pin_check": "38_OF_38_MATCH_PLUS_WSL_PYTHON_MATCH",
+    "final_source_rehash": "PASS",
+    "supervisor_hash_stable": true
+  },
+  "artifacts": {
+    "launch_plan": {
+      "path": "output/official-solves/pu-proj-fal19-v21-a87839366913408e90ad90b0b0861453/launch-plan.json",
+      "sha256": "202a9c74229869f3027908339726495d1a2e00a0635842d371111deeedd55ea4"
+    },
+    "supervisor_envelope": {
+      "path": "output/official-solves/pu-proj-fal19-v21-a87839366913408e90ad90b0b0861453/launch.stdout.json",
+      "size": 160193,
+      "sha256": "3410ecc99970a70f19770260f0b4cfc801a5eeea5ef115ce1288d18d1b9c7773"
+    },
+    "outer_stderr": {
+      "path": "output/official-solves/pu-proj-fal19-v21-a87839366913408e90ad90b0b0861453/launch.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "child_stderr": {
+      "path": "output/official-solves/pu-proj-fal19-v21-a87839366913408e90ad90b0b0861453/child.stderr.log",
+      "size": 683,
+      "sha256": "f628d7e5efa68ab8195ba0cf46055fbeb220a6eb016a62421f7eb9932c7fb639"
+    },
+    "published_solution": null,
+    "runner_report": null
+  },
+  "errors": [
+    "child_stdout_invalid_json",
+    "runner_hash_claim_mismatch",
+    "complete_output_or_exit_mismatch:1"
+  ],
+  "next_action": "Do not admit or upload and do not retry v21. Build a fresh sealed revision that resolves the post-return peak-versus-live runner memory guard without increasing the authoritative whole-launch cap, then repeat static verification, a no-solver probe, and independent exactly-once authorization."
+}

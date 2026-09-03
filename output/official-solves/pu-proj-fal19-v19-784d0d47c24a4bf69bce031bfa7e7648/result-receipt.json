@@ -1,0 +1,61 @@
+{
+  "schema": "planora.itc2019.official-launch-result.v1",
+  "instance": "pu-proj-fal19",
+  "launch_id": "784d0d47c24a4bf69bce031bfa7e7648",
+  "decision": "REJECTED_FAIL_CLOSED",
+  "admissible_as_solution": false,
+  "outer_exit_code": 2,
+  "supervisor_status": "FAILED",
+  "breach": "whole_launch_vmrss_plus_vmswap_limit",
+  "observed_child_elapsed_seconds": 196.92668435299856,
+  "official_instance_opened": true,
+  "official_solution_xml_published": false,
+  "solver_child_process_started": false,
+  "solver_execution_started": false,
+  "child_exit_code": -1,
+  "resource_evidence": {
+    "peak_process_group_rss_kib": 1336416,
+    "peak_process_group_vmswap_kib": 0,
+    "process_group_rss_limit_kib": 1400000,
+    "process_group_vmswap_limit_kib": 131072,
+    "peak_whole_launch_rss_kib": 1400740,
+    "peak_whole_launch_vmswap_kib": 0,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 1400740,
+    "whole_launch_memory_limit_kib": 1400000,
+    "over_limit_kib": 740,
+    "post_exit_memavailable_kib": 2218812
+  },
+  "cleanup_evidence": {
+    "supervisor_reported_empty": false,
+    "supervisor_final_owned_pids": [3],
+    "supervisor_leader_generation_gone": false,
+    "post_outer_exit_matching_processes": 0,
+    "interpretation": "The supervisor rejected the run because its five-second post-kill drain did not prove the process generation empty. Bubblewrap exit subsequently removed the namespace; a host-side process-table check found no matching residual. The run remains rejected."
+  },
+  "artifacts": {
+    "launch_plan": {
+      "path": "output/official-solves/pu-proj-fal19-v19-784d0d47c24a4bf69bce031bfa7e7648/launch-plan.json"
+    },
+    "supervisor_envelope": {
+      "path": "output/official-solves/pu-proj-fal19-v19-784d0d47c24a4bf69bce031bfa7e7648/launch.stdout.json",
+      "size": 163511,
+      "sha256": "f1e4a1cc8e3a64b5b809668293acba0cd1174b0173246fb55af79720e8fd4b61"
+    },
+    "outer_stderr": {
+      "path": "output/official-solves/pu-proj-fal19-v19-784d0d47c24a4bf69bce031bfa7e7648/launch.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "published_solution": null,
+    "runner_report": null
+  },
+  "errors": [
+    "child_stdout_invalid_json",
+    "runner_hash_claim_mismatch",
+    "complete_output_or_exit_mismatch:-1",
+    "child_wait_timeout_after_termination",
+    "resource_or_signal_breach:whole_launch_vmrss_plus_vmswap_limit",
+    "process_group_cleanup_incomplete"
+  ],
+  "next_action": "Do not admit or upload. Resolve the memory-cap and drain-proof contracts in a newly frozen chain, repeat the contained probe, and launch only after a new independent GO."
+}

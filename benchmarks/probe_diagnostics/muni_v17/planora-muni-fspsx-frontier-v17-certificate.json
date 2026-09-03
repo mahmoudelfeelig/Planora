@@ -1,0 +1,94 @@
+{
+  "canonical_certificate_path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-certificate.json",
+  "diagnostic_launch_status": "READY_FOR_ONE_BOUNDED_SEALED_IMPORT_PROBE",
+  "files": {
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-bootstrap.py": "370acafcb53b5fdabfe602baec98f2cedf5fca4f581671dac219ce7d1f3ef67a",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-freeze-manifest.json": "ceb97e6d74ac7e68dcd2f22f4749870d63b384b99a13d1347b818d7d5bffe683",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-generic-validator.py": "6eabef6ba3e02297a3eb7723cf549360f1239d8e5fbc0ef48ed2b7d19ff5918a",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-inline-trust-root.txt": "a3ea0d882a935ac119f44366bda493a4a36caada855c1df4e861c508dd8abd0b",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-launcher.sh": "54a4fa69d3d382bf0c04fde96f8f209db0e2c2770c799d3f8ef2e9193a2873da",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-minimal-tcb.sha256": "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-runner.py": "5e10b3ad9e33d3f70212b3d44f2b691e5828997d7571588146edde4775830eb9",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-stdlib.sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-supervisor.py": "681e5fa4e16ce2210952c54c2f9a7be930fcb0808d4be7c33884473e0aa8fa9b",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-frontier-v17-tests.py": "dce9044b5562518390b846e5fbce99522d92f1603d4da02d1a093303021a2bd2",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora-muni-fspsx-v35-derivation-audit-v1.json": "aa7657d1c3e3c2362312ae0a07013373640fc5b777aa069dca107420393b8dc4",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v17/planora_muni_v17_benchmarks_stub.py": "40488f0af25e5457841ef6577bfdb3fda2a65a7facd5e608e03d5be2084688f2"
+  },
+  "finding_fixed": "v15 rejected nonempty child stdio without retaining sufficient bounded evidence to distinguish runtime output, a traceback, or report-transport failure",
+  "implementation": {
+    "accepted_child_stderr_bytes": 0,
+    "accepted_child_stdout_bytes": 0,
+    "child_exit_refreshed_after_final_cleanup": true,
+    "diagnostic_tail_encoding": "base64",
+    "diagnostic_tail_max_bytes_per_stream": 4096,
+    "rejection_diagnostics_structure": {
+      "report_presence_fields": [
+        "parent_created",
+        "retained_fd_present",
+        "named_entry_present",
+        "named_entry_matches_retained_fd",
+        "size_bytes",
+        "sha256",
+        "payload_consumed",
+        "contract_valid",
+        "inspection_error"
+      ],
+      "stream_fields": [
+        "present",
+        "size_bytes",
+        "sha256",
+        "identity_matches_parent_creation",
+        "inspection_error",
+        "tail_encoding",
+        "tail_base64",
+        "tail_bytes",
+        "tail_limit_bytes",
+        "tail_truncated"
+      ],
+      "top_level_fields": [
+        "schema",
+        "child_started",
+        "child_exit",
+        "report_presence",
+        "stdout",
+        "stderr",
+        "primary_failure_classification",
+        "failure_classifications"
+      ]
+    },
+    "rejection_diagnostics_omitted_on_success": true,
+    "report_descriptor_transport_preserved": true,
+    "sealed_import_probe_only": true
+  },
+  "implementation_verification": {
+    "bash_syntax": "PASS",
+    "certificate_json_parse": "PASS",
+    "focused_suite": "StaticContractTests SealedImportProbeTests",
+    "focused_tests_failed": 0,
+    "focused_tests_passed": 34,
+    "focused_tests_skipped": 1,
+    "focused_tests_total": 35,
+    "freeze_manifest_file_row_mismatches": 0,
+    "freeze_manifest_file_rows_replayed": 51,
+    "manifest_json_parse": "PASS",
+    "official_input_opened": false,
+    "progress_or_checkpoint_opened": false,
+    "sealed_import_probe_child_run": false,
+    "solver_run": false
+  },
+  "official_launch_status": "NO_GO",
+  "resource_gate": {
+    "heavy_probe_status": "NOT_RUN_BY_SCOPE",
+    "required_memavailable_kib": 1900000
+  },
+  "schema": "planora.muni-fspsx.frontier-v17.implementation-certificate.v1",
+  "scope": "immutable v17 diagnostic freeze only; one measured sealed-import probe remains required; no official input, progress, checkpoint, heavy probe, or solver access occurred",
+  "status": "GO_FOR_ONE_BOUNDED_DIAGNOSTIC_SEALED_IMPORT_PROBE_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "v16_preservation": {
+    "all_13_frozen_v16_artifact_hashes_replayed": true,
+    "v16_certificate_sha256": "4fafe8e0cd5ee2c36ea226fe97daa5d950b5b7ee567e3a6f30fa4820644449be",
+    "v16_files_modified": false,
+    "v16_freeze_manifest_sha256": "43eebfa7a4eebd561830b2b20b0ce684c250dd03c5d901b20993e35feb968306"
+  }
+}

@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "<stdin>", line 116, in <module>
+  File "<stdin>", line 68, in sample
+  File "<stdin>", line 48, in rows
+  File "<stdin>", line 33, in nsid
+PermissionError: [Errno 13] Permission denied: '/proc/1/ns/mnt'

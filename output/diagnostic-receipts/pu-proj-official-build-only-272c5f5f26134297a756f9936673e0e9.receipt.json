@@ -1,0 +1,104 @@
+{
+  "authorization_path": "D:\\Stuff\\Projects\\Sites\\Planora\\output\\diagnostic-receipts\\pu-proj-timetable-build-only-authorization-20260827T061539Z.receipt.json",
+  "authorization_sha256": "f5750683e01bb2e33275f310129c71a2ba1cecade7cb57331ed00353b9c08bc7",
+  "authorization_snapshot": {
+    "build_time_limit_seconds": 600.0,
+    "construction_limits": {
+      "max_domain_values": 2500000,
+      "max_required_group_cells": 2000000,
+      "max_required_pair_relations": 2000000,
+      "max_room_pair_evaluations": 2500000,
+      "max_room_pair_evaluations_per_pair": 250000,
+      "max_sparse_room_constraints": 2500000
+    },
+    "created_at_utc": "2026-08-27T06:15:39.6514772Z",
+    "expected_admission": {
+      "prepared_relations": 12041,
+      "room_pair_evaluations": 2377059,
+      "sparse_room_constraints": 1274444
+    },
+    "input_path": "data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/pu-proj-fal19.xml",
+    "input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "min_available_physical_memory_bytes": 3221225472,
+    "random_seed": 0,
+    "reviewed_admission_evidence": {
+      "cp_model_constructor_calls_during_review": 0,
+      "cp_solver_constructor_calls_during_review": 0,
+      "independent_verdict": "GO_FOR_ONE_BOUNDED_OFFICIAL_INPUT_BUILD_ONLY_ADMISSION_CHECK",
+      "path": "output/diagnostic-receipts/pu-proj-sameattendees-static-admission-20260827T060819Z.receipt.json",
+      "sha256": "faf895884249bcd2ef8d576600504f6b80cf2cc106a782e920f01ae90cc997b2"
+    },
+    "run_id": "272c5f5f26134297a756f9936673e0e9",
+    "runner_path": "scripts/run_pu_official_build_only_receipt.py",
+    "runner_sha256": "290b7522de1ec58d5b4fd4f61bdb060fedca901118ac124012c8590033bb319b",
+    "schema": "planora.itc2019.pu-official-build-only-authorization.v1",
+    "scope": {
+      "attempts_authorized": 1,
+      "cp_model_construction_authorized": true,
+      "cp_solver_construction_authorized": false,
+      "official_input_parse_authorized": true,
+      "performance_claim_authorized": false,
+      "quality_claim_authorized": false,
+      "solution_output_authorized": false,
+      "solver_run_authorized": false
+    },
+    "source_sha256": {
+      "benchmarks/itc2019.py": "5577c6227037fa615df741a4b0b351b05ec11c7c4ce4ebe9a4489554122b2c1f",
+      "benchmarks/itc2019_factorized.py": "959be9e028773492538c4a541892955d37c5cdeb02cfaa762d8b9ce3fff48f02",
+      "benchmarks/itc2019_timetable_factorized.py": "6cd00de292d82bab6ac24a841c93290d1fd4feb8acc3053d96c4e6b2b43e9df3"
+    },
+    "status": "AUTHORIZED_FOR_ONE_BUILD_ONLY_ATTEMPT",
+    "workers": 1
+  },
+  "completed_at_utc": "2026-08-27T06:27:21.561433+00:00",
+  "elapsed_wall_seconds": 0.0011374000023351982,
+  "error": {
+    "message": "parse occurred during import",
+    "traceback": "Traceback (most recent call last):\n  File \"D:\\Stuff\\Projects\\Sites\\Planora\\scripts\\run_pu_official_build_only_receipt.py\", line 216, in main\n    problem = parse_itc2019_xml(INPUT_PATH)\n  File \"<stdin>\", line 32, in import_guard_parse\nAssertionError: parse occurred during import\n",
+    "type": "AssertionError"
+  },
+  "expected_admission": {
+    "prepared_relations": 12041,
+    "room_pair_evaluations": 2377059,
+    "sparse_room_constraints": 1274444
+  },
+  "input_path": "D:\\Stuff\\Projects\\Sites\\Planora\\data\\external\\itc2019-mpp-c33d15797686\\raw\\data\\input\\ITC-2019\\pu-proj-fal19.xml",
+  "input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+  "invocation_started": true,
+  "limits": {
+    "build_time_limit_seconds": 600.0,
+    "construction": {
+      "max_domain_values": 2500000,
+      "max_required_group_cells": 2000000,
+      "max_required_pair_relations": 2000000,
+      "max_room_pair_evaluations": 2500000,
+      "max_room_pair_evaluations_per_pair": 250000,
+      "max_sparse_room_constraints": 2500000
+    },
+    "min_available_physical_memory_bytes": 3221225472,
+    "preflight_available_physical_memory_bytes": 3725164544,
+    "random_seed": 0,
+    "workers": 1
+  },
+  "outcome": "ERROR",
+  "result": null,
+  "run_id": "272c5f5f26134297a756f9936673e0e9",
+  "runner_path": "D:\\Stuff\\Projects\\Sites\\Planora\\scripts\\run_pu_official_build_only_receipt.py",
+  "runner_sha256": "290b7522de1ec58d5b4fd4f61bdb060fedca901118ac124012c8590033bb319b",
+  "schema": "planora.itc2019.pu-official-build-only-attempt.v1",
+  "scope": {
+    "model_construction_authorized": true,
+    "official_input_used": true,
+    "performance_claim_authorized": false,
+    "quality_claim_authorized": false,
+    "solution_output_created": false,
+    "solver_construction_authorized": false,
+    "solver_run": false
+  },
+  "source_sha256": {
+    "benchmarks/itc2019.py": "5577c6227037fa615df741a4b0b351b05ec11c7c4ce4ebe9a4489554122b2c1f",
+    "benchmarks/itc2019_factorized.py": "959be9e028773492538c4a541892955d37c5cdeb02cfaa762d8b9ce3fff48f02",
+    "benchmarks/itc2019_timetable_factorized.py": "6cd00de292d82bab6ac24a841c93290d1fd4feb8acc3053d96c4e6b2b43e9df3"
+  },
+  "started_at_utc": "2026-08-27T06:27:21.560301+00:00"
+}

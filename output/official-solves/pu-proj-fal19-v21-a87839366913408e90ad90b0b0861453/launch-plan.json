@@ -1,0 +1,129 @@
+{
+  "schema": "planora.itc2019.official-launch-plan.v1",
+  "instance": "pu-proj-fal19",
+  "diagnostic_chain": "puproj_v21",
+  "launch_id": "a87839366913408e90ad90b0b0861453",
+  "planned_utc": "2026-08-27T01:20:54Z",
+  "authorization_receipt": {
+    "path": "output/diagnostic-receipts/pu-proj-v21-sealed-import-probe-20260827T0059Z.receipt.json",
+    "sha256": "49466fddb16a3804ebe1c78ed749961c65d86749bab4ff8282a257eedb91d59e"
+  },
+  "independent_review": {
+    "decision": "GO_FOR_EXACTLY_ONE_ISOLATED_OFFICIAL_LAUNCH",
+    "reviewer_count": 2,
+    "automatic_retry_authorized": false,
+    "resource_cap_raise_authorized": false
+  },
+  "retained_final_tests": {
+    "path": "output/diagnostic-receipts/pu-proj-v21-final-lightweight-itc2019-tests-20260827T0110Z.log",
+    "sha256": "4a6308cc7521081b64bfd66b8b129f071583eb9a053f0d3f17dcf8e7a481c9de",
+    "result": "450_PASS_2_EXPECTED_SKIP_0_FAILURES"
+  },
+  "prelaunch_pin_check": {
+    "checked_utc": "2026-08-27T01:19:48Z",
+    "windows_visible_pins_checked": 38,
+    "expected_capture_labels": 32,
+    "all_match": true,
+    "mismatches": [],
+    "wsl_python_binary_match": true
+  },
+  "prelaunch_memory_samples_kib": [
+    2292360,
+    2298756
+  ],
+  "prelaunch_memory_sample_interval_seconds": 5.200317144393921,
+  "required_prelaunch_memory_floor_kib": 1900000,
+  "heavy_wsl_process_gate": "PASS_EMPTY",
+  "host_output_root": "/tmp/planora-puproj-v21-official-a87839366913408e90ad90b0b0861453",
+  "host_output_root_requirements": {
+    "unique": true,
+    "initially_empty": true,
+    "mode": "0700",
+    "bound_as_container_tmp": true
+  },
+  "pinned_hashes": {
+    "bootstrap": "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de",
+    "launcher": "4f76f536b0f110af644a95da920157a7df9acacbb53d6f213b5b82589b04b82a",
+    "supervisor": "2fee18265d421b1d7c2a81b867bce4175ff0b657e0d6cb6f52a3f87701e8ca19",
+    "freeze_manifest": "916faaf7f67158d12cfb43e90bf21a690087a5866fe29afcbc0d8822d0328dc8",
+    "runner": "ef2fdc7d68167f421eab3d3544969795ed18e78b02f2b7fff9b5db9aa4374e05",
+    "official_input": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "python_binary": "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273"
+  },
+  "resource_contract": {
+    "process_group_rss_limit_kib": 1550000,
+    "process_group_vmswap_limit_kib": 131072,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1600000,
+    "runtime_memavailable_floor_kib": 450000,
+    "address_space_cap_bytes": 2800000000,
+    "child_deadline_seconds": 300.0,
+    "supervisor_wall_seconds": 330.0,
+    "outer_timeout_seconds": 360.0
+  },
+  "argv": [
+    "wsl.exe",
+    "-d",
+    "Ubuntu",
+    "--",
+    "/usr/bin/timeout",
+    "360s",
+    "/usr/bin/bwrap",
+    "--die-with-parent",
+    "--new-session",
+    "--unshare-all",
+    "--ro-bind",
+    "/",
+    "/",
+    "--bind",
+    "/tmp/planora-puproj-v21-official-a87839366913408e90ad90b0b0861453",
+    "/tmp",
+    "--dev",
+    "/dev",
+    "--proc",
+    "/proc",
+    "--clearenv",
+    "--setenv",
+    "PATH",
+    "/usr/bin:/bin",
+    "--setenv",
+    "LANG",
+    "C.UTF-8",
+    "--setenv",
+    "LC_ALL",
+    "C.UTF-8",
+    "--setenv",
+    "TZ",
+    "UTC",
+    "--cap-drop",
+    "ALL",
+    "--chdir",
+    "/mnt/d/Stuff/Projects/Sites/Planora",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-bootstrap",
+    "--expected-bootstrap-sha256",
+    "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de",
+    "--expected-launcher-sha256",
+    "4f76f536b0f110af644a95da920157a7df9acacbb53d6f213b5b82589b04b82a",
+    "--launcher-path",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v21/planora-puproj-frontier-joint-v21-launcher.py",
+    "--manifest-path",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v21/planora-puproj-frontier-joint-v21-freeze.json",
+    "--expected-manifest-sha256",
+    "916faaf7f67158d12cfb43e90bf21a690087a5866fe29afcbc0d8822d0328dc8",
+    "--launch"
+  ],
+  "acceptance": {
+    "outer_exit_code": 0,
+    "supervisor_status": "COMPLETE_VALID",
+    "errors": [],
+    "breach": null,
+    "child_exit_code": 0,
+    "process_group_cleanup_empty": true,
+    "leader_generation_gone": true,
+    "required_artifacts": [
+      "solution.xml",
+      "runner-report.json"
+    ],
+    "local_generic_validation": "PASS",
+    "official_website_validation_required": true
+  }
+}

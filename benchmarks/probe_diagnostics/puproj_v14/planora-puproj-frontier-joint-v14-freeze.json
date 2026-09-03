@@ -1,0 +1,119 @@
+{
+  "schema": "planora.pu-proj.frontier-joint-v14-freeze.v1",
+  "created_utc": "2026-08-26T16:59:54Z",
+  "repository_commit_observed": "43028f327ee94d648bb8ce3479e3bd9276aad52a",
+  "native_bootstrap_protocol": "planora.native-sealed-python-bootstrap.v1",
+  "verdict": "GO_FOR_INDEPENDENT_CODE_REVIEW_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "solver_input_mode": "OFFICIAL_INPUT_ONLY_FRESH",
+  "fairness": {
+    "official_input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "expected_classes": 8813,
+    "expected_students": 38437,
+    "checkpoint_or_incumbent_path_configured": false,
+    "checkpoint_or_incumbent_accessed": false,
+    "competitor_schedule_or_result_used": false,
+    "competitor_placement_or_hint_used": false
+  },
+  "trust_root": {
+    "protocol": "planora.native-sealed-python-bootstrap.v1",
+    "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v14/planora-puproj-frontier-joint-v14-bootstrap",
+    "sha256": "ced513c673e12cc0923e2261bff37287011eb52d9501ef1aa99d830f8a5e5c7b",
+    "size": 718784,
+    "source_path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v14/planora-puproj-frontier-joint-v14-bootstrap.c",
+    "source_sha256": "5e2e00881d0a5a0873999747019411aa0184df1f5945dbacda4f320f0d997425",
+    "source_size": 17628,
+    "elf": "ELF64 x86-64 ET_EXEC static stripped; no PT_INTERP",
+    "compiler_path": "/usr/bin/gcc",
+    "compiler_sha256": "1b99826121ae6682a634e5efe09bd3e3df58ce58e0b28f849114ab5b89139c26",
+    "libgcc_sha256": "d9376c55f97863a4e5fbb6c6beca2591b319bf786f3a7ca56da8964c5662171f",
+    "libc_sha256": "b6b741da9caadc1a3b58ad990ba3d4bca0ea80e361f90ccd4c01e7f37dbabb20",
+    "build_argv": ["gcc", "-std=c17", "-O2", "-Wall", "-Wextra", "-Werror", "-static", "-fno-ident", "-Wl,--build-id=none", "-s", "-o", "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v14/planora-puproj-frontier-joint-v14-bootstrap", "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v14/planora-puproj-frontier-joint-v14-bootstrap.c"],
+    "reproducible_rebuild_sha256": "ced513c673e12cc0923e2261bff37287011eb52d9501ef1aa99d830f8a5e5c7b",
+    "rebuild_byte_identical": true
+  },
+  "artifacts": {
+    "launcher": {"path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v14/planora-puproj-frontier-joint-v14-launcher.py", "sha256": "c75e0236a99dc60ec9b5bf1426e25fd61864540adad721b339b1dd605366b849", "size": 6517},
+    "supervisor": {"path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v14/planora-puproj-frontier-joint-v14-supervisor.py", "sha256": "995d592eff641800c01b1621e06ff13bcfbffb1fe4106ad9ab93fa44f294e20f", "size": 157738},
+    "runner": {"path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v14/planora-puproj-frontier-joint-v14-runner.py", "sha256": "a5983d898eee5240bca1e23901f4f6d5e0ee3025b730b42205ea530f509bd9de", "size": 90846},
+    "generic_validator": {"path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v14/planora-puproj-frontier-joint-v14-generic-validator.py", "sha256": "6a0809dab1787967147f02d788511705ef7eca661e07edc128ad66792ce9a2af", "size": 4364, "fresh_isolated_process_required": true},
+    "tests": {"path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v14/planora-puproj-frontier-joint-v14-tests.py", "sha256": "c8ecb191a17fe6733d757518f04306e854dd9c86ec151f7bfc79f4571c409dc5", "size": 63405, "lightweight_test_count": 60},
+    "repository_violation_lns_test": {"path": "/mnt/d/Stuff/Projects/Sites/Planora/tests/test_itc2019_violation_lns.py", "sha256": "a738894d4393d8d5bf8a240f493fa92e2e12e820cd885b40518e13cc0d91efdb", "review_evidence_only": true}
+  },
+  "source_closure": {
+    "dynamic_module_count": 13,
+    "itc2019_violation_lns_sha256": "af902e522b980cd511f4633c39d7f76ccddcd417f94b8cdc8785f389a831317b",
+    "live_digest_regression": "PASS"
+  },
+  "runtime_trust": {
+    "python_path": "/usr/bin/python3.12",
+    "python_sha256": "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273",
+    "system_python_exact_hash_allowlist_entries": 125,
+    "sealed_runtime_bundle_files": 3077,
+    "sealed_runtime_bundle_bytes": 191956270
+  },
+  "resource_contract": {
+    "initial_memavailable_floor_kib": 1900000,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1400000,
+    "child_process_group_rss_limit_kib": 1400000,
+    "child_process_group_vmswap_limit_kib": 131072,
+    "supervisor_hard_wall_seconds": 330.0,
+    "child_acceptance_cooperative_deadline_seconds": 300.0
+  },
+  "sealed_import_probe_contract": {
+    "chain_mode": "--sealed-import-probe",
+    "hard_wall_seconds": 180.0,
+    "initial_memavailable_floor_kib": 1900000,
+    "runtime_memavailable_floor_kib": 600000,
+    "process_group_rss_limit_kib": 1200000,
+    "process_group_vmswap_limit_kib": 131072,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1300000,
+    "identity_pinned_accounting_and_cleanup_preserved": true,
+    "strict_nested_child_report_and_final_elapsed_preserved": true,
+    "rejection_diagnostics_before_success_schema_admission": true,
+    "rejection_classes": ["empty_stdout", "stdout_decoding_failure", "json_decode_failure", "non_object_json", "schema_key_mismatch", "child_exit_failure", "child_stderr_failure", "success_schema_admission_rejected"],
+    "stderr_tail_encoding": "bounded_base64_exact_bytes",
+    "supervisor_evidence_transport": "sealed_memfd_creation_binding_retained_fd_pread",
+    "trusted_supervisor_report_pathnames": false,
+    "authoritative_supervisor_report_path": null,
+    "single_final_stdout_json_envelope": true,
+    "stdout_envelope_deadline_checked_after_write": true,
+    "post_publish_and_during_pread_aliases_non_authoritative": true,
+    "post_final_replay_aliases_purged": true,
+    "all_supervisor_report_aliases_absent_before_acceptance": true,
+    "non_authoritative_audit_copy_emitted": false,
+    "official_input_capture_prohibited": true,
+    "checkpoint_capture_prohibited": true,
+    "solver_child_process_started": false,
+    "official_solution_publication_prohibited": true,
+    "v13_observed_failure": "runner private-pycache/sys.path/output binding rejected",
+    "v13_observed_stderr_sha256": "4f5b7050c4246721da4448bf9a5b99d1017be701f224a59567b118a1697d2349",
+    "root_cause": "probe command selected .pycache-v13-probe while the environment and output-derived runner contract selected .pycache-v13",
+    "v14_repair": "probe command and child environment now select the same output-bound .pycache-v14 prefix",
+    "full_heavy_probe_status": "NOT_RUN_BY_REQUEST"
+  },
+  "cleanup_contract": {
+    "parent_controlled_runner_start_barrier": true,
+    "immutable_leader_generation_pidfd_registry": true,
+    "blind_killpg_prohibited": true,
+    "wait_failure_cannot_skip_total_drain": true,
+    "cleanup_errors_fail_closed_after_drain": true
+  },
+  "verification": {
+    "python_compile": "PASS",
+    "lightweight_tests": "60_of_60_PASS",
+    "full_lightweight_itc2019_suite": "NOT_RUN_FOR_V14_DIAGNOSTIC_REPAIR_CHAIN",
+    "ruff_check": "PASS",
+    "native_rebuild_byte_identical": true,
+    "full_sealed_runtime_import_probe": "NOT_RUN_BY_REQUEST",
+    "full_probe_minimum_mem_available_kib": 1900000,
+    "official_input_opened": false,
+    "checkpoint_content_opened": false,
+    "solver_child_started": false,
+    "official_solution_published": false,
+    "official_launch_authorized": false
+  },
+  "preservation": {
+    "puproj_v13_all_named_artifact_hashes": "PASS_UNCHANGED",
+    "files_outside_diagnostic_directory_modified": false
+  }
+}

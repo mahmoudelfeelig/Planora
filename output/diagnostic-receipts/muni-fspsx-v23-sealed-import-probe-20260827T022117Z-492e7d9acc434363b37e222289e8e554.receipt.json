@@ -1,0 +1,79 @@
+{
+  "schema": "planora.itc2019.diagnostic-probe-result-receipt.v1",
+  "instance": "muni-fspsx-fal17",
+  "diagnostic_chain": "muni_v23",
+  "probe_id": "492e7d9acc434363b37e222289e8e554",
+  "completed_utc": "2026-08-27T02:23:32Z",
+  "decision": "REJECTED_FAIL_CLOSED_SOURCE_PIN_DRIFT",
+  "official_launch_authorized": false,
+  "automatic_probe_retry_authorized": false,
+  "process_exit_code": 2,
+  "preprobe_gate": {
+    "memavailable_samples_kib": [2345856, 2339212],
+    "sample_interval_seconds": 5.2,
+    "required_floor_kib": 1900000,
+    "competing_heavy_wsl_processes": []
+  },
+  "probe_root": {
+    "path": "/tmp/planora-muni-v23-probe-492e7d9acc434363b37e222289e8e554",
+    "mode": "0700",
+    "owner": "elephant:elephant",
+    "staged_derivation_audit_sha256": "aa7657d1c3e3c2362312ae0a07013373640fc5b777aa069dca107420393b8dc4"
+  },
+  "frozen_vector": {
+    "argv_count": 48,
+    "template_argv_nul_sha256": "e8c13c7cc660ed38e21bfa0ebf5b491c19061c77f808d18838e6093b38c0de82",
+    "certificate_sha256": "114dcaf09b3eca05add37cdc7bb26aa35320118d17610f009a09690c2154679f",
+    "freeze_manifest_sha256": "291643f45c93c31199e4b3294eb1edcc36d867abc760653375e3833dbea9d905"
+  },
+  "envelope": {
+    "accepted": false,
+    "status": "REJECTED",
+    "stop_reason": "probe_exception",
+    "child_exit": null,
+    "child_started": false,
+    "final_elapsed_seconds": 61.57031086800271,
+    "peak_whole_launch_set_union_memory_kib": 0,
+    "primary_failure_classification": "child_not_started",
+    "failure_classifications": [
+      "child_not_started",
+      "report_not_created",
+      "probe_exception"
+    ],
+    "errors": [
+      "RuntimeError: capture source itc2019_decomposed hash drift: f8148d54a352b2b1769ef58b3d82008be660016b2d7168553c94a5941a8fdb43"
+    ]
+  },
+  "source_drift": {
+    "path": "benchmarks/itc2019_decomposed.py",
+    "certificate_expected_sha256": "3f4b92f91867cd1205f1702f36923b3c19cb8ad8d39b43d34a3b15e07f502e05",
+    "observed_during_probe_sha256": "f8148d54a352b2b1769ef58b3d82008be660016b2d7168553c94a5941a8fdb43",
+    "post_exit_sha256_while_pu_optimization_still_active": "b4da091fae2d4d2a2400d700eddf06ce724db269a9e50fb01efd9d63c3cab66d",
+    "classification": "CONCURRENT_AUTHORIZED_PU_CORE_OPTIMIZATION_INVALIDATED_FROZEN_MUNI_SOURCE_PIN"
+  },
+  "safety": {
+    "official_instance_opened": false,
+    "progress_or_checkpoint_opened": false,
+    "child_process_started": false,
+    "solver_execution_started": false,
+    "solution_published": false,
+    "post_exit_matching_processes": 0,
+    "post_exit_memavailable_kib": 2338500,
+    "remaining_probe_root_files": [
+      "planora-muni-fspsx-v35-derivation-audit-v1.json"
+    ]
+  },
+  "evidence": {
+    "stdout": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v23-sealed-import-probe-20260827T022117Z-492e7d9acc434363b37e222289e8e554.stdout.json",
+      "size": 1387,
+      "sha256": "16f9526163cbd6e123980d3fdb86e67cd95034e6bebf0690f209ef67507d6259"
+    },
+    "stderr": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v23-sealed-import-probe-20260827T022117Z-492e7d9acc434363b37e222289e8e554.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "next_required_work": "Wait for the PU core optimization hash to stabilize, build a new MUNI chain with the new source pin, rerun canonical verification, and obtain a fresh probe authorization. Do not retry v23."
+}

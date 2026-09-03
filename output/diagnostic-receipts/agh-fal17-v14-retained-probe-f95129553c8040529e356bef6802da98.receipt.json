@@ -1,0 +1,109 @@
+{
+  "schema": "planora.itc2019.retained-probe-result.v1",
+  "created_at_utc": "2026-08-27T03:15:35Z",
+  "instance": "agh-fal17",
+  "candidate": "native-v14",
+  "probe_id": "f95129553c8040529e356bef6802da98",
+  "decision": "REJECTED_FAIL_CLOSED_NO_RETRY",
+  "counted_as_probe_pass": false,
+  "official_launch_authorized": false,
+  "official_input_authorized": false,
+  "automatic_retry_authorized": false,
+  "authorization_receipt": {
+    "path": "output/diagnostic-receipts/agh-fal17-v14-retained-probe-authorization-20260827T030610Z.receipt.json",
+    "size": 3083,
+    "sha256": "2e98c7a18870659a23c7103f2b7d26ee24e55b989b55ee92e9cf7d511ad31a86"
+  },
+  "runner": {
+    "path": "scripts/run_agh_v14_retained_probe.sh",
+    "size": 8379,
+    "sha256": "7a7c33849158d0d6c2f09d184924cdb639ddc05935e93bc6c91898868d40edaf"
+  },
+  "artifacts": {
+    "invocations": {
+      "path": "output/diagnostic-receipts/agh-fal17-v14-retained-probe-f95129553c8040529e356bef6802da98.invocations.json",
+      "size": 18685,
+      "sha256": "1a4c76f565563d40d191818931997fc8e5a6c4102ccd967677a9160f6d46d807"
+    },
+    "stdout": {
+      "path": "output/diagnostic-receipts/agh-fal17-v14-retained-probe-f95129553c8040529e356bef6802da98.stdout.json",
+      "size": 10588,
+      "sha256": "51f1c3ef3876e5af9e3444b4c6bc35245648e02b9d770fef45be6a51d27ac439"
+    },
+    "stderr": {
+      "path": "output/diagnostic-receipts/agh-fal17-v14-retained-probe-f95129553c8040529e356bef6802da98.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "exit_code": {
+      "path": "output/diagnostic-receipts/agh-fal17-v14-retained-probe-f95129553c8040529e356bef6802da98.exit-code.txt",
+      "value": 2,
+      "size": 2,
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    }
+  },
+  "preflight": {
+    "status": "PASS",
+    "freeze_sha256": "6522a072ac957abc95e56951dbc7e677809ae13ab4e835ba6372d072f45ea855",
+    "canonical_probe_argv_sha256": "7fb4cb909e149a0fa2124c48b676ecd4dcc6d1f0242dfb37b24d318f4a946543",
+    "official_input_opened": false,
+    "memavailable_samples_kib": [2328772, 2330784],
+    "sample_interval_seconds": 5,
+    "heavy_wsl_process_gate": "PASS_EMPTY"
+  },
+  "outer_result": {
+    "schema": "planora.agh-fal17.native-v14-outer-controller.v1",
+    "status": "FAILED",
+    "breach": "exact_generation_accounting_unavailable",
+    "errors": [
+      "inner_envelope:inner stdout is not one JSON object",
+      "contained_root_exit:-15",
+      "resource_or_signal_breach:exact_generation_accounting_unavailable"
+    ],
+    "contained_root_exit_code": -15,
+    "elapsed_seconds": 27.665752936998615,
+    "root_process_started": true,
+    "probe_child_process_started": true,
+    "solver_child_process_started": false,
+    "official_instance_opened": false,
+    "publication": false,
+    "numeric_process_group_signal_sent": false,
+    "post_exit_empty": true
+  },
+  "peak_accounting": {
+    "process_vmrss_kib": 286040,
+    "process_vmswap_kib": 0,
+    "sealed_reserved_bytes": 202108682,
+    "whole_launch_charged_kib": 483412,
+    "unique_identity_count": 3,
+    "pid_generation_deduplicated": true,
+    "unavailable": [],
+    "vanished": [],
+    "runtime_memavailable_kib": 1889300
+  },
+  "cleanup": {
+    "empty": true,
+    "errors": [],
+    "residual_identities": [],
+    "stable_zero_snapshots": 2,
+    "stable_zero_snapshots_required": 2,
+    "numeric_process_group_signal_sent": false,
+    "post_exit_samples": [
+      {
+        "memavailable_kib": 2327960,
+        "matching_workload_processes": []
+      },
+      {
+        "delay_seconds": 5,
+        "memavailable_kib": 2324768,
+        "matching_workload_processes": []
+      }
+    ],
+    "post_exit_process_note": "The only pgrep match was the read-only audit shell containing its own search expression."
+  },
+  "root_cause_status": {
+    "classification": "PENDING_V15_STATIC_ANALYSIS",
+    "known_boundary": "The controller failed closed on generation accounting uncertainty after the probe child started; there was no solver, official input, or publication activity.",
+    "next_authorized_work": "Build and independently review a preserved AGH v15 chain; no v14 retry."
+  }
+}

@@ -1,0 +1,214 @@
+{
+  "claim_path": "D:\\Stuff\\Projects\\Sites\\Planora\\output\\diagnostic-receipts\\pu-factorized-trusted-synthetic-e2e-6cd00de292d8.receipt.claim.json",
+  "claim_sha256": "a8b85c32a77babcdd6baafa07eb9f225e63a601525d15d31649ebeede7ab5657",
+  "completed_at_utc": "2026-08-27T07:38:26.045649+00:00",
+  "created_at_utc": "2026-08-27T07:38:26.045649+00:00",
+  "input": {
+    "calendar": {
+      "nr_days": 1,
+      "nr_weeks": 1,
+      "slots_per_day": 4
+    },
+    "courses": [
+      {
+        "configurations": [
+          {
+            "id": "CONFIG1",
+            "subparts": [
+              {
+                "classes": [
+                  {
+                    "days": "1",
+                    "id": "C1",
+                    "length": 1,
+                    "limit": 10,
+                    "room": "R1",
+                    "start": 0,
+                    "weeks": "1"
+                  }
+                ],
+                "id": "SUBPART1"
+              }
+            ]
+          }
+        ],
+        "id": "COURSE1"
+      }
+    ],
+    "distributions": [],
+    "name": "pu-factorized-reviewed-e2e",
+    "rooms": [
+      {
+        "capacity": 10,
+        "id": "R1"
+      }
+    ],
+    "source_path": "synthetic://pu-factorized-reviewed-e2e",
+    "students": [
+      {
+        "courses": [
+          "COURSE1"
+        ],
+        "id": "S1"
+      }
+    ]
+  },
+  "input_sha256": "67e7317ebe06a4e740b5a0447c4aa05591038ef97d0c72fbb00f6fa86fb6c250",
+  "limits": {
+    "max_classes": 10,
+    "max_configurations": 5000,
+    "max_course_requests": 30,
+    "max_courses": 1000,
+    "max_distributions": 10000,
+    "max_rooms": 1000,
+    "max_students": 20,
+    "max_subparts": 10000,
+    "sectioning_max_conflict_pairs": 101,
+    "sectioning_max_conflict_terms": 102,
+    "sectioning_random_seed": 23,
+    "sectioning_time_limit_seconds": 3.75,
+    "timetable_build_time_limit_seconds": 1.25,
+    "timetable_construction": {
+      "max_domain_values": 100,
+      "max_required_group_cells": 2000000,
+      "max_required_pair_relations": 100,
+      "max_room_pair_evaluations": 100,
+      "max_room_pair_evaluations_per_pair": 250000,
+      "max_sparse_room_constraints": 100
+    },
+    "timetable_random_seed": 17,
+    "timetable_solve_time_limit_seconds": 2.5
+  },
+  "outcome": "SUCCESS",
+  "result": {
+    "budget_telemetry": {
+      "pipeline_wall_seconds": 0.009793200006242841,
+      "sectioning_limit_seconds": 3.75,
+      "sectioning_max_conflict_pairs": 101,
+      "sectioning_max_conflict_terms": 102,
+      "sectioning_model_build_seconds": 0.0006032000092091039,
+      "sectioning_random_seed": 23,
+      "sectioning_solver_wall_seconds": 0.0004462,
+      "sectioning_wall_seconds": 0.0012066000053891912,
+      "sectioning_workers": 1,
+      "timetable_build_limit_seconds": 1.25,
+      "timetable_build_wall_seconds": 0.003471700008958578,
+      "timetable_random_seed": 17,
+      "timetable_solve_limit_seconds": 2.5,
+      "timetable_solver_wall_seconds": 0.004373199990368448,
+      "timetable_workers": 1
+    },
+    "build_only": false,
+    "candidate": {
+      "placements": [
+        {
+          "class_id": "C1",
+          "days": "1",
+          "room_id": "R1",
+          "start": 0,
+          "weeks": "1"
+        }
+      ],
+      "student_classes": {
+        "S1": [
+          "C1"
+        ]
+      }
+    },
+    "candidate_sha256": "7ab7a7e69dc051600dd75113cab1b4c72891f46b0d22769362d50fa8e437d8bc",
+    "execution_errors": [],
+    "final_validation_errors": [],
+    "final_validation_status": "PASSED",
+    "has_complete_candidate": true,
+    "sectioning_status": "OPTIMAL",
+    "sectioning_validation_errors": [],
+    "status": "COMPLETE",
+    "timetable_solver_status": "OPTIMAL",
+    "timetable_status": "FEASIBLE",
+    "timetable_telemetry": {
+      "class_count": 1,
+      "model_constraints": 5,
+      "model_fingerprint_mode": "canonical_proto_text_v1",
+      "model_proto_bytes": 819,
+      "model_proto_sha256": "b422dba40570ff751d06fcd10bd66c2b170a959882b0f7263b6343d8b63c05a9",
+      "model_variables": 5,
+      "phase_wall_seconds": [
+        [
+          "admission",
+          0.00011100000119768083
+        ],
+        [
+          "domains",
+          1.7800004570744932e-05
+        ],
+        [
+          "choice_variables",
+          0.0014032000035513192
+        ],
+        [
+          "pair_distributions",
+          1.589999010320753e-05
+        ],
+        [
+          "group_distributions",
+          2.900007530115545e-06
+        ],
+        [
+          "room_resources",
+          1.2299991794861853e-05
+        ],
+        [
+          "finalize_proto",
+          0.0019086000102106482
+        ]
+      ],
+      "required_group_cells": 0,
+      "required_group_distributions": 0,
+      "required_pair_distributions": 0,
+      "required_pair_relations": 0,
+      "room_domain_values": 1,
+      "room_pair_evaluations": 0,
+      "schema": "planora.itc2019.timetable-factorized-build.v1",
+      "source_soft_distributions_excluded": 0,
+      "source_student_records_excluded": 1,
+      "sparse_room_constraints": 0,
+      "time_domain_values": 1
+    },
+    "timetable_validation_errors": [],
+    "timetable_validation_status": "PASSED",
+    "trusted_synthetic": true,
+    "unsupported_reasons": [],
+    "validation_status": "PASSED"
+  },
+  "review_gate": {
+    "combined_tests_passed": 155,
+    "independent_adversarial_probe_evidence": "NOT_BOUND_TO_A_WORKSPACE_ARTIFACT_NOT_USED_FOR_AUTHORIZATION",
+    "pipeline_sha256": "3ead77d8542f31c283b3aecea47582f14d38af8248ec73ac3557fab12a9f18e7",
+    "pipeline_tests_passed": 90,
+    "pipeline_tests_sha256": "a90af0b84176959e9391b3b94a5008cece48238fbc14420608481d6946a16bab",
+    "timetable_tests_passed": 65,
+    "timetable_tests_sha256": "389f2c6d44b5e8715d6b302c08c9d692f645cf81febfd90e84d5b4897ffaf78b",
+    "verdict": "GO_FOR_ONE_TRUSTED_SYNTHETIC_EXPERIMENT"
+  },
+  "reviewed_source_sha256": {
+    "benchmarks/itc2019.py": "5577c6227037fa615df741a4b0b351b05ec11c7c4ce4ebe9a4489554122b2c1f",
+    "benchmarks/itc2019_factorized.py": "959be9e028773492538c4a541892955d37c5cdeb02cfaa762d8b9ce3fff48f02",
+    "benchmarks/itc2019_timetable_factorized.py": "6cd00de292d82bab6ac24a841c93290d1fd4feb8acc3053d96c4e6b2b43e9df3",
+    "benchmarks/itc2019_timetable_factorized_pipeline.py": "3ead77d8542f31c283b3aecea47582f14d38af8248ec73ac3557fab12a9f18e7",
+    "tests/test_itc2019_timetable_factorized.py": "389f2c6d44b5e8715d6b302c08c9d692f645cf81febfd90e84d5b4897ffaf78b",
+    "tests/test_itc2019_timetable_factorized_pipeline.py": "a90af0b84176959e9391b3b94a5008cece48238fbc14420608481d6946a16bab",
+    "tests/test_run_pu_factorized_trusted_synthetic_receipt.py": "9e1fa9aef58d788c5c13b2703d9da7237afed09be04240de9556c932681e529e"
+  },
+  "run_id": "pu-factorized-trusted-synthetic-e2e-6cd00de292d8",
+  "schema": "planora.itc2019.pu-factorized-trusted-synthetic-e2e.v1",
+  "scope": {
+    "official_dispatch_authorized": false,
+    "official_input_used": false,
+    "official_solve_used": false,
+    "performance_claim_authorized": false,
+    "quality_claim_authorized": false
+  },
+  "script_path": "D:\\Stuff\\Projects\\Sites\\Planora\\scripts\\run_pu_factorized_trusted_synthetic_receipt.py",
+  "script_sha256": "0437abd701e0673bdc9cafb129dea3a3f4f1d4c53d832e2dc2c3d766fbd31e4f",
+  "started_at_utc": "2026-08-27T07:38:25.025649+00:00"
+}

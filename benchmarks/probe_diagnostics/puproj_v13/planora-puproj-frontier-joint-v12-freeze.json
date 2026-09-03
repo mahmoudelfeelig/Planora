@@ -1,0 +1,112 @@
+{
+  "schema": "planora.pu-proj.frontier-joint-v12-freeze.v1",
+  "created_utc": "2026-08-26T03:09:29Z",
+  "repository_commit_observed": "43028f327ee94d648bb8ce3479e3bd9276aad52a",
+  "native_bootstrap_protocol": "planora.native-sealed-python-bootstrap.v1",
+  "verdict": "GO_FOR_INDEPENDENT_CODE_REVIEW_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "solver_input_mode": "OFFICIAL_INPUT_ONLY_FRESH",
+  "fairness": {
+    "official_input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "expected_classes": 8813,
+    "expected_students": 38437,
+    "checkpoint_or_incumbent_path_configured": false,
+    "checkpoint_or_incumbent_accessed": false,
+    "competitor_schedule_or_result_used": false,
+    "competitor_placement_or_hint_used": false
+  },
+  "trust_root": {
+    "protocol": "planora.native-sealed-python-bootstrap.v1",
+    "path": "/tmp/planora-puproj-frontier-joint-v12-bootstrap",
+    "sha256": "70fcc016e76042b622ddfa6e7d4d98175791ec1d7dae388daabba7d0c9e201f0",
+    "size": 718784,
+    "source_path": "/tmp/planora-puproj-frontier-joint-v12-bootstrap.c",
+    "source_sha256": "2de8972b5ba8ce0372ed71a18fc56fa56779f6ac0d9b6ea27bc22c0a9d13601e",
+    "source_size": 17628,
+    "elf": "ELF64 x86-64 ET_EXEC static stripped; no PT_INTERP",
+    "compiler_path": "/usr/bin/gcc",
+    "compiler_sha256": "1b99826121ae6682a634e5efe09bd3e3df58ce58e0b28f849114ab5b89139c26",
+    "libgcc_sha256": "d9376c55f97863a4e5fbb6c6beca2591b319bf786f3a7ca56da8964c5662171f",
+    "libc_sha256": "b6b741da9caadc1a3b58ad990ba3d4bca0ea80e361f90ccd4c01e7f37dbabb20",
+    "build_argv": ["gcc", "-std=c17", "-O2", "-Wall", "-Wextra", "-Werror", "-static", "-fno-ident", "-Wl,--build-id=none", "-s", "-o", "/tmp/planora-puproj-frontier-joint-v12-bootstrap", "/tmp/planora-puproj-frontier-joint-v12-bootstrap.c"],
+    "reproducible_rebuild_sha256": "70fcc016e76042b622ddfa6e7d4d98175791ec1d7dae388daabba7d0c9e201f0",
+    "rebuild_byte_identical": true
+  },
+  "artifacts": {
+    "launcher": {"path": "/tmp/planora-puproj-frontier-joint-v12-launcher.py", "sha256": "60d050eaecf678544e49238f2d8a2a4fa4289e36126be16fe15a67f7202f761c", "size": 6406},
+    "supervisor": {"path": "/tmp/planora-puproj-frontier-joint-v12-supervisor.py", "sha256": "c1cf1d7ba1cf23b7870d7eaa9005a821dbe9a847f8d2dbd09d4f898e95de89c2", "size": 152995},
+    "runner": {"path": "/tmp/planora-puproj-frontier-joint-v12-runner.py", "sha256": "f647bf45168f392b9deb3274c498305a0cc892b8638af8535569dc2d0a03a6f2", "size": 90846},
+    "generic_validator": {"path": "/tmp/planora-puproj-frontier-joint-v12-generic-validator.py", "sha256": "eb9a4360e3f4a33afd84109b5bf32664439604a09601daeaeb0a66a8b36101dc", "size": 4364, "fresh_isolated_process_required": true},
+    "tests": {"path": "/tmp/planora-puproj-frontier-joint-v12-tests.py", "sha256": "35575480b412f02fbcd84c10a273cc2a99c236f0757929f3b1983c36647ca9a5", "size": 51930, "lightweight_test_count": 52},
+    "repository_violation_lns_test": {"path": "/mnt/d/Stuff/Projects/Sites/Planora/tests/test_itc2019_violation_lns.py", "sha256": "a738894d4393d8d5bf8a240f493fa92e2e12e820cd885b40518e13cc0d91efdb", "review_evidence_only": true}
+  },
+  "source_closure": {
+    "dynamic_module_count": 13,
+    "itc2019_violation_lns_sha256": "af902e522b980cd511f4633c39d7f76ccddcd417f94b8cdc8785f389a831317b",
+    "live_digest_regression": "PASS"
+  },
+  "runtime_trust": {
+    "python_path": "/usr/bin/python3.12",
+    "python_sha256": "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273",
+    "system_python_exact_hash_allowlist_entries": 125,
+    "sealed_runtime_bundle_files": 3077,
+    "sealed_runtime_bundle_bytes": 191956270
+  },
+  "resource_contract": {
+    "initial_memavailable_floor_kib": 1900000,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1400000,
+    "child_process_group_rss_limit_kib": 1400000,
+    "child_process_group_vmswap_limit_kib": 131072,
+    "supervisor_hard_wall_seconds": 330.0,
+    "child_acceptance_cooperative_deadline_seconds": 300.0
+  },
+  "sealed_import_probe_contract": {
+    "chain_mode": "--sealed-import-probe",
+    "hard_wall_seconds": 180.0,
+    "initial_memavailable_floor_kib": 1900000,
+    "runtime_memavailable_floor_kib": 600000,
+    "process_group_rss_limit_kib": 1200000,
+    "process_group_vmswap_limit_kib": 131072,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1300000,
+    "identity_pinned_accounting_and_cleanup_preserved": true,
+    "strict_nested_child_report_and_final_elapsed_preserved": true,
+    "supervisor_evidence_transport": "sealed_memfd_creation_binding_retained_fd_pread",
+    "trusted_supervisor_report_pathnames": false,
+    "authoritative_supervisor_report_path": null,
+    "single_final_stdout_json_envelope": true,
+    "stdout_envelope_deadline_checked_after_write": true,
+    "post_publish_and_during_pread_aliases_non_authoritative": true,
+    "post_final_replay_aliases_purged": true,
+    "all_supervisor_report_aliases_absent_before_acceptance": true,
+    "non_authoritative_audit_copy_emitted": false,
+    "official_input_capture_prohibited": true,
+    "checkpoint_capture_prohibited": true,
+    "solver_child_process_started": false,
+    "official_solution_publication_prohibited": true,
+    "full_heavy_probe_status": "PENDING_MEMORY_GATE"
+  },
+  "cleanup_contract": {
+    "parent_controlled_runner_start_barrier": true,
+    "immutable_leader_generation_pidfd_registry": true,
+    "blind_killpg_prohibited": true,
+    "wait_failure_cannot_skip_total_drain": true,
+    "cleanup_errors_fail_closed_after_drain": true
+  },
+  "verification": {
+    "python_compile": "PASS",
+    "lightweight_tests": "52_of_52_PASS",
+    "full_lightweight_itc2019_suite": "241_PASS",
+    "ruff_check": "PASS",
+    "native_rebuild_byte_identical": true,
+    "full_sealed_runtime_import_probe": "PENDING_MEMORY_GATE",
+    "full_probe_minimum_mem_available_kib": 1900000,
+    "official_input_opened": false,
+    "checkpoint_content_opened": false,
+    "solver_child_started": false,
+    "official_solution_published": false,
+    "official_launch_authorized": false
+  },
+  "preservation": {
+    "puproj_v11_all_named_artifact_hashes": "PASS_UNCHANGED",
+    "repository_files_modified_by_this_task": false
+  }
+}

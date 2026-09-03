@@ -1,0 +1,14 @@
+{
+  "schema": "planora.itc2019.ephemeral-root-cleanup.v1",
+  "instance": "muni-fspsx-fal17",
+  "diagnostic_chain": "muni_v27",
+  "test_id": "656c1c3fd68f4866bc61714de29e35fd",
+  "completed_at_utc": "2026-08-27T04:21:23Z",
+  "canonical_receipt_sha256": "a9ec00f3bffafb81f51ad3806d178d936ad246ec2b759c55bf745f1a67cd433c",
+  "target": "/tmp/planora-muni-v27-readonly-tests-656c1c3fd68f4866bc61714de29e35fd",
+  "target_was_directory": true,
+  "target_was_symlink": false,
+  "verified_regular_file_count": 48,
+  "deleted": true,
+  "postcondition": "TARGET_ABSENT"
+}

@@ -1,0 +1,222 @@
+{
+    "schema":  "planora.muni-v29.stale-lock-reconciliation.v2",
+    "status":  "PINNED_V28_STALE_LOCK_ATOMICALLY_RETAINED",
+    "run_id":  "ca79220da7db46b6996fe1f05785dde7",
+    "predecessor_run_id":  "e7cf1df162074402994a9d0ad763c824",
+    "source":  "output/diagnostic-receipts/planora-shared-heavy-wsl.lock",
+    "source_sha256":  "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98",
+    "source_pin":  {
+                       "path":  "output/diagnostic-receipts/planora-shared-heavy-wsl.lock",
+                       "size":  370,
+                       "sha256":  "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98",
+                       "file_id":  "0000000000000000000c000000172456",
+                       "last_write_utc_ticks":  639235031172129106
+                   },
+    "archive":  "output/diagnostic-receipts/retained-stale-planora-shared-heavy-wsl-v28-e7cf1df162074402994a9d0ad763c824.lock.json",
+    "archive_pin":  {
+                        "path":  "output/diagnostic-receipts/retained-stale-planora-shared-heavy-wsl-v28-e7cf1df162074402994a9d0ad763c824.lock.json",
+                        "size":  370,
+                        "sha256":  "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98",
+                        "file_id":  "0000000000000000000c000000172456",
+                        "last_write_utc_ticks":  639235031172129106
+                    },
+    "archive_identity_replay":  {
+                                    "phase":  "immediately_after_atomic_archive",
+                                    "status":  "IDENTITY_AND_EXCLUSIVE_SAME_HANDLE_BYTES_REPLAYED",
+                                    "archive_pin":  {
+                                                        "path":  "output/diagnostic-receipts/retained-stale-planora-shared-heavy-wsl-v28-e7cf1df162074402994a9d0ad763c824.lock.json",
+                                                        "size":  370,
+                                                        "sha256":  "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98",
+                                                        "file_id":  "0000000000000000000c000000172456",
+                                                        "last_write_utc_ticks":  639235031172129106
+                                                    },
+                                    "observed_at_utc":  "2026-08-28T10:11:27.3788873Z",
+                                    "shared_lock_absence_required":  true,
+                                    "shared_lock_absent":  true,
+                                    "v28_pass_absence":  {
+                                                             "phase":  "immediately_after_atomic_archive",
+                                                             "receipt_absent":  true,
+                                                             "shutdown_seal_absent":  true,
+                                                             "observed_at_utc":  "2026-08-28T10:11:27.3831529Z"
+                                                         }
+                                },
+    "owner_pid":  1140,
+    "owner_pid_observations":  [
+                                   {
+                                       "phase":  "before_exclusive_probe",
+                                       "pid":  1140,
+                                       "absent":  true,
+                                       "observed_at_utc":  "2026-08-28T10:11:27.0767710Z",
+                                       "reuse_policy":  "any_existing_pid_rejected_regardless_process_name_or_start_time"
+                                   },
+                                   {
+                                       "phase":  "immediately_before_atomic_archive",
+                                       "pid":  1140,
+                                       "absent":  true,
+                                       "observed_at_utc":  "2026-08-28T10:11:27.2309691Z",
+                                       "reuse_policy":  "any_existing_pid_rejected_regardless_process_name_or_start_time"
+                                   }
+                               ],
+    "no_live_handle_proof":  "FileShareNone_exclusive_probe_passed",
+    "atomic_archive":  "same_directory_FileMove_while_FileShareDelete_handle_held",
+    "predecessor_evidence_before_reconciliation":  {
+                                                       "schema":  "planora.muni-v29.complete-v28-predecessor-evidence.v1",
+                                                       "run_id":  "e7cf1df162074402994a9d0ad763c824",
+                                                       "status":  "VALIDATED_BEFORE_STALE_LOCK_RECONCILIATION",
+                                                       "authorized_files":  {
+                                                                                "builder":  {
+                                                                                                "path":  "scripts/build_muni_v28_chain.ps1",
+                                                                                                "size":  44779,
+                                                                                                "sha256":  "bca84d0a27ef25e4e716422590aa0e188d3dae22579c9393b51e62c182dde28d"
+                                                                                            },
+                                                                                "tests":  {
+                                                                                              "path":  "benchmarks/probe_diagnostics/muni_v28/planora-muni-fspsx-frontier-v28-tests.py",
+                                                                                              "size":  178441,
+                                                                                              "sha256":  "f7d16b989ecd3ac22bd218da24c5e9c9bc1dca875f3593d0bad9248eaacfa5ab"
+                                                                                          },
+                                                                                "certificate":  {
+                                                                                                    "path":  "benchmarks/probe_diagnostics/muni_v28/planora-muni-fspsx-frontier-v28-certificate.json",
+                                                                                                    "size":  31261,
+                                                                                                    "sha256":  "7b1f4b1ffc3a6cf53389d5cc6c585662536af50f06aced6b5d30fff3e32ad432"
+                                                                                                },
+                                                                                "freeze_manifest":  {
+                                                                                                        "path":  "benchmarks/probe_diagnostics/muni_v28/planora-muni-fspsx-frontier-v28-freeze-manifest.json",
+                                                                                                        "size":  33749,
+                                                                                                        "sha256":  "f47beb315d0ea92eec1942f89a9398cd84f4ad81cb1d7f1aff219c1fbbc435e6"
+                                                                                                    },
+                                                                                "runner":  {
+                                                                                               "path":  "scripts/run_muni_v28_canonical_tests.ps1",
+                                                                                               "size":  161962,
+                                                                                               "sha256":  "fbf0a2f4449806cec331c71efc79417553f2d1cd6b060f5d481a32dbfc896d60"
+                                                                                           },
+                                                                                "authorization":  {
+                                                                                                      "path":  "output/diagnostic-receipts/muni-fspsx-v28-canonical-tests-authorization-20260827T045149Z.receipt.json",
+                                                                                                      "size":  8024,
+                                                                                                      "sha256":  "1e2ac9d1edfe7ee5191c631834eaa36b7b59d6886e94887aedc189e3c098026d"
+                                                                                                  },
+                                                                                "claim":  {
+                                                                                              "path":  "output/diagnostic-receipts/muni-fspsx-v28-canonical-readonly-tests-e7cf1df162074402994a9d0ad763c824.claim.json",
+                                                                                              "size":  541,
+                                                                                              "sha256":  "f0ba301e63ba7e96938dabd3473106114d3b29ac2ad2090222609e8cbc1432e4"
+                                                                                          },
+                                                                                "rejection":  {
+                                                                                                  "path":  "output/diagnostic-receipts/muni-fspsx-v28-canonical-readonly-tests-e7cf1df162074402994a9d0ad763c824.rejection.json",
+                                                                                                  "size":  1081,
+                                                                                                  "sha256":  "2ecfb0ba960173f5662dd423e7fd1c72ace10f6c281bdd50e3dcef130179ee41"
+                                                                                              },
+                                                                                "static_evidence":  {
+                                                                                                        "path":  "output/diagnostic-receipts/muni-fspsx-v28-canonical-readonly-tests-e7cf1df162074402994a9d0ad763c824.static-adversarial.json",
+                                                                                                        "size":  2019,
+                                                                                                        "sha256":  "93724cbeb1a76d199424309fee2a57df139bf70234ec93d8fc4fbbd6d5be7adf"
+                                                                                                    },
+                                                                                "retained_lock":  {
+                                                                                                      "path":  "output/diagnostic-receipts/planora-shared-heavy-wsl.lock",
+                                                                                                      "size":  370,
+                                                                                                      "sha256":  "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98"
+                                                                                                  }
+                                                                            },
+                                                       "failure_semantics":  {
+                                                                                 "status":  "REJECTED_AUTHORIZATION_CONSUMED",
+                                                                                 "root_cause":  "held_lock_path_reopened_for_hash_caused_self_sharing_violation_before_canonical_tests",
+                                                                                 "claim_status":  "CLAIMED_FAIL_CLOSED_UNLESS_VALID_PASS_PUBLICATION_SHUTDOWN_SEAL_EXISTS",
+                                                                                 "claim_failure_consumes_authorization":  true,
+                                                                                 "claim_sha256":  "f0ba301e63ba7e96938dabd3473106114d3b29ac2ad2090222609e8cbc1432e4",
+                                                                                 "rejection_sha256":  "2ecfb0ba960173f5662dd423e7fd1c72ace10f6c281bdd50e3dcef130179ee41",
+                                                                                 "static_evidence_sha256":  "93724cbeb1a76d199424309fee2a57df139bf70234ec93d8fc4fbbd6d5be7adf"
+                                                                             },
+                                                       "pass_evidence":  {
+                                                                             "receipt_path":  "output/diagnostic-receipts/muni-fspsx-v28-canonical-readonly-tests-e7cf1df162074402994a9d0ad763c824.receipt.json",
+                                                                             "shutdown_seal_path":  "output/diagnostic-receipts/muni-fspsx-v28-canonical-readonly-tests-e7cf1df162074402994a9d0ad763c824.pass-publication-shutdown-seal.json",
+                                                                             "receipt_absent_required":  true,
+                                                                             "shutdown_seal_absent_required":  true
+                                                                         },
+                                                       "runtime":  {
+                                                                       "validation_phase":  "before_stale_lock_reconciliation",
+                                                                       "live_file_pins":  {
+                                                                                              "builder":  {
+                                                                                                              "path":  "scripts/build_muni_v28_chain.ps1",
+                                                                                                              "size":  44779,
+                                                                                                              "sha256":  "bca84d0a27ef25e4e716422590aa0e188d3dae22579c9393b51e62c182dde28d",
+                                                                                                              "file_id":  "0000000000000000000f0000001722d0",
+                                                                                                              "last_write_utc_ticks":  639234022903491776
+                                                                                                          },
+                                                                                              "tests":  {
+                                                                                                            "path":  "benchmarks/probe_diagnostics/muni_v28/planora-muni-fspsx-frontier-v28-tests.py",
+                                                                                                            "size":  178441,
+                                                                                                            "sha256":  "f7d16b989ecd3ac22bd218da24c5e9c9bc1dca875f3593d0bad9248eaacfa5ab",
+                                                                                                            "file_id":  "0000000000000000000300000001f470",
+                                                                                                            "last_write_utc_ticks":  639234023023945852
+                                                                                                        },
+                                                                                              "certificate":  {
+                                                                                                                  "path":  "benchmarks/probe_diagnostics/muni_v28/planora-muni-fspsx-frontier-v28-certificate.json",
+                                                                                                                  "size":  31261,
+                                                                                                                  "sha256":  "7b1f4b1ffc3a6cf53389d5cc6c585662536af50f06aced6b5d30fff3e32ad432",
+                                                                                                                  "file_id":  "0000000000000000000300000001f5bc",
+                                                                                                                  "last_write_utc_ticks":  639234023025404713
+                                                                                                              },
+                                                                                              "freeze_manifest":  {
+                                                                                                                      "path":  "benchmarks/probe_diagnostics/muni_v28/planora-muni-fspsx-frontier-v28-freeze-manifest.json",
+                                                                                                                      "size":  33749,
+                                                                                                                      "sha256":  "f47beb315d0ea92eec1942f89a9398cd84f4ad81cb1d7f1aff219c1fbbc435e6",
+                                                                                                                      "file_id":  "0000000000000000000300000001f570",
+                                                                                                                      "last_write_utc_ticks":  639234023025089752
+                                                                                                                  },
+                                                                                              "runner":  {
+                                                                                                             "path":  "scripts/run_muni_v28_canonical_tests.ps1",
+                                                                                                             "size":  161962,
+                                                                                                             "sha256":  "fbf0a2f4449806cec331c71efc79417553f2d1cd6b060f5d481a32dbfc896d60",
+                                                                                                             "file_id":  "000000000000000000070000000cae3e",
+                                                                                                             "last_write_utc_ticks":  639235024849088816
+                                                                                                         },
+                                                                                              "authorization":  {
+                                                                                                                    "path":  "output/diagnostic-receipts/muni-fspsx-v28-canonical-tests-authorization-20260827T045149Z.receipt.json",
+                                                                                                                    "size":  8024,
+                                                                                                                    "sha256":  "1e2ac9d1edfe7ee5191c631834eaa36b7b59d6886e94887aedc189e3c098026d",
+                                                                                                                    "file_id":  "0000000000000000000d00000016542e",
+                                                                                                                    "last_write_utc_ticks":  639235025160262431
+                                                                                                                },
+                                                                                              "claim":  {
+                                                                                                            "path":  "output/diagnostic-receipts/muni-fspsx-v28-canonical-readonly-tests-e7cf1df162074402994a9d0ad763c824.claim.json",
+                                                                                                            "size":  541,
+                                                                                                            "sha256":  "f0ba301e63ba7e96938dabd3473106114d3b29ac2ad2090222609e8cbc1432e4",
+                                                                                                            "file_id":  "0000000000000000000e000000172434",
+                                                                                                            "last_write_utc_ticks":  639235031159853261
+                                                                                                        },
+                                                                                              "rejection":  {
+                                                                                                                "path":  "output/diagnostic-receipts/muni-fspsx-v28-canonical-readonly-tests-e7cf1df162074402994a9d0ad763c824.rejection.json",
+                                                                                                                "size":  1081,
+                                                                                                                "sha256":  "2ecfb0ba960173f5662dd423e7fd1c72ace10f6c281bdd50e3dcef130179ee41",
+                                                                                                                "file_id":  "00000000000000000008000000172457",
+                                                                                                                "last_write_utc_ticks":  639235031172389114
+                                                                                                            },
+                                                                                              "static_evidence":  {
+                                                                                                                      "path":  "output/diagnostic-receipts/muni-fspsx-v28-canonical-readonly-tests-e7cf1df162074402994a9d0ad763c824.static-adversarial.json",
+                                                                                                                      "size":  2019,
+                                                                                                                      "sha256":  "93724cbeb1a76d199424309fee2a57df139bf70234ec93d8fc4fbbd6d5be7adf",
+                                                                                                                      "file_id":  "0000000000000000000e000000172448",
+                                                                                                                      "last_write_utc_ticks":  639235031172099096
+                                                                                                                  }
+                                                                                          },
+                                                                       "retained_lock_source_pin":  {
+                                                                                                        "path":  "output/diagnostic-receipts/planora-shared-heavy-wsl.lock",
+                                                                                                        "size":  370,
+                                                                                                        "sha256":  "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98",
+                                                                                                        "file_id":  "0000000000000000000c000000172456",
+                                                                                                        "last_write_utc_ticks":  639235031172129106
+                                                                                                    },
+                                                                       "retained_lock_archive_pin":  null,
+                                                                       "stale_lock_reconciliation_sha256":  "",
+                                                                       "validation_errors":  [
+
+                                                                                             ],
+                                                                       "pass_absence_before_reconciliation":  {
+                                                                                                                  "phase":  "before_stale_lock_reconciliation",
+                                                                                                                  "receipt_absent":  true,
+                                                                                                                  "shutdown_seal_absent":  true,
+                                                                                                                  "observed_at_utc":  "2026-08-28T10:11:25.8951019Z"
+                                                                                                              }
+                                                                   }
+                                                   },
+    "delete_performed":  false,
+    "reconciled_at_utc":  "2026-08-28T10:11:27.3831529Z"
+}

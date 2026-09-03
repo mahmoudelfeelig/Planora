@@ -1,0 +1,52 @@
+{
+  "schema": "planora.itc2019.canonical-test-authorization.v1",
+  "created_at_utc": "2026-08-27T03:40:50Z",
+  "instance": "muni-fspsx-fal17",
+  "candidate": "muni_v26",
+  "test_id": "3913458278a647e9b3a635c7452ae2d6",
+  "decision": "GO_FOR_ONE_CANONICAL_READ_ONLY_SUITE",
+  "retained_probe_authorized": false,
+  "official_launch_authorized": false,
+  "automatic_retry_authorized": false,
+  "independent_review": {
+    "verdict": "GO",
+    "scope": "canonical read-only suite followed conditionally by one separately authorized retained no-solver probe",
+    "v25_proc_observation_blocker_closed": true,
+    "windows_safe_tests_passed": 11,
+    "expected_canonical_tests": 119,
+    "expected_passes": 117,
+    "expected_skips": 2,
+    "expected_failures": 0,
+    "expected_errors": 0
+  },
+  "pinned_files": {
+    "builder": {
+      "path": "scripts/build_muni_v26_chain.ps1",
+      "size": 62157,
+      "sha256": "faec7c322543427e440de08a0644e1715a15c9500e767abaab08bb2ef6f498c0"
+    },
+    "tests": {
+      "path": "benchmarks/probe_diagnostics/muni_v26/planora-muni-fspsx-frontier-v26-tests.py",
+      "size": 175454,
+      "sha256": "33888b6ecaa74c20bb59ba3416eb96edb011feb84bcb0e55283b8bf4bcc24341"
+    },
+    "certificate": {
+      "path": "benchmarks/probe_diagnostics/muni_v26/planora-muni-fspsx-frontier-v26-certificate.json",
+      "size": 30311,
+      "sha256": "ed9226597e871f9254f9aa7099617144a93a216fab2153f238694e9e336be15d"
+    },
+    "freeze_manifest": {
+      "path": "benchmarks/probe_diagnostics/muni_v26/planora-muni-fspsx-frontier-v26-freeze-manifest.json",
+      "size": 35987,
+      "sha256": "8220439619602cee750edcf0b950474f85899c727953a7d024936599b8e0c29d"
+    }
+  },
+  "mandatory_conditions": [
+    "Extract and replay exactly the 48 unique v12-v15 preserved artifact paths and hashes from the v26 canonical test constants.",
+    "Use a fresh private 0700 host directory bound to /tmp, read-only root, cleared environment, and dropped capabilities.",
+    "Set PLANORA_MUNI_V26_SKIP_HEAVY=1 and stage no official input, progress, checkpoint, solution, or derivation-audit-only probe payload.",
+    "Require two MemAvailable samples of at least 1900000 KiB at least five seconds apart with no competing heavy WSL workload.",
+    "Execute once and accept only 117 passes, exactly two intentional heavy-test skips, and zero failures or errors.",
+    "Retain stdout, stderr, exit status, hashes, staging inventory, and post-exit cleanup evidence."
+  ]
+}

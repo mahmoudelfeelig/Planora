@@ -1,0 +1,147 @@
+{
+  "canonical_certificate_path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-certificate.json",
+  "diagnostic_launch_status": "READY_FOR_ONE_BOUNDED_SEALED_IMPORT_PROBE",
+  "files": {
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-bootstrap.py": "2f30ae8c2cceec635319372792e6a81cda099ea976878b63fe7854af0ce21a5a",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-freeze-manifest.json": "1711609076c50d22c5610fe0c1974ef7a480ebaf133b81eb6d43a294dca64ba5",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-generic-validator.py": "6eabef6ba3e02297a3eb7723cf549360f1239d8e5fbc0ef48ed2b7d19ff5918a",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-inline-trust-root.txt": "38b57204852abdaee70853df44a4a8d6348157f4bca9fa3c1d852e9dd78121cf",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-launcher.sh": "31fa5e7ca0a45a676dfed2533b2cd7a1a2bc35cf1adc0eb67fc9c8c7059f59e7",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-minimal-tcb.sha256": "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-runner.py": "88a83e978e831d47048034caf931269085253974e74cef15dc94a32d34fbb9eb",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-stdlib.sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-supervisor.py": "ce399b471f37b44f28d97dc30b50b63f4651a4be58327c18a96b855a5b2aa3a7",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-tests.py": "974f62b283f1c50b0ae221a47d5411f11a4059cd53c1a496dc4eb45f2dfd81d1",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-v35-derivation-audit-v1.json": "aa7657d1c3e3c2362312ae0a07013373640fc5b777aa069dca107420393b8dc4",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora_muni_v20_benchmarks_stub.py": "40488f0af25e5457841ef6577bfdb3fda2a65a7facd5e608e03d5be2084688f2"
+  },
+  "finding_fixed": "v19 reused the 1900000 KiB initial admission floor during sealed runtime construction and materialized whole runtime files, causing a runtime bundle MemAvailable rejection at 62.13 seconds despite the unchanged 650000 KiB runtime floor",
+  "implementation": {
+    "accepted_child_stderr_bytes": 0,
+    "accepted_child_stdout_bytes": 0,
+    "child_exit_refreshed_after_final_cleanup": true,
+    "compile_warning_admission": {
+      "category": "DeprecationWarning",
+      "count": 2,
+      "exact_message_required": true,
+      "source_relative_path": "ortools/sat/python/cp_model.py",
+      "source_sha256": "8ccd32d856725a1641048e879e833eceb2edd7beeb5bc53146d3a03aa80ec136",
+      "unexpected_category_message_source_or_count_rejected": true
+    },
+    "diagnostic_tail_encoding": "base64",
+    "diagnostic_tail_max_bytes_per_stream": 4096,
+    "rejection_diagnostics_structure": {
+      "report_presence_fields": [
+        "parent_created",
+        "retained_fd_present",
+        "named_entry_present",
+        "named_entry_matches_retained_fd",
+        "size_bytes",
+        "sha256",
+        "payload_consumed",
+        "contract_valid",
+        "inspection_error"
+      ],
+      "stream_fields": [
+        "present",
+        "size_bytes",
+        "sha256",
+        "identity_matches_parent_creation",
+        "inspection_error",
+        "tail_encoding",
+        "tail_base64",
+        "tail_bytes",
+        "tail_limit_bytes",
+        "tail_truncated"
+      ],
+      "top_level_fields": [
+        "schema",
+        "child_started",
+        "child_exit",
+        "report_presence",
+        "stdout",
+        "stderr",
+        "primary_failure_classification",
+        "failure_classifications"
+      ]
+    },
+    "rejection_diagnostics_omitted_on_success": true,
+    "report_descriptor_transport_preserved": true,
+    "reaped_leader_zero_memory_proof": "exact leader PID and identity, prior identity-bound sample, poll returncode zero, final /proc absence",
+    "reaped_leader_zero_row_count": 1,
+    "runtime_source_cache_release": {
+      "advisory": "POSIX_FADV_DONTNEED",
+      "advisory_count": 2902,
+      "failure_action": "FAIL_CLOSED_BEFORE_CHILD",
+      "length": 0,
+      "offset": 0,
+      "phase": "after_stable_read_hash_size_verification_and_sealed_copy",
+      "source_count": 2902,
+      "telemetry_replay": "CHILD_AND_POST_EXECUTION_SUPERVISOR",
+      "semantics": "ADVISORY_ONLY_NO_RECLAMATION_CLAIM",
+      "telemetry_sha256": "426a8b55f35aba4cabef808823cf9e25b3dd546dcb506a75bee6c10c4126105a"
+    },
+    "runtime_streaming_and_resource_accounting": {
+      "initial_pre_admission_floor_kib": 1900000,
+      "maximum_stream_chunk_bytes": 1048576,
+      "runtime_floor_kib": 650000,
+      "runtime_revalidation_streamed_child_and_supervisor": true,
+      "sealed_memfd_bytes_page_rounded": true,
+      "telemetry_replay": "CHILD_AND_POST_EXECUTION_SUPERVISOR",
+      "whole_launch_cap_includes_identity_pinned_process_rss_swap_plus_sealed_storage": true,
+      "whole_launch_cap_kib": 700000
+    },
+    "sealed_import_probe_only": true
+  },
+  "implementation_verification": {
+    "bash_syntax": "PASS",
+    "certificate_json_parse": "PASS",
+    "focused_suite": "complete lightweight read-only-root v20 suite with explicit heavy-probe exclusion",
+    "focused_tests_failed": 0,
+    "focused_tests_passed": 94,
+    "focused_tests_skipped": 2,
+    "focused_tests_total": 96,
+    "freeze_manifest_file_row_mismatches": 0,
+    "freeze_manifest_file_rows_replayed": 51,
+    "manifest_json_parse": "PASS",
+    "official_input_opened": false,
+    "progress_or_checkpoint_opened": false,
+    "sealed_import_probe_child_run": false,
+    "solver_run": false
+  },
+  "official_launch_status": "NO_GO",
+  "resource_gate": {
+    "contained_probe_argv_count": 48,
+    "contained_probe_argv_nul_sha256": "93131a108b82d0adaeda17315ec1de17a7d552c086b3d9adda11e9deb2fa4640",
+    "heavy_probe_status": "NOT_RUN_BY_SCOPE",
+    "required_memavailable_kib": 1900000
+  },
+  "schema": "planora.muni-fspsx.frontier-v20.implementation-certificate.v1",
+  "scope": "immutable v20 diagnostic freeze only; bounded streaming, phase-correct floors, sealed-storage cap accounting, and advisory post-seal source cache release are statically and lightweight-runtime verified; one measured sealed-import probe remains required; no official input, progress, checkpoint, heavy probe, or solver access occurred",
+  "status": "GO_FOR_ONE_BOUNDED_DIAGNOSTIC_SEALED_IMPORT_PROBE_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "v17_preservation": {
+    "all_13_frozen_v17_artifact_hashes_replayed": true,
+    "audit_mount_contract_preserved": true,
+    "v17_certificate_sha256": "1e3e415b361ac91307b2f5193a801f90ddf0941bfbc21a3dcfaa730291adda03",
+    "v17_files_modified": false,
+    "v17_freeze_manifest_sha256": "ceb97e6d74ac7e68dcd2f22f4749870d63b384b99a13d1347b818d7d5bffe683"
+  },
+  "v18_preservation": {
+    "all_13_frozen_v18_artifact_hashes_replayed": true,
+    "audit_copy_byte_exact": true,
+    "audit_mount_contract_preserved": true,
+    "audit_sha256": "aa7657d1c3e3c2362312ae0a07013373640fc5b777aa069dca107420393b8dc4",
+    "v18_certificate_sha256": "4744f3f49a155a5389892a283f32cd788b73db543244dfd5fad9df73b755f005",
+    "v18_files_modified": false,
+    "v18_freeze_manifest_sha256": "459cb720d8d0b43f51f2f89e11002a678e8ff4c2ead4c516f35e685f24a79461"
+  },
+  "v19_preservation": {
+    "all_13_frozen_v19_artifact_hashes_replayed": true,
+    "audit_copy_byte_exact": true,
+    "audit_mount_contract_preserved": true,
+    "audit_sha256": "aa7657d1c3e3c2362312ae0a07013373640fc5b777aa069dca107420393b8dc4",
+    "v19_certificate_sha256": "e8afa7b099fcb7ec7539414e1e1fcb7ae5cb7635bea62ff112ae9213923904c9",
+    "v19_files_modified": false,
+    "v19_freeze_manifest_sha256": "d7ab89f2b424949f3099d96fe38c454a6b0f55bb93f07f8f96f60edcf914b53a"
+  }
+}

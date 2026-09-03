@@ -1,0 +1,48 @@
+{
+  "schema": "planora.itc2019.shared-core-test-receipt.v1",
+  "completed_utc": "2026-08-27T02:41:10Z",
+  "decision": "PASS",
+  "supersedes_shared_core_sha256": "b4da091fae2d4d2a2400d700eddf06ce724db269a9e50fb01efd9d63c3cab66d",
+  "shared_core": {
+    "path": "benchmarks/itc2019_decomposed.py",
+    "size": 135880,
+    "sha256": "0b6f07a64c139f3cfdcc9d5dd8ce945be1d7278e7f52b6eee2719e1f5560debf"
+  },
+  "focused_test_source": {
+    "path": "tests/test_itc2019_decomposed_extended_budget.py",
+    "size": 7138,
+    "sha256": "82eed00c7de130f5c198cbf51b2c0b0ee158fe9003ee373812473cd29b189e6d"
+  },
+  "reviewer_boundary_fix": {
+    "issue": "An all-allowed pair domain omitted the legacy empty forbidden-table constraint.",
+    "fix": "Always create the empty table before streaming values, preserving protobuf structure and later constraint indices.",
+    "focused_tests": "17_PASS",
+    "exact_empty_table_protobuf_equivalence": "PASS"
+  },
+  "scope": {
+    "selection": "tests/test_itc2019_*.py excluding test_itc2019_resource_controller_docker.py",
+    "platform": "Windows",
+    "tests_run": 459,
+    "passed": 457,
+    "skipped": 2,
+    "failures": 0,
+    "errors": 0,
+    "elapsed_seconds": 29.39
+  },
+  "expected_skips": [
+    "SIGKILL is not available on this platform",
+    "source-derived pinned v35 artifacts are unavailable"
+  ],
+  "logs": {
+    "stdout": {
+      "path": "output/diagnostic-receipts/shared-core-0b6f07a6-windows-itc2019-tests-20260827T024036Z.stdout.log",
+      "size": 1492,
+      "sha256": "c68d64995601c3af1954a5b6ac0ae56db15d2dd10245f3263418b87cfd551e41"
+    },
+    "stderr": {
+      "path": "output/diagnostic-receipts/shared-core-0b6f07a6-windows-itc2019-tests-20260827T024036Z.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

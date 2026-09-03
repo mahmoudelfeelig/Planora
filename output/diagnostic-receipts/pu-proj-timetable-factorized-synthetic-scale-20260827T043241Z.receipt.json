@@ -1,0 +1,48 @@
+{
+  "schema": "planora.itc2019.timetable-factorized-synthetic-scale.v1",
+  "created_at_utc": "2026-08-27T04:32:41Z",
+  "subject": "pu-proj-fal19 timetable-only factorized prototype",
+  "scope": "generated build-only scale checks; no official input, solver, student sectioning, serialization, or publication",
+  "implementation_sha256": "1c31b0da0d64894bc2822b29f10bb4c6bd3b0e309ba9d8252c9436cede01bd28",
+  "tests_sha256": "de8fdcd275bee7cb1e5c42550c39abe243070f47bb87ca8af10a134aa9780738",
+  "official_use_authorized": false,
+  "solver_run": false,
+  "generated_shape": {
+    "one_time_value_per_class": true,
+    "one_distinct_room_per_class": true,
+    "students": 0,
+    "distributions": 0,
+    "purpose": "isolate construction overhead at preserved PU class count; does not establish PU semantic admission"
+  },
+  "runs": [
+    {
+      "classes": 1000,
+      "status": "BUILT",
+      "build_only": true,
+      "solver_status": "NOT_RUN",
+      "placements": 0,
+      "wall_seconds": 0.101539,
+      "model_variables": 5000,
+      "model_constraints": 5000,
+      "time_domain_values": 1000,
+      "room_domain_values": 1000
+    },
+    {
+      "classes": 8813,
+      "status": "BUILT",
+      "build_only": true,
+      "solver_status": "NOT_RUN",
+      "placements": 0,
+      "wall_seconds": 0.727591,
+      "model_variables": 44065,
+      "model_constraints": 44065,
+      "time_domain_values": 8813,
+      "room_domain_values": 8813
+    }
+  ],
+  "limitations": [
+    "No active required or soft distributions were present.",
+    "The generated shape does not reproduce PU factorized-domain counts, room contention, or structural pair relations.",
+    "The prototype strips students and still requires exact fixed-timetable student sectioning before any official solution could exist."
+  ]
+}

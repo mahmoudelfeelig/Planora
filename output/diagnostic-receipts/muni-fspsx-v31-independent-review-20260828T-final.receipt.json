@@ -1,0 +1,144 @@
+{
+  "schema": "planora.muni-v31.independent-review.v1",
+  "status": "GO",
+  "reviewer_task": "/root/muni_v31_successor_design",
+  "reviewed_at_utc": "2026-08-28T12:28:00.9674970Z",
+  "candidate": "muni_v31",
+  "run_id": "5f2d84640f40404a82dd180d7043d9c5",
+  "verdict": "GO_FOR_EXACTLY_ONE_DEFAULT_ONE_SHOT_SUBJECT_TO_ALL_LIVE_TERMINAL_GATES",
+  "terminal_live_gates_required": true,
+  "review_scope": {
+    "read_only_except_this_review_receipt": true,
+    "quartet_edits_performed": false,
+    "builder_generation_performed": false,
+    "wsl_execution_performed": false,
+    "default_runner_execution_performed": false,
+    "canonical_execution_performed": false,
+    "heavy_execution_performed": false,
+    "retained_v30_snapshot_path_touched": false
+  },
+  "frozen_quartet": {
+    "builder": {
+      "path": "scripts/build_muni_v31_successor.py",
+      "size": 69258,
+      "sha256": "c08338a076d08336f704e4fe364cdd15ba78904bbc9b4cdc2a96d262e493079e",
+      "file_id": "0000000000000000000900000017267f",
+      "last_write_utc_ticks": 639235163968391371
+    },
+    "runner": {
+      "path": "scripts/run_muni_v31_canonical_tests.ps1",
+      "size": 238063,
+      "sha256": "ee8fcdd6cb1fdc03e9e7ac9eb792746239afbb8f9c818fc216427e8dbdd3b71c",
+      "file_id": "0000000000000000000400000017be91",
+      "last_write_utc_ticks": 639235164588218285
+    },
+    "tests": {
+      "path": "tests/test_run_muni_v31_successor.py",
+      "size": 27636,
+      "sha256": "be3eb15ba49c3c9b0a5ed0c6d579ab0e83775dc054ff3e9e65ffdef48be5c9fb",
+      "file_id": "0000000000000000000200000017be40",
+      "last_write_utc_ticks": 639235164237482474
+    },
+    "authorization": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v31-canonical-tests-authorization-20260828T113225Z.receipt.json",
+      "size": 20872,
+      "sha256": "8b1530c6afb5ef0dd0e1469ab69d798e91c70fe2070956517a6f164ec8c4d6ff",
+      "file_id": "0000000000000000000300000017be92",
+      "last_write_utc_ticks": 639235164595640475
+    }
+  },
+  "predecessor_observations": {
+    "validated_pin_count": 41,
+    "unique_pin_path_count": 41,
+    "all_exact_size_sha256_file_id_and_last_write_utc_ticks": true,
+    "direct_v30_source_pin_count": 4,
+    "direct_v30_artifact_pin_count": 12,
+    "carried_v28_v29_pin_count": 25,
+    "v28_receipt_absent": true,
+    "v28_pass_seal_absent": true,
+    "v29_receipt_absent": true,
+    "v29_pass_seal_absent": true,
+    "v30_receipt_absent": true,
+    "v30_pass_seal_absent": true,
+    "triple_pass_absence_validated_by_both_static_engines": true
+  },
+  "fresh_state_observations": {
+    "v31_run_artifact_prefix": "muni-fspsx-v31-canonical-readonly-tests-5f2d84640f40404a82dd180d7043d9c5",
+    "v31_run_artifact_count": 0,
+    "shared_lock_path": "output/diagnostic-receipts/planora-shared-heavy-wsl.lock",
+    "shared_lock_present": false,
+    "review_receipt_is_outside_v31_run_artifact_namespace": true
+  },
+  "tests_run_by_reviewer": [
+    {
+      "command": ".venv/Scripts/python.exe -B -m pytest -q -p no:cacheprovider tests/test_run_muni_v31_successor.py -k 'not builder_is_deterministic_nonwsl_and_preserves_predecessors'",
+      "status": "PASS",
+      "passed": 19,
+      "deselected": 1,
+      "deselected_reason": "generation test intentionally excluded by frozen no-generation review constraint"
+    },
+    {
+      "command": ".venv/Scripts/ruff.exe check --no-cache scripts/build_muni_v31_successor.py tests/test_run_muni_v31_successor.py",
+      "status": "PASS"
+    },
+    {
+      "command": "Windows PowerShell 5.1 runner -ReadinessPredicateSelfTest",
+      "status": "PASS",
+      "wsl_executed": false,
+      "canonical_suite_executed": false,
+      "legacy_empty_binding_failure_reproduced": true,
+      "production_call_sites": 2
+    },
+    {
+      "command": "PowerShell 7 runner -ReadinessPredicateSelfTest",
+      "status": "PASS",
+      "wsl_executed": false,
+      "canonical_suite_executed": false,
+      "legacy_empty_binding_failure_reproduced": true,
+      "production_call_sites": 2
+    },
+    {
+      "command": "Windows PowerShell 5.1 runner -StaticSelfTest",
+      "status": "PASS_FOR_FRESH_INDEPENDENT_STATIC_REVIEW",
+      "wsl_executed": false,
+      "canonical_suite_executed": false,
+      "predecessor_model": "41_EXACT_IDENTITY_PINS_V28_V29_V30_PLUS_TRIPLE_PASS_ABSENCE_VALIDATED"
+    },
+    {
+      "command": "PowerShell 7 runner -StaticSelfTest",
+      "status": "PASS_FOR_FRESH_INDEPENDENT_STATIC_REVIEW",
+      "wsl_executed": false,
+      "canonical_suite_executed": false,
+      "predecessor_model": "41_EXACT_IDENTITY_PINS_V28_V29_V30_PLUS_TRIPLE_PASS_ABSENCE_VALIDATED"
+    },
+    {
+      "command": "Windows PowerShell 5.1 runner -EmitExpectedAuthorization",
+      "status": "PASS",
+      "matches_stored_authorization_after_terminal_lf_restoration": true
+    },
+    {
+      "command": "PowerShell 7 runner -EmitExpectedAuthorization",
+      "status": "PASS",
+      "matches_stored_authorization_after_terminal_lf_restoration": true
+    }
+  ],
+  "source_contract_observations": {
+    "inherited_v30_hard_coded_builder_self_pin_calls": 0,
+    "inherited_v30_hard_coded_test_self_pin_calls": 0,
+    "dynamic_authorization_builder_self_pin_calls": 2,
+    "dynamic_authorization_test_self_pin_calls": 2,
+    "default_dynamic_self_pins_precede_predecessor_validation_and_custody": true,
+    "retained_v30_snapshot_switch_precedes_default_claim": true,
+    "retained_v30_snapshot_switch_prechecks_shared_lock_and_fresh_namespace": true,
+    "retained_v30_snapshot_switch_writes_v31_evidence": false,
+    "retained_v30_snapshot_switch_creates_claim": false,
+    "cleanup_v31_prefix_occurrences": 1,
+    "cleanup_v30_prefix_occurrences": 0,
+    "canonical_launch_site_count": 1,
+    "automatic_retry_authorized": false,
+    "terminal_retained_replay_before_archived_lock_guard": true,
+    "terminal_archived_lock_guard_held_through_final_seal_flush": true,
+    "final_seal_create_only_durable_and_last_fallible_operation": true
+  },
+  "blockers": []
+}

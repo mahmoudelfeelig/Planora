@@ -1,0 +1,106 @@
+{
+  "schema": "planora.itc2019.diagnostic-authorization-receipt.v1",
+  "instance": "pu-proj-fal19",
+  "diagnostic_chain": "puproj_v21",
+  "captured_utc": "2026-08-27T00:59:02Z",
+  "completed_utc": "2026-08-27T01:00:44Z",
+  "decision": "GO_FOR_EXACTLY_ONE_ISOLATED_OFFICIAL_LAUNCH",
+  "authorization_completed_utc": "2026-08-27T01:17:59Z",
+  "control_plane": {
+    "supervisor_sha256": "2fee18265d421b1d7c2a81b867bce4175ff0b657e0d6cb6f52a3f87701e8ca19",
+    "launcher_sha256": "4f76f536b0f110af644a95da920157a7df9acacbb53d6f213b5b82589b04b82a",
+    "runner_sha256": "ef2fdc7d68167f421eab3d3544969795ed18e78b02f2b7fff9b5db9aa4374e05",
+    "freeze_manifest_sha256": "916faaf7f67158d12cfb43e90bf21a690087a5866fe29afcbc0d8822d0328dc8"
+  },
+  "source_closure": {
+    "itc2019_decomposed_sha256": "3f4b92f91867cd1205f1702f36923b3c19cb8ad8d39b43d34a3b15e07f502e05",
+    "itc2019_sparse_joint_sha256": "2f2a40180f86fdcc7b76d9c10730cecbda7114713d504ecfe6b98008f105c2c2",
+    "itc2019_violation_lns_sha256": "9f1e4f66c4fadea2813ec86de451206102928c5c7b1dfdf786d900c8dc137343"
+  },
+  "verification_before_probe": {
+    "focused_tests": "148_PASS",
+    "complete_lightweight_itc2019": "450_PASS_2_EXPECTED_SKIP",
+    "ruff": "PASS"
+  },
+  "verification_after_probe": {
+    "retained_final_lightweight_itc2019": {
+      "path": "output/diagnostic-receipts/pu-proj-v21-final-lightweight-itc2019-tests-20260827T0110Z.log",
+      "size": 1492,
+      "sha256": "4a6308cc7521081b64bfd66b8b129f071583eb9a053f0d3f17dcf8e7a481c9de",
+      "result": "450_PASS_2_EXPECTED_SKIP_0_FAILURES",
+      "elapsed_seconds": 28.20
+    },
+    "independent_reviews": [
+      {
+        "reviewer": "01a040bc-6623-7ca3-834b-6e239ce0ad44",
+        "decision": "GO_FOR_EXACTLY_ONE_ISOLATED_OFFICIAL_LAUNCH",
+        "hash_chain_verified": true,
+        "probe_envelope_verified": true,
+        "resource_and_cleanup_contract_verified": true
+      },
+      {
+        "reviewer": "01a040bc-7b63-74e2-b9ef-34189140aa27",
+        "decision": "GO_FOR_EXACTLY_ONE_ISOLATED_OFFICIAL_LAUNCH",
+        "hash_chain_verified": true,
+        "probe_envelope_verified": true,
+        "resource_and_cleanup_contract_verified": true
+      }
+    ]
+  },
+  "prelaunch_memory_samples_kib": [
+    2314524,
+    2311520
+  ],
+  "prelaunch_memory_floor_kib": 1900000,
+  "process_exit_code": 0,
+  "stdout_evidence": {
+    "path": "output/diagnostic-receipts/pu-proj-v21-sealed-import-probe-20260827T0059Z.stdout.json",
+    "size": 200969,
+    "sha256": "91e4d5fc7fbdddd442fa56f6ca2a7168a22389e3a8571e769ea66059b43b65bc"
+  },
+  "stderr_evidence": {
+    "path": "output/diagnostic-receipts/pu-proj-v21-sealed-import-probe-20260827T0059Z.stderr.log",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "accepted_envelope": {
+    "schema": "planora.puproj.frontier-joint-v19-sealed-import-probe.v1",
+    "status": "PASS",
+    "errors": [],
+    "child_exit_code": 0,
+    "child_status": "PASS",
+    "child_solve_call_count": 0,
+    "official_instance_opened": false,
+    "checkpoint_or_incumbent_opened": false,
+    "solver_child_process_started": false,
+    "solver_execution_started": false,
+    "official_solution_xml_published": false,
+    "peak_process_group_rss_kib": 133540,
+    "peak_process_group_vmswap_kib": 0,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 200624,
+    "process_group_cleanup_empty": true,
+    "cleanup_final_owned_pids": [],
+    "cleanup_errors": [],
+    "leader_generation_gone": true,
+    "descriptor_sha256": "28c63d9fc4eb26e1562a7fc46e8c5ba9c2dbfe487d1d6039fd71f6ed5333aa4c",
+    "descriptor_named_publication": false,
+    "runtime_bundle_file_count": 3077,
+    "runtime_bundle_total_bytes": 191956270,
+    "chain_traversed": [
+      "native_bootstrap",
+      "sealed_launcher",
+      "sealed_supervisor",
+      "sealed_runner_import_child"
+    ]
+  },
+  "official_launch_authorized": true,
+  "official_launch_attempt_limit": 1,
+  "revocation_conditions": [
+    "Any pinned artifact hash changes.",
+    "Either fresh launch memory sample is below 1900000 KiB.",
+    "Another heavy WSL task is active at launch time.",
+    "The official output root is not fresh, unique, empty, and mode 0700.",
+    "The exact frozen v21 chain, input, argv, or unchanged resource caps are not used.",
+    "Any output, cleanup, resource, hash, local-validator, or official-validator acceptance check fails."
+  ]
+}

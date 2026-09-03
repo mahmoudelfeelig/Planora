@@ -1,0 +1,25 @@
+{
+    "lock":  {
+                 "schema":  "planora.shared-heavy-wsl-lock.v2",
+                 "run_id":  "ca79220da7db46b6996fe1f05785dde7",
+                 "authorization_sha256":  "dfc87e6f55f0c19c308ecc0a2b7effd9341ceaf9eadac034f09ca56773375233",
+                 "runner_sha256":  "c6dab5988cdd8f0a41061ab8d2fd6a7f33a68fe40b4e52815b846ce4fefa93b2",
+                 "stale_lock_reconciliation_sha256":  "009735b8f561a24509b758d9026f5cd96d8e30b1b3a3e89ecd1513e432e89c7a",
+                 "created_at_utc":  "2026-08-28T10:11:27.5508405Z",
+                 "mechanism":  "CreateNew_ReadWrite_FileShareNone_DeleteOnClose_same_handle_seek_read_hash",
+                 "owner_pid":  24572
+             },
+    "lock_sha256":  "9765d322e818216142ca665133cd7e17699dfabf2cecd02c457243541a0c33b4",
+    "held_open":  true,
+    "same_handle_verified":  true,
+    "delete_on_close":  true,
+    "stale_lock_reconciliation_sha256":  "009735b8f561a24509b758d9026f5cd96d8e30b1b3a3e89ecd1513e432e89c7a",
+    "stale_archive_pin":  {
+                              "path":  "output/diagnostic-receipts/retained-stale-planora-shared-heavy-wsl-v28-e7cf1df162074402994a9d0ad763c824.lock.json",
+                              "size":  370,
+                              "sha256":  "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98",
+                              "file_id":  "0000000000000000000c000000172456",
+                              "last_write_utc_ticks":  639235031172129106
+                          },
+    "predecessor_evidence_sha256":  "22ea86e4ab104d2a3dae9d0750aa9a7a2a50b635859d4fc0f80a475977650bff"
+}

@@ -1,0 +1,51 @@
+{
+  "schema": "planora.itc2019.sameattendees-static-admission-receipt.v1",
+  "created_at_utc": "2026-08-27T06:08:19.0381971Z",
+  "command": [
+    "pwsh",
+    "-NoProfile",
+    "-File",
+    "scripts/scan_pu_sameattendees_static.ps1",
+    "-InputPath",
+    "data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/pu-proj-fal19.xml"
+  ],
+  "scanner": {
+    "path": "scripts/scan_pu_sameattendees_static.ps1",
+    "sha256": "097354b0c4273adce7e072feacb14de966f576f8123b293d44fe1fc16c5a95cc"
+  },
+  "rejected_predecessor": {
+    "path": "output/diagnostic-receipts/pu-proj-sameattendees-static-admission-20260827T054924Z.receipt.json",
+    "sha256": "9c62009493b4851250c10ececd204397a1509f1df622a1efd75b8ef0d8d7d90e",
+    "reason": "The predecessor scanner did not mirror admission-time per-distribution class-ID deduplication and is not admission evidence."
+  },
+  "result": {
+    "schema": "planora.itc2019.sameattendees-static-admission.v1",
+    "input_path": "data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/pu-proj-fal19.xml",
+    "input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "algorithm": "exact-ordered-dedup-plus-full-domain-travel-symmetry-proof",
+    "admission_class_ids_deduplicated_per_distribution": true,
+    "class_count": 8813,
+    "directed_travel_entries": 287492,
+    "raw_pair_occurrences": 13989,
+    "exact_ordered_pairs": 13135,
+    "exact_ordered_evaluations": 2503322,
+    "safe_prepared_relations": 12041,
+    "safe_prepared_evaluations": 2377059,
+    "symmetric_reverse_deduplications": 1094,
+    "asymmetric_ordered_occurrences": 0,
+    "reduction_from_exact_ordered": 126263,
+    "configured_cap": 2500000,
+    "headroom": 122941,
+    "admitted": true,
+    "model_built": false,
+    "solver_run": false
+  },
+  "scope": {
+    "static_xml_scan_only": true,
+    "model_built": false,
+    "solver_run": false,
+    "official_output_created": false,
+    "performance_claim_authorized": false,
+    "quality_claim_authorized": false
+  }
+}

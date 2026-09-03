@@ -1,0 +1,81 @@
+{
+  "authorization_path": "output/diagnostic-receipts/pu-proj-timetable-build-only-authorization-20260827T063534Z.receipt.json",
+  "authorization_sha256": "053cff0510db102c3571d0a1380bab2288c21c9ad1febb2dd38577ffa6e93dde",
+  "claim_path": "output/diagnostic-receipts/.pu-proj-official-build-only-7ecfd6634c67485482511601ce77fe62.claim.json",
+  "claim_sha256": "b3a700114b097b3f9a50b1c4a0198bbb23380c0ea8c7ed8617457b8e4a510ece",
+  "completed_at_utc": "2026-08-27T07:45:40.505918+00:00",
+  "error": {
+    "category": "NONE",
+    "code": "WORKER_RESULT_MISSING",
+    "stage": "worker-result"
+  },
+  "expected_admission": {
+    "prepared_relations": 12041,
+    "room_pair_evaluations": 2377059
+  },
+  "input_path": "data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/pu-proj-fal19.xml",
+  "input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+  "limits": {
+    "build_time_limit_seconds": 570.0,
+    "construction": {
+      "max_domain_values": 2500000,
+      "max_required_group_cells": 2000000,
+      "max_required_pair_relations": 2000000,
+      "max_room_pair_evaluations": 2500000,
+      "max_room_pair_evaluations_per_pair": 250000,
+      "max_sparse_room_constraints": 2500000
+    },
+    "process_wall_clock_limit_seconds": 600.0,
+    "random_seed": 0,
+    "workers": 1
+  },
+  "memory_preflight_available_physical_bytes": [
+    3722129408,
+    3728289792
+  ],
+  "outcome": "ERROR",
+  "process_timed_out": false,
+  "process_wall_seconds": 1.1918170999997528,
+  "rejected_predecessor": {
+    "receipt_path": "output/diagnostic-receipts/pu-proj-official-build-only-272c5f5f26134297a756f9936673e0e9.receipt.json",
+    "receipt_sha256": "7664bd1ad3513d091da6e00eebe5fe86106197e0df1748231116b86854c78ae8",
+    "required_outcome": "ERROR",
+    "run_id": "272c5f5f26134297a756f9936673e0e9"
+  },
+  "result": null,
+  "reviewed_admission_receipt_sha256": "faf895884249bcd2ef8d576600504f6b80cf2cc106a782e920f01ae90cc997b2",
+  "run_id": "7ecfd6634c67485482511601ce77fe62",
+  "runner_path": "scripts/run_pu_official_build_only_receipt.py",
+  "runner_sha256": "438860563d291d5a33c3fa9cecd4971cf2db51babff5c976b477456d99bfca2f",
+  "schema": "planora.itc2019.pu-official-build-only-attempt.v2",
+  "scope": {
+    "model_construction_completed": false,
+    "model_construction_started": false,
+    "official_input_parse_completed": false,
+    "official_input_parse_started": false,
+    "official_input_used": false,
+    "performance_claim_authorized": false,
+    "quality_claim_authorized": false,
+    "solution_output_created": false,
+    "solver_construction_authorized": false,
+    "solver_run": false
+  },
+  "source_sha256": {
+    "benchmarks/itc2019.py": "5577c6227037fa615df741a4b0b351b05ec11c7c4ce4ebe9a4489554122b2c1f",
+    "benchmarks/itc2019_factorized.py": "959be9e028773492538c4a541892955d37c5cdeb02cfaa762d8b9ce3fff48f02",
+    "benchmarks/itc2019_timetable_factorized.py": "6cd00de292d82bab6ac24a841c93290d1fd4feb8acc3053d96c4e6b2b43e9df3"
+  },
+  "started_at_utc": "2026-08-27T07:45:39.264371+00:00",
+  "worker_event_sequence": [],
+  "worker_return_code": 2,
+  "worker_session_binding": {
+    "authorization_sha256": "053cff0510db102c3571d0a1380bab2288c21c9ad1febb2dd38577ffa6e93dde",
+    "claim_sha256": "b3a700114b097b3f9a50b1c4a0198bbb23380c0ea8c7ed8617457b8e4a510ece",
+    "parent_identity": {
+      "creation_time_100ns": 134322903329222701,
+      "pid": 2352
+    },
+    "parent_pid": 2352,
+    "token": "31df4deffb2342778d5b3dd57f9edfd9"
+  }
+}

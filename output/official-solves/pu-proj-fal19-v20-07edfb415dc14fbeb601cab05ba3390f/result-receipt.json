@@ -1,0 +1,68 @@
+{
+  "schema": "planora.itc2019.official-launch-result.v1",
+  "instance": "pu-proj-fal19",
+  "launch_id": "07edfb415dc14fbeb601cab05ba3390f",
+  "decision": "REJECTED_FAIL_CLOSED",
+  "admissible_as_solution": false,
+  "outer_exit_code": 2,
+  "supervisor_status": "FAILED",
+  "breach": "whole_launch_vmrss_plus_vmswap_limit",
+  "observed_child_elapsed_seconds": 198.69090406800387,
+  "official_instance_opened": true,
+  "official_solution_xml_published": false,
+  "solver_child_process_started": false,
+  "solver_execution_started": false,
+  "child_exit_code": -9,
+  "resource_evidence": {
+    "peak_process_group_rss_kib": 1533956,
+    "peak_process_group_vmswap_kib": 0,
+    "process_group_rss_limit_kib": 1550000,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 1600756,
+    "whole_launch_memory_limit_kib": 1600000,
+    "over_limit_kib": 756,
+    "post_exit_memavailable_kib": 2333600
+  },
+  "cleanup_evidence": {
+    "supervisor_reported_empty": true,
+    "supervisor_initial_owned_pids": [3],
+    "supervisor_final_owned_pids": [],
+    "supervisor_leader_generation_gone": true,
+    "cleanup_errors": [],
+    "signals": [15, 9],
+    "post_outer_exit_matching_processes": 0,
+    "v20_cleanup_repair_verified": true
+  },
+  "artifacts": {
+    "launch_plan": {
+      "path": "output/official-solves/pu-proj-fal19-v20-07edfb415dc14fbeb601cab05ba3390f/launch-plan.json"
+    },
+    "supervisor_envelope": {
+      "path": "output/official-solves/pu-proj-fal19-v20-07edfb415dc14fbeb601cab05ba3390f/launch.stdout.json",
+      "size": 163456,
+      "sha256": "b07a40ca6ebe4fa04822637cdf801f25818bc1ae173c92775ba7c8a15c951ee2"
+    },
+    "outer_stderr": {
+      "path": "output/official-solves/pu-proj-fal19-v20-07edfb415dc14fbeb601cab05ba3390f/launch.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "published_solution": null,
+    "runner_report": null
+  },
+  "comparison_to_v19_failure": {
+    "v19_elapsed_seconds": 196.92668435299856,
+    "v19_peak_whole_launch_kib": 1400740,
+    "v20_elapsed_seconds": 198.69090406800387,
+    "v20_peak_whole_launch_kib": 1600756,
+    "additional_memory_consumed_kib": 200016,
+    "interpretation": "The workload continued allocating until it reached the larger cap. A further cap-only increase is not authorized; the solver memory path must be changed."
+  },
+  "errors": [
+    "child_stdout_invalid_json",
+    "runner_hash_claim_mismatch",
+    "complete_output_or_exit_mismatch:-9",
+    "child_wait_timeout_before_forced_reap",
+    "resource_or_signal_breach:whole_launch_vmrss_plus_vmswap_limit"
+  ],
+  "next_action": "Do not admit or upload. Replace or bound the PU solver memory path, add a regression/profile, freeze a new chain, repeat the contained probe, and launch only after a new independent GO."
+}

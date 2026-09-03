@@ -1,0 +1,13 @@
+{
+  "authorization_sha256": "053cff0510db102c3571d0a1380bab2288c21c9ad1febb2dd38577ffa6e93dde",
+  "claimed_at_utc": "2026-08-27T07:45:39.248907+00:00",
+  "owner_identity": {
+    "creation_time_100ns": 134322903329222701,
+    "pid": 2352
+  },
+  "owner_pid": 2352,
+  "run_id": "7ecfd6634c67485482511601ce77fe62",
+  "runner_sha256": "438860563d291d5a33c3fa9cecd4971cf2db51babff5c976b477456d99bfca2f",
+  "schema": "planora.itc2019.pu-official-build-only-claim.v1",
+  "token": "31df4deffb2342778d5b3dd57f9edfd9"
+}

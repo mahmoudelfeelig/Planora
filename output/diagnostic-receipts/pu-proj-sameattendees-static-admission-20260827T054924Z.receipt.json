@@ -1,0 +1,45 @@
+{
+  "schema": "planora.itc2019.sameattendees-static-admission-receipt.v1",
+  "created_at_utc": "2026-08-27T05:49:24.2863055Z",
+  "command": [
+    "pwsh",
+    "-NoProfile",
+    "-File",
+    "scripts/scan_pu_sameattendees_static.ps1",
+    "-InputPath",
+    "data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/pu-proj-fal19.xml"
+  ],
+  "scanner": {
+    "path": "scripts/scan_pu_sameattendees_static.ps1",
+    "sha256": "5dc7456616c3a2c1e5fe3ae711e0c727bbd76716fa3b40dbeb868e099c17dfe9"
+  },
+  "result": {
+    "schema": "planora.itc2019.sameattendees-static-admission.v1",
+    "input_path": "data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/pu-proj-fal19.xml",
+    "input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "algorithm": "exact-ordered-dedup-plus-full-domain-travel-symmetry-proof",
+    "class_count": 8813,
+    "directed_travel_entries": 287492,
+    "raw_pair_occurrences": 14021,
+    "exact_ordered_pairs": 13150,
+    "exact_ordered_evaluations": 2506831,
+    "safe_prepared_relations": 12056,
+    "safe_prepared_evaluations": 2380568,
+    "symmetric_reverse_deduplications": 1094,
+    "asymmetric_ordered_occurrences": 0,
+    "reduction_from_exact_ordered": 126263,
+    "configured_cap": 2500000,
+    "headroom": 119432,
+    "admitted": true,
+    "model_built": false,
+    "solver_run": false
+  },
+  "scope": {
+    "static_xml_scan_only": true,
+    "model_built": false,
+    "solver_run": false,
+    "official_output_created": false,
+    "performance_claim_authorized": false,
+    "quality_claim_authorized": false
+  }
+}

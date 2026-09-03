@@ -1,0 +1,133 @@
+{
+  "schema": "planora.itc2019.official-launch-result-receipt.v1",
+  "instance": "pu-proj-fal19",
+  "diagnostic_chain": "puproj_v24",
+  "launch_id": "ab73b50e9caf4edb94254ade02712d3a",
+  "completed_utc": "2026-08-27T03:28:10Z",
+  "decision": "REJECTED_CONTROLLED_UNKNOWN_NO_RETRY",
+  "counted_as_validator_clean": false,
+  "automatic_retry_authorized": false,
+  "resource_cap_raise_authorized": false,
+  "launch_plan": {
+    "path": "launch-plan.json",
+    "size": 5531,
+    "sha256": "d2d393571a9cdaa3fa31368bf0c14c10f330cbdd52e726eefbd3eb424539f895"
+  },
+  "authorization_receipt": {
+    "path": "../../diagnostic-receipts/pu-proj-v24-official-launch-authorization-20260827T031658Z.receipt.json",
+    "size": 4121,
+    "sha256": "3bd70787cfbf0fe9fadc80459b99512aeea7bfff6a5cac5220ebef98ea19f086"
+  },
+  "process_exit_code": 0,
+  "accepted_envelope": {
+    "schema": "planora.pu-proj.frontier-joint-v19-supervisor.v1",
+    "status": "CONTROLLED_UNKNOWN",
+    "admissible_as_solution": false,
+    "errors": [],
+    "breach": null,
+    "child_exit_code": 3,
+    "observed_child_elapsed_seconds": 269.93887065599847,
+    "official_instance_opened": true,
+    "solver_execution_started": true,
+    "official_solution_xml_published": false,
+    "peak_process_group_rss_kib": 1415568,
+    "peak_process_group_vmswap_kib": 0,
+    "process_group_rss_limit_kib": 1550000,
+    "process_group_vmswap_limit_kib": 131072,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 1482852,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1600000,
+    "process_group_cleanup_empty": true,
+    "cleanup_final_owned_pids": [],
+    "cleanup_errors": [],
+    "leader_generation_gone": true,
+    "scratch_directory_final_entries": []
+  },
+  "runner_result": {
+    "status": "CONTROLLED_UNKNOWN",
+    "admissible_as_solution": false,
+    "complete_timetable": false,
+    "model_build_seconds": 257.42536106799525,
+    "solver_wall_time_seconds": 0.0,
+    "wall_time_seconds": 257.604783717994,
+    "effective_formulation": "decomposed",
+    "formulation_selection_reason": "decomposed_sparse_semantics_admitted",
+    "raw_cartesian_domain_values": 1937292,
+    "branches": 0,
+    "conflicts": 0,
+    "status_from_solver": "UNKNOWN",
+    "official_solution_xml_published": false,
+    "memory_release_after_solve": {
+      "before_rss_kib": 1415568,
+      "after_rss_kib": 630312,
+      "released_rss_kib": 785256,
+      "gc_collected": 736,
+      "malloc_trim_result": 1
+    }
+  },
+  "comparison_to_v22": {
+    "v22_launch_id": "2ef32306a20f483e9482fcd1c81c695a",
+    "model_build_seconds_reduced_by": 1.523486213001893,
+    "peak_process_group_rss_kib_reduced_by": 109484,
+    "peak_whole_launch_vmrss_plus_vmswap_kib_reduced_by": 107748,
+    "solver_time_change_seconds": 0.0,
+    "branches_change": 0,
+    "conclusion": "The v24 representation changes materially reduced memory but did not remove the combined pre-solver construction bottleneck or leave any externally reported solver budget."
+  },
+  "root_cause": {
+    "classification": "PRE_SOLVER_CONSTRUCTION_BUDGET_EXHAUSTED_PHASE_NOT_SEPARATED",
+    "evidence": "The compatibility aggregate model_build_seconds was 257.425 seconds and the outer result reported 0.0 solver seconds and zero branches. This aggregate includes auto-dispatch and a failed decomposed constructor, and the failed constructor can hide internal solver or repair work; current telemetry does not separate those phases.",
+    "resource_containment_effective": true,
+    "next_required_work": "Add phase-separated construction telemetry, then evaluate an exact timetable-only factorized or component route under synthetic build-only gates; do not retry v24 or raise its caps."
+  },
+  "artifacts": {
+    "launch_stdout": {
+      "path": "launch.stdout.json",
+      "size": 195522,
+      "sha256": "920526a7efbf61ab6140f8abad7d47454d0a8b485b95584bac797a555f4b3de7"
+    },
+    "launch_stderr": {
+      "path": "launch.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "launch_exit_code": {
+      "path": "launch.exit-code.txt",
+      "size": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "child_stdout": {
+      "path": "child.stdout.log",
+      "size": 678,
+      "sha256": "826dcfadbd432617da7e9a2f79ed137f4df29e5c88b180dee8486a66fb18858a"
+    },
+    "child_stderr": {
+      "path": "child.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "runner_report": {
+      "path": "runner-report.json",
+      "size": 28390,
+      "sha256": "802877bbe0521ae02510c5a4db1414b73df0d1da67ed8e993139c350464e8b42"
+    }
+  },
+  "post_exit": {
+    "samples": [
+      {
+        "memavailable_kib": 2325792,
+        "matching_workload_processes": []
+      },
+      {
+        "delay_seconds": 5,
+        "memavailable_kib": 2333392,
+        "matching_workload_processes": []
+      }
+    ],
+    "process_note": "The only pgrep match was the read-only audit shell containing its own search expression."
+  },
+  "validation": {
+    "local_generic_validator_run": false,
+    "official_website_validator_run": false,
+    "reason": "No solution.xml was published."
+  }
+}

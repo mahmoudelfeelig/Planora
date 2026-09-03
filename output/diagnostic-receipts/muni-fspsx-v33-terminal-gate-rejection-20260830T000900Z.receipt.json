@@ -1,0 +1,187 @@
+{
+  "schema": "planora.muni-v33.terminal-gate-rejection.v1",
+  "status": "REJECTED_TERMINAL_GATE_INVOCATION_CONSUMED",
+  "recorded_at_utc": "2026-08-30T00:13:08.4274468Z",
+  "recorded_by": "/root",
+  "candidate": "muni_v33",
+  "run_id": "2339df35f57e441a8f92bd1f890fa68f",
+  "decision": "NO_RETRY_BUILD_NEW_SUCCESSOR",
+  "automatic_retry_authorized": false,
+  "execution_observation": {
+    "execution_window_utc_is_approximate": true,
+    "execution_window_start_utc": "2026-08-30T00:04:00Z",
+    "execution_window_end_utc": "2026-08-30T00:07:00Z",
+    "unified_execution_session_id": 43937,
+    "raw_transcript_persisted": false,
+    "raw_stdout_observed": false,
+    "raw_stderr_observed": true,
+    "stderr_was_utf16_nul_interleaved": true,
+    "normalized_error_recorded_below": true,
+    "byte_exact_raw_stderr_claimed": false
+  },
+  "failure": {
+    "phase": "outer_before_authenticated_live_gates",
+    "operation": "Assert-V33RootAbsent",
+    "context": "v33 root absence outer_before_authenticated_live_gates",
+    "wsl_exit_code": -1,
+    "host_process_exit_code": 1,
+    "wsl_error_code": "Wsl/Service/CreateInstance/HCS_E_CONNECTION_TIMEOUT",
+    "classification": "HOST_WSL_INFRASTRUCTURE_COLD_START_TIMEOUT",
+    "canonical_solver_or_test_failure": false,
+    "normalized_message": "v33 root absence outer_before_authenticated_live_gates failed with exit -1: The operation timed out because a response was not received from the virtual machine or container. Error code: Wsl/Service/CreateInstance/HCS_E_CONNECTION_TIMEOUT",
+    "throw_site": "scripts/run_muni_v33_canonical_tests.ps1:155",
+    "outer_process_marker": "MUNI_V33_TERMINAL_GATE_PROCESS_EXIT=1"
+  },
+  "lifecycle": {
+    "terminal_gate_invocation_attempted": true,
+    "gate_self_and_review_guards_accepted": true,
+    "successor_and_primary_review_guards_accepted": true,
+    "runner_static_self_test_completed": true,
+    "initial_authorization_state_replayed": true,
+    "complete_predecessor_pins_validated": 89,
+    "ordinary_predecessor_guards_held": 88,
+    "total_held_guards": 95,
+    "retained_v28_archive_replayed": true,
+    "fresh_v33_artifact_and_lock_state_validated": true,
+    "v33_root_absence_check_attempted": true,
+    "v33_root_absence_verified": false,
+    "resource_readiness_children_started": 0,
+    "retained_snapshot_child_started": false,
+    "final_predefault_replay_reached": false,
+    "outer_pass_envelope_emitted": false,
+    "default_invocation_counter_set": false,
+    "default_runner_invocation_attempted": false,
+    "atomic_claim_creation_attempted": false,
+    "shared_lock_acquisition_attempted": false,
+    "resource_monitor_launch_attempted": false,
+    "canonical_launch_attempted": false,
+    "canonical_suite_executed": false,
+    "pass_publication_attempted": false
+  },
+  "post_failure_state": {
+    "observed_at_utc": "2026-08-30T00:10:37.1959861Z",
+    "canonical_namespace_prefix": "muni-fspsx-v33-canonical-readonly-tests-2339df35f57e441a8f92bd1f890fa68f.",
+    "canonical_namespace_artifact_count": 0,
+    "claim_present": false,
+    "pass_receipt_present": false,
+    "pass_seal_present": false,
+    "runner_rejection_present": false,
+    "runner_emergency_rejection_present": false,
+    "shared_lock_present": false,
+    "v33_root_state": "UNKNOWN_WSL_DISTRIBUTION_DID_NOT_START"
+  },
+  "post_failure_host_observation": {
+    "wsl_service_status": "Running",
+    "vmcompute_service_status": "Running",
+    "default_distribution": "Ubuntu",
+    "ubuntu_state": "Stopped",
+    "docker_desktop_state": "Running",
+    "wsl_list_exit_code": 0,
+    "observed_wsl_processes_belonged_to_docker_desktop": true,
+    "ubuntu_was_started_for_diagnosis": false,
+    "wsl_or_docker_was_restarted": false,
+    "root_absence_inference_permitted": false
+  },
+  "authorization_disposition": {
+    "terminal_gate_invocation_authority_exhausted": true,
+    "runner_default_authorization_claim_consumed": false,
+    "runner_authorization_receipt_unchanged": true,
+    "runner_authorization_must_not_be_reused": true,
+    "new_successor_run_id_required": true,
+    "new_successor_authorization_required": true
+  },
+  "successor_requirements": {
+    "bind_this_rejection_receipt_and_its_independent_review": true,
+    "bind_all_rejection_receipt_evidence_pins_and_custody_test": true,
+    "bind_all_89_predecessor_pins": true,
+    "retain_v30_v31_v32_snapshots_without_mutation": true,
+    "retain_v28_archive_identity": true,
+    "require_authenticated_v33_root_absence_or_exact_read_only_custody_before_v34_admission": true,
+    "require_authenticated_ubuntu_cold_start_readiness_before_one_shot_authority": true,
+    "require_multiple_time_separated_readiness_samples_after_cold_start": true,
+    "require_zero_canonical_artifacts_and_no_shared_lock": true,
+    "require_new_exact_hash_bound_terminal_gate_review": true,
+    "automatic_retry_forbidden": true
+  },
+  "evidence_pins": {
+    "successor_builder": {
+      "path": "scripts/build_muni_v33_successor.py",
+      "size": 127349,
+      "sha256": "288aec154b156a8a6a55523e31466188c1bc60c1f289751799d07c59ebd380d3",
+      "file_id": "0000000000000000000500000017c563",
+      "last_write_utc_ticks": 639235358848477442
+    },
+    "successor_runner": {
+      "path": "scripts/run_muni_v33_canonical_tests.ps1",
+      "size": 350383,
+      "sha256": "1899d5c5e89e886181e951dbaf38b7671c640c9aa01d2d21d6d68863048fb0fb",
+      "file_id": "0000000000000000000500000017be8f",
+      "last_write_utc_ticks": 639235359747884240
+    },
+    "successor_tests": {
+      "path": "tests/test_run_muni_v33_successor.py",
+      "size": 29488,
+      "sha256": "aed35db03be4e10f13d5705a0ef5b7624373a31d682fd3ac59400467f911243c",
+      "file_id": "0000000000000000000200000017c56a",
+      "last_write_utc_ticks": 639235358907779204
+    },
+    "authorization": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v33-canonical-tests-authorization-20260828T141639Z.receipt.json",
+      "size": 45158,
+      "sha256": "683809b26400464fdb2fff4559fd1953854b09c18fdef1f2d198ea280e80e9c5",
+      "file_id": "0000000000000000000200000017c56d",
+      "last_write_utc_ticks": 639235359756600098
+    },
+    "primary_independent_review": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v33-independent-review-20260828T180735Z.receipt.json",
+      "size": 10665,
+      "sha256": "cbc777f2ed798fc41d1d54503d48746f859f2b2367fd09b53f433bf42786b45d",
+      "file_id": "0000000000000000004b00000017c594",
+      "last_write_utc_ticks": 639235373506139804
+    },
+    "terminal_gate": {
+      "path": "scripts/run_muni_v33_terminal_gate_once.ps1",
+      "size": 31684,
+      "sha256": "f24908a03793cd0b6eb3816eefd90369ff10ba87e1c22ca65d728b4799a6f1c4",
+      "file_id": "0000000000000000000200000017c6b8",
+      "last_write_utc_ticks": 639236442066704388
+    },
+    "terminal_gate_tests": {
+      "path": "tests/test_run_muni_v33_terminal_gate_once.py",
+      "size": 14401,
+      "sha256": "879ae6b09119d88b4a989a7c0907bf9585e1cdd9d0125092255cc8d3e4ddf751",
+      "file_id": "000000000000000005590000001994a4",
+      "last_write_utc_ticks": 639236442876108264
+    },
+    "terminal_gate_independent_review": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v33-terminal-gate-independent-review-20260828T181500Z.receipt.json",
+      "size": 3783,
+      "sha256": "07f8607de05dd8446b6c97f0c3bbc1ac311ace4ed61b519f7b7a53c8d75f12e1",
+      "file_id": "00000000000000000096000000197485",
+      "last_write_utc_ticks": 639236447810556289
+    },
+    "retained_v28_archive": {
+      "path": "output/diagnostic-receipts/retained-stale-planora-shared-heavy-wsl-v28-e7cf1df162074402994a9d0ad763c824.lock.json",
+      "size": 370,
+      "sha256": "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98",
+      "file_id": "0000000000000000000c000000172456",
+      "last_write_utc_ticks": 639235031172129106
+    }
+  },
+  "custody_test_pin": {
+    "path": "tests/test_muni_v33_terminal_gate_rejection.py",
+    "size": 8501,
+    "sha256": "2533e6f7c881f3259abed8b179211bbc62a085fdf6c322f5f3fb28d2f7699b22",
+    "file_id": "0000000000000000056000000019b1bc",
+    "last_write_utc_ticks": 639236459199560797
+  },
+  "limitations": [
+    "No byte-exact raw stderr transcript file was produced by the unified execution handle; only the exact normalized NUL-stripped error and exit marker are recorded.",
+    "The v33 WSL root absence was not established because Ubuntu did not start; this receipt does not infer root absence from the stopped distribution state."
+  ],
+  "receipt_publication_blockers": [],
+  "successor_admission_blockers": [
+    "authenticated_v33_root_reconciliation_pending",
+    "host_wsl_storage_stability_not_established"
+  ]
+}

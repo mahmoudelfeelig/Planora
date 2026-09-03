@@ -1,0 +1,354 @@
+{
+    "schema":  "planora.muni-v26.canonical-readonly-plan.v1",
+    "run_id":  "3913458278a647e9b3a635c7452ae2d6",
+    "authorization_sha256":  "5f710235a29c3230533e6cb2e04f21592f62df323452ff25ba955db41fc1f9a4",
+    "private_tmp_root":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6",
+    "private_tmp_mode":  "0700",
+    "staged_artifacts":  [
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-bootstrap.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-bootstrap.py",
+                                 "Hash":  "332ec8fd4e428098dd5199ef27668d95b048d531fe5a6520f228adfc6db45a6f",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-bootstrap.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-freeze-manifest.json",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-freeze-manifest.json",
+                                 "Hash":  "31f8ce0fdc08046c05ed2aaf0d0f7f2ff6715d617fd04255c0b1bb6b5d4c25e1",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-freeze-manifest.json"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-generic-validator.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-generic-validator.py",
+                                 "Hash":  "6eabef6ba3e02297a3eb7723cf549360f1239d8e5fbc0ef48ed2b7d19ff5918a",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-generic-validator.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-inline-trust-root.txt",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-inline-trust-root.txt",
+                                 "Hash":  "96ddcd4dee6430b8cef56d8b595a8614ee90fad4bcdfb5e99265c0cc240857c2",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-inline-trust-root.txt"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-launcher.sh",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-launcher.sh",
+                                 "Hash":  "71dd37dbb8b3195ef2397a9a8682c5a060b31176850eb79c48739d371c095e9a",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-launcher.sh"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-minimal-tcb.sha256",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-minimal-tcb.sha256",
+                                 "Hash":  "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-minimal-tcb.sha256"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-runner.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-runner.py",
+                                 "Hash":  "1ce9d2b98328e978aa5a09d0486ff7f323ab45dda66c0e730e3ab5ba6a07a46b",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-runner.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-stdlib.sha256",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-stdlib.sha256",
+                                 "Hash":  "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-stdlib.sha256"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-supervisor.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-supervisor.py",
+                                 "Hash":  "cc12bcfe504f677afa03bf8dc8f37eabb85f599ac6784f3093eb8ae2053ed53b",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-supervisor.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-tests.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-tests.py",
+                                 "Hash":  "4a603f9940b4e11029a5d93ee63841f512e82542cbbb5f69617afd996253b10d",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-tests.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora_muni_v12_benchmarks_stub.py",
+                                 "Leaf":  "planora_muni_v12_benchmarks_stub.py",
+                                 "Hash":  "40488f0af25e5457841ef6577bfdb3fda2a65a7facd5e608e03d5be2084688f2",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora_muni_v12_benchmarks_stub.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v12-certificate.json",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v12-certificate.json",
+                                 "Hash":  "175a02ea6bc14612d56293637a461430812b826890bcab97829bb841f8d77b2b",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v12-certificate.json"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-bootstrap.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-bootstrap.py",
+                                 "Hash":  "b2cecc1fdac3693e5609f629bcb75cf5e80ecfc7eac7af06876f918ece02ff61",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-bootstrap.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-freeze-manifest.json",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-freeze-manifest.json",
+                                 "Hash":  "75c55c6afa4ca6a97bbdc4f224d3db4741ec87854d22e00c7ee2a53895b5fbd7",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-freeze-manifest.json"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-generic-validator.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-generic-validator.py",
+                                 "Hash":  "6eabef6ba3e02297a3eb7723cf549360f1239d8e5fbc0ef48ed2b7d19ff5918a",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-generic-validator.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-inline-trust-root.txt",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-inline-trust-root.txt",
+                                 "Hash":  "a124a1f5b4146f883b6a42d47f28f7000126cd07e20da98f9aa2bdf9ea978838",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-inline-trust-root.txt"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-launcher.sh",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-launcher.sh",
+                                 "Hash":  "e16543251b163c6ea117591241c5932460935a004f0c6380060e03d2cc94916b",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-launcher.sh"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-minimal-tcb.sha256",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-minimal-tcb.sha256",
+                                 "Hash":  "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-minimal-tcb.sha256"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-runner.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-runner.py",
+                                 "Hash":  "3e0493d59a604dc7c99a73535662ebf868a96aa158f7c4ebdddb228f72c64051",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-runner.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-stdlib.sha256",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-stdlib.sha256",
+                                 "Hash":  "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-stdlib.sha256"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-supervisor.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-supervisor.py",
+                                 "Hash":  "38464e78c14c901b25d9ad32a1981cfc4703607dc543fe5484d9a131a1087d0b",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-supervisor.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-tests.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-tests.py",
+                                 "Hash":  "b77b492ba801ac1533008affe83033fb96ef52ca7f1e10e58daeeae5c515d81b",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-tests.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora_muni_v13_benchmarks_stub.py",
+                                 "Leaf":  "planora_muni_v13_benchmarks_stub.py",
+                                 "Hash":  "40488f0af25e5457841ef6577bfdb3fda2a65a7facd5e608e03d5be2084688f2",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora_muni_v13_benchmarks_stub.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v13-certificate.json",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v13-certificate.json",
+                                 "Hash":  "0ba69667fb96c02d2cd2b574e7fec7ea30f32d179058eefee4b9315256775425",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v13-certificate.json"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-bootstrap.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-bootstrap.py",
+                                 "Hash":  "9ae7a20b7b16ae37d72571685f1f3d0cf392b6062558704170ecf4b92fdd1d1a",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-bootstrap.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-freeze-manifest.json",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-freeze-manifest.json",
+                                 "Hash":  "d2a4ada2b647b948299638296fb75b297b7206984ff10201bfddcb0aecee6eaf",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-freeze-manifest.json"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-generic-validator.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-generic-validator.py",
+                                 "Hash":  "6eabef6ba3e02297a3eb7723cf549360f1239d8e5fbc0ef48ed2b7d19ff5918a",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-generic-validator.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-inline-trust-root.txt",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-inline-trust-root.txt",
+                                 "Hash":  "cd0096caf80f8e0816fd21fb03b44d19680408bad818ddc0c2be148c5a1e68a0",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-inline-trust-root.txt"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-launcher.sh",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-launcher.sh",
+                                 "Hash":  "1ffc6d61359724d473b302ca389bab4f4bec35f4489451751df897730af23ec0",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-launcher.sh"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-minimal-tcb.sha256",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-minimal-tcb.sha256",
+                                 "Hash":  "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-minimal-tcb.sha256"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-runner.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-runner.py",
+                                 "Hash":  "789f2b2d7a937a52888445f7694a1868dffb3237b138920ecb45f694be40d1fb",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-runner.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-stdlib.sha256",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-stdlib.sha256",
+                                 "Hash":  "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-stdlib.sha256"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-supervisor.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-supervisor.py",
+                                 "Hash":  "8bc764e2619216759ceb626e4b7012df6c0d7198747729de14519886737e21e7",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-supervisor.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-tests.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-tests.py",
+                                 "Hash":  "6d27ab4e1ace702c179bac2d50d03bfc723a0a828a9e0b6677d22c8350a8f050",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-tests.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora_muni_v14_benchmarks_stub.py",
+                                 "Leaf":  "planora_muni_v14_benchmarks_stub.py",
+                                 "Hash":  "40488f0af25e5457841ef6577bfdb3fda2a65a7facd5e608e03d5be2084688f2",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora_muni_v14_benchmarks_stub.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v14-certificate.json",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v14-certificate.json",
+                                 "Hash":  "be8a43faa45e24d11f62ad11e0491ef305be83f47c46d60000df7033a53982a2",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v14-certificate.json"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-bootstrap.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-bootstrap.py",
+                                 "Hash":  "241831946a30916e2900cc6b894f7a3e197bb881769b377baeca3b648d84c35f",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-bootstrap.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-freeze-manifest.json",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-freeze-manifest.json",
+                                 "Hash":  "60a88df99a46562b951ea66e45c330a00550700155304040da2c62ac37ce009e",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-freeze-manifest.json"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-generic-validator.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-generic-validator.py",
+                                 "Hash":  "6eabef6ba3e02297a3eb7723cf549360f1239d8e5fbc0ef48ed2b7d19ff5918a",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-generic-validator.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-inline-trust-root.txt",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-inline-trust-root.txt",
+                                 "Hash":  "74584fe8e044c16aa357f7390ab5ca8b8b5d67c41f74d5bd384e26dc613d4e74",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-inline-trust-root.txt"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-launcher.sh",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-launcher.sh",
+                                 "Hash":  "a447e6d2e99cc14fa097710ba08cbcae4585b5aeadca2d3349cdadd8218f7205",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-launcher.sh"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-minimal-tcb.sha256",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-minimal-tcb.sha256",
+                                 "Hash":  "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-minimal-tcb.sha256"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-runner.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-runner.py",
+                                 "Hash":  "a4b8abbfea794d7192268d62722d3a29e2933900d57f8051b4301ae6be42162c",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-runner.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-stdlib.sha256",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-stdlib.sha256",
+                                 "Hash":  "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-stdlib.sha256"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-supervisor.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-supervisor.py",
+                                 "Hash":  "4007a788a4631d1a485121c25bc254a6fedff5755ff88fedc3c998f814f7ef2f",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-supervisor.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-tests.py",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-tests.py",
+                                 "Hash":  "91c510dbd8cfb217c47004beaea1b5fa2301196d749a8588506532456789f1b9",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-tests.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora_muni_v15_benchmarks_stub.py",
+                                 "Leaf":  "planora_muni_v15_benchmarks_stub.py",
+                                 "Hash":  "40488f0af25e5457841ef6577bfdb3fda2a65a7facd5e608e03d5be2084688f2",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora_muni_v15_benchmarks_stub.py"
+                             },
+                             {
+                                 "Source":  "/tmp/planora-muni-fspsx-frontier-v15-certificate.json",
+                                 "Leaf":  "planora-muni-fspsx-frontier-v15-certificate.json",
+                                 "Hash":  "42625671a2f4db85ba9d26e8898c59bc611fbc2dcd459b0019890be71c80f918",
+                                 "Target":  "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6/planora-muni-fspsx-frontier-v15-certificate.json"
+                             }
+                         ],
+    "memavailable_samples_kib":  [
+                                     2261676,
+                                     2296952
+                                 ],
+    "competing_heavy_processes":  [
+
+                                  ],
+    "argv":  [
+                 "wsl.exe",
+                 "-d",
+                 "Ubuntu",
+                 "--",
+                 "/usr/bin/timeout",
+                 "600s",
+                 "/usr/bin/bwrap",
+                 "--die-with-parent",
+                 "--new-session",
+                 "--unshare-all",
+                 "--ro-bind",
+                 "/",
+                 "/",
+                 "--bind",
+                 "/tmp/planora-muni-v26-readonly-tests-3913458278a647e9b3a635c7452ae2d6",
+                 "/tmp",
+                 "--dev",
+                 "/dev",
+                 "--proc",
+                 "/proc",
+                 "--clearenv",
+                 "--setenv",
+                 "PATH",
+                 "/usr/bin:/bin",
+                 "--setenv",
+                 "LANG",
+                 "C.UTF-8",
+                 "--setenv",
+                 "LC_ALL",
+                 "C.UTF-8",
+                 "--setenv",
+                 "TZ",
+                 "UTC",
+                 "--setenv",
+                 "PLANORA_MUNI_V26_SKIP_HEAVY",
+                 "1",
+                 "--cap-drop",
+                 "ALL",
+                 "--chdir",
+                 "/mnt/d/Stuff/Projects/Sites/Planora",
+                 "/usr/bin/python3.12",
+                 "-I",
+                 "-S",
+                 "-B",
+                 "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v26/planora-muni-fspsx-frontier-v26-tests.py"
+             ],
+    "official_input_opened":  false,
+    "progress_or_checkpoint_staged":  false,
+    "probe_or_solver_authorized":  false
+}

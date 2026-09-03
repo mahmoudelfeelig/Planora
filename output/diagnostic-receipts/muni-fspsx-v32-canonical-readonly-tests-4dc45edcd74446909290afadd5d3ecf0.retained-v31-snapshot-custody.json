@@ -1,0 +1,24 @@
+{
+    "schema":  "planora.muni-v32.retained-v31-snapshot-custody.v1",
+    "status":  "EXACT_RETAINED_V31_SNAPSHOT_VALIDATED_WHILE_V32_LOCK_HELD",
+    "run_id":  "4dc45edcd74446909290afadd5d3ecf0",
+    "replay":  {
+                   "all_nlink_one":  true,
+                   "bytes":  190900047,
+                   "directories":  368,
+                   "files":  3146,
+                   "inventory_sha256":  "e184534d26b0ec73670688726c02cf0b4d3c532213660f678b0dd99713c4438d",
+                   "phase":  "initial_after_v32_lock",
+                   "root":  "/tmp/planora-muni-v31-canonical-tests-5f2d84640f40404a82dd180d7043d9c5",
+                   "schema":  "planora.muni-v32.retained-snapshot-replay.v1",
+                   "status":  "EXACT_RETAINED_SNAPSHOT_REPLAY"
+               },
+    "source_inventory_pin":  {
+                                 "path":  "output/diagnostic-receipts/muni-fspsx-v31-canonical-readonly-tests-5f2d84640f40404a82dd180d7043d9c5.staging-inventory.json",
+                                 "size":  847403,
+                                 "sha256":  "e184534d26b0ec73670688726c02cf0b4d3c532213660f678b0dd99713c4438d",
+                                 "file_id":  "0000000000000000000200000017bffd",
+                                 "last_write_utc_ticks":  639235182067042604
+                             },
+    "created_at_utc":  "2026-08-28T14:06:44.7417682Z"
+}

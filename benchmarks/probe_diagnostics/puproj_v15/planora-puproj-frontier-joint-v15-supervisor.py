@@ -1,0 +1,3601 @@
+#!/usr/bin/env python3
+"""Exact-byte whole-launch supervisor for PU-PROJ frontier-joint v15."""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import csv
+import ctypes
+from datetime import UTC, datetime
+import errno
+import fcntl
+from hashlib import sha256
+import json
+import math
+import os
+from pathlib import Path
+from pathlib import PurePosixPath
+import re
+import resource
+import signal
+import stat
+import subprocess
+import sys
+import time
+from typing import Any, Mapping
+import uuid
+
+
+ROOT = Path("/mnt/d/Stuff/Projects/Sites/Planora")
+ARTIFACT_ROOT = ROOT / "benchmarks/probe_diagnostics/puproj_v15"
+SITE_PACKAGES = ROOT / ".venv/lib/python3.12/site-packages"
+RUNNER = ARTIFACT_ROOT / "planora-puproj-frontier-joint-v15-runner.py"
+FULL_INSTANCE = (
+    ROOT
+    / "data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/pu-proj-fal19.xml"
+)
+SEMANTIC = ROOT / "benchmarks/itc2019.py"
+PREPROCESSING = ROOT / "benchmarks/itc2019_preprocessing.py"
+ROOM = ROOT / "benchmarks/itc2019_room_oracle.py"
+BENCHMARKS_INIT = ROOT / "benchmarks/__init__.py"
+BENCHMARKS_CORPUS = ROOT / "benchmarks/corpus.py"
+GENERIC_VALIDATOR = (
+    ARTIFACT_ROOT / "planora-puproj-frontier-joint-v15-generic-validator.py"
+)
+PLANORA_FRESH_MODULES = {
+    name: ROOT / f"benchmarks/{name}.py"
+    for name in (
+        "itc2019_compact_joint", "itc2019_corpus", "itc2019_decomposed",
+        "itc2019_decomposed_quality", "itc2019_factorized",
+        "itc2019_generalized_occurrences", "itc2019_global_components",
+        "itc2019_global_quality", "itc2019_grouped_calendar",
+        "itc2019_resource_seed", "itc2019_sparse_joint", "itc2019_structural",
+        "itc2019_violation_lns",
+    )
+}
+PYTHON_BINARY = Path("/usr/bin/python3.12")
+RUNTIME_RECORDS = {
+    "runtime_ortools_record": ROOT
+    / ".venv/lib/python3.12/site-packages/ortools-9.15.6755.dist-info/RECORD",
+    "runtime_numpy_record": ROOT
+    / ".venv/lib/python3.12/site-packages/numpy-2.4.2.dist-info/RECORD",
+    "runtime_pandas_record": ROOT
+    / ".venv/lib/python3.12/site-packages/pandas-3.0.1.dist-info/RECORD",
+    "runtime_dateutil_record": ROOT
+    / ".venv/lib/python3.12/site-packages/python_dateutil-2.9.0.post0.dist-info/RECORD",
+    "runtime_six_record": ROOT
+    / ".venv/lib/python3.12/site-packages/six-1.17.0.dist-info/RECORD",
+    "runtime_lxml_record": ROOT
+    / ".venv/lib/python3.12/site-packages/lxml-6.1.0.dist-info/RECORD",
+    "runtime_absl_record": ROOT
+    / ".venv/lib/python3.12/site-packages/absl_py-2.4.0.dist-info/RECORD",
+    "runtime_immutabledict_record": ROOT
+    / ".venv/lib/python3.12/site-packages/immutabledict-4.3.1.dist-info/RECORD",
+    "runtime_protobuf_record": ROOT
+    / ".venv/lib/python3.12/site-packages/protobuf-6.33.5.dist-info/RECORD",
+    "runtime_typing_extensions_record": ROOT
+    / ".venv/lib/python3.12/site-packages/typing_extensions-4.15.0.dist-info/RECORD",
+}
+
+# Replaced exactly once after the runner is frozen.
+EXPECTED_RUNNER_SHA256 = (
+    "43d3badb2edd1329d2b18cfa5cb0a7453e947b3e2904780305288d427975af16"
+)
+EXPECTED_HASHES = {
+    "full_instance": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "semantic": "5577c6227037fa615df741a4b0b351b05ec11c7c4ce4ebe9a4489554122b2c1f",
+    "preprocessing": "b98b6d56bcbdedaf491ac91194c9eef8997f624ab81c7f52e3a647c174994644",
+    "room": "ff16e0a6045bffa7402748c537213c727918afddd35d92513ba4133972753ca6",
+    "benchmarks_init": "be6f5557e4565d1de24b4ced5a56a610fd935fc8320f1ffe5014255a59e3b84a",
+    "benchmarks_corpus": "74d23c0940713b8a40a9f789d4c0ece7402e5d9b81514587d3015d497d4112b3",
+    "itc2019_compact_joint": "427264334276fb48ce5b54c151a42d4a85b75055c0bea96f47a928b1fe28362a",
+    "itc2019_corpus": "1c83f9f26362d0c8c06d1d9bcabc2b015ac4e09216fdd91df1eaa7255933c621",
+    "itc2019_decomposed": "a96e5fcd98b30ce69ff0a51e6fb1b65243d84d502f5873854423780de68b4b63",
+    "itc2019_decomposed_quality": "534622d096728ff4e4e9b53fd8d58ec3827ec09540d4c95a3e3dcad271c7f78b",
+    "itc2019_factorized": "a773110756e612e26dfd792ea6f289ca9a36d526fc807f790f674233ec8df1bf",
+    "itc2019_generalized_occurrences": "7ed4224c0f338f9f983a358babb5dfdb6b90d5026383283cd0d805aef733d85f",
+    "itc2019_global_components": "c2d158dc9434f8da4f3e9478b1526face365702cf317fd14e693af75769e7f11",
+    "itc2019_global_quality": "397d308a4fb368aaab96db1789394e1b9f289a8f6b8d87b9ce5b4a569f8ccc7f",
+    "itc2019_grouped_calendar": "37b82b7f01fb47a655bb76ae0d6734315b00bf58ec7ebf28c66bb701c00a6ee5",
+    "itc2019_resource_seed": "8d497bc609ec5b717b0d9e2b77406e89c45c6eaef378148c0bebadd6a429d665",
+    "itc2019_sparse_joint": "393f13042ef84e3040b17caefa407c63be32a50913f7edc456cbad836af9ccfe",
+    "itc2019_structural": "db4ac0adbfe38f1b618b2e8f7a5a9e5a613000a62034017819cca2c20640d024",
+    "itc2019_violation_lns": "af902e522b980cd511f4633c39d7f76ccddcd417f94b8cdc8785f389a831317b",
+    "generic_validator": "77aa7390efeb19fd329c1686f23ab580ddbcd3efd81f0802a5a60bcb9e471370",
+    "python_binary": "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273",
+    "runtime_ortools_record": "4175009141f97e2dc7e4f453d67cb3fee6034f1f9df269e67a9b2abb3bd70a10",
+    "runtime_numpy_record": "6cc44a275ff3c9b440a33271c7038b98622fd58fd68a2cabd931932a1741fb81",
+    "runtime_pandas_record": "c65f6019e7d8089476318471d636a54a231254e1a9b009db093b9877fe12f0b6",
+    "runtime_dateutil_record": "0c26b4b1542dbd1ebd8d2babdd501aed583d6ada9595517f936f00fe4ff9d254",
+    "runtime_six_record": "d834e846ba51c0e7371968d0b5a0cdebdaa2f9ea2f0447a40b594fa96ca5d89f",
+    "runtime_lxml_record": "aebff199cfc81d017be51e09b0c0fb1be49e5ddff0f7e777b3cc56b27f8cd07d",
+    "runtime_absl_record": "526b41384f796af7d02a92ec84d1a8e7a2f3fd42880a349e91c96723f780a216",
+    "runtime_immutabledict_record": "32fa24e0bd6e8481bd654ce6e020dcd9466d0d6b63e71c4588bbd25749257ec6",
+    "runtime_protobuf_record": "6f8088dd0fb04edc0b64983a573b4d91c7374d1b0fc8546035cc6b2635aaec46",
+    "runtime_typing_extensions_record": "02f70a4ed6f81c3298a0024ca9dcc6807360938d388360ce3b768243f719cdce",
+}
+CAPTURE_SOURCES = {
+    "runner": RUNNER,
+    "full_instance": FULL_INSTANCE,
+    "semantic": SEMANTIC,
+    "preprocessing": PREPROCESSING,
+    "room": ROOM,
+    "benchmarks_init": BENCHMARKS_INIT,
+    "benchmarks_corpus": BENCHMARKS_CORPUS,
+    "generic_validator": GENERIC_VALIDATOR,
+    **PLANORA_FRESH_MODULES,
+    "python_binary": PYTHON_BINARY,
+    **RUNTIME_RECORDS,
+}
+
+CAPTURE_MANIFEST_ENV = "PUPROJ_FRONTIER_V15_CAPTURE_MANIFEST"
+OUTPUT_BINDING_ENV = "PUPROJ_FRONTIER_V15_OUTPUT_BINDING"
+RUNTIME_BUNDLE_ENV = "PUPROJ_FRONTIER_V15_RUNTIME_BUNDLE"
+PYCACHE_PREFIX_ENV = "PUPROJ_FRONTIER_V15_PYCACHE_PREFIX"
+EXTERNAL_LOADER_PROTOCOL = "planora.puproj.frontier-v15-supervisor-loader.v1"
+RUNNER_LOADER_PROTOCOL = "planora.puproj.frontier-v15-runner-loader.v1"
+REQUIRED_SEALS = (
+    fcntl.F_SEAL_SEAL | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_GROW | fcntl.F_SEAL_WRITE
+)
+LAUNCH_MIN_MEM_AVAILABLE_KIB = 1_500_000
+INITIAL_MIN_MEM_AVAILABLE_KIB = 1_900_000
+RUNTIME_MIN_MEM_AVAILABLE_KIB = 450_000
+PROCESS_GROUP_RSS_LIMIT_KIB = 1_400_000
+PROCESS_GROUP_VMSWAP_LIMIT_KIB = 131_072
+ADDRESS_SPACE_CAP_BYTES = 2_800_000_000
+CHILD_ACCEPTANCE_COOPERATIVE_DEADLINE_SECONDS = 300.0
+SUPERVISOR_HARD_WALL_SECONDS = 330.0
+PROBE_INITIAL_MIN_MEM_AVAILABLE_KIB = 1_900_000
+PROBE_RUNTIME_MIN_MEM_AVAILABLE_KIB = 600_000
+PROBE_PROCESS_GROUP_RSS_LIMIT_KIB = 1_200_000
+PROBE_PROCESS_GROUP_VMSWAP_LIMIT_KIB = 131_072
+PROBE_WHOLE_LAUNCH_MEMORY_LIMIT_KIB = 1_300_000
+PROBE_HARD_WALL_SECONDS = 180.0
+PROBE_CAPTURE_MAX_BYTES = 64 << 20
+PROBE_DIAGNOSTIC_TAIL_BYTES = 4 << 10
+POLL_SECONDS = 0.10
+MAX_RUNTIME_BUNDLE_FILES = 6_000
+MAX_RUNTIME_BUNDLE_BYTES = 512 << 20
+MAX_RUNTIME_FILE_BYTES = 128 << 20
+EXPECTED_RUNTIME_BUNDLE_FILES = 3_077
+EXPECTED_RUNTIME_BUNDLE_BYTES = 191_956_270
+EXPECTED_RUNTIME_EXCLUDED_ROWS = 2_098
+EXPECTED_RUNTIME_RECORD_LABELS = frozenset(
+    {
+        "runtime_ortools_record",
+        "runtime_numpy_record",
+        "runtime_pandas_record",
+        "runtime_dateutil_record",
+        "runtime_six_record",
+        "runtime_lxml_record",
+        "runtime_absl_record",
+        "runtime_immutabledict_record",
+        "runtime_protobuf_record",
+        "runtime_typing_extensions_record",
+    }
+)
+PR_SET_PDEATHSIG = 1
+PR_SET_CHILD_SUBREAPER = 36
+PARENT_DEATH_SIGNAL = signal.SIGKILL
+AT_FDCWD = -100
+RENAME_NOREPLACE = 1
+LIBC = ctypes.CDLL(None, use_errno=True)
+SYSTEM_PYTHON_ROOT = Path("/usr/lib/python3.12")
+SYSTEM_PYTHON_OWNER_UID = 65_534
+EXPECTED_ARGPARSE_PATH = SYSTEM_PYTHON_ROOT / "argparse.py"
+EXPECTED_ARGPARSE_SHA256 = (
+    "29395feb61bc376ca4ff9d44069af8d914ec2a1f25a4bd7978f6e2afef5bc07f"
+)
+SYSTEM_PYTHON_HASHES: dict[str, str] = {
+    "/usr/lib/python3.12/__future__.py": "981d4c398849f9ebcab72300d9c1fe288fd6d7f28957b3b3fa3a493a5836d95c",
+    "/usr/lib/python3.12/_collections_abc.py": "90324ee3e1c4ca5319f7242d4b7c1e90eb8418b3f999d07c853aa488356282e6",
+    "/usr/lib/python3.12/_compat_pickle.py": "12c8356a3d40bd0a336f13d7c6e2bed50d5c1a876563766a3175a6b328b5855e",
+    "/usr/lib/python3.12/_compression.py": "3ad5d60627477a60939ee44fc1bb3a05dbe8fb52f0f75039b8f5d8f1a278b981",
+    "/usr/lib/python3.12/_strptime.py": "302a4b9cf8fa7511c9142b110601f069fe195fec8217a49de46b340df2eafc32",
+    "/usr/lib/python3.12/_sysconfigdata__x86_64-linux-gnu.py": "b10c8b01956ef36535b0be50fb7b6abc3cc580746a3a1d6b31374b55d137adb9",
+    "/usr/lib/python3.12/_weakrefset.py": "91895a451d06e9f521a1171b31b9b19bc9740f35af00d4fa106338ab7167c9ac",
+    "/usr/lib/python3.12/abc.py": "e558702a95cdce3febd289da021715d2b92bc43995b8a1bc58dfa1c3d8010287",
+    "/usr/lib/python3.12/argparse.py": "29395feb61bc376ca4ff9d44069af8d914ec2a1f25a4bd7978f6e2afef5bc07f",
+    "/usr/lib/python3.12/ast.py": "d16626aa5c054bcc45221e56f84e55051b046caf0f8be1fe4902ea71534fb735",
+    "/usr/lib/python3.12/base64.py": "65c70b5b6361c6f7a71ecc2df0f55315474b669221dd8d81d7c1ae8d56748ada",
+    "/usr/lib/python3.12/bisect.py": "f1cf7b85fc36b5da249813fc5ab97d9464f8cc1bc817f7146206fa2713e35999",
+    "/usr/lib/python3.12/bz2.py": "76ab3252924e71e859d7d90e8d3db13b6554975cfcac0fdadced4de7f8779330",
+    "/usr/lib/python3.12/calendar.py": "fb3fbcc0a0c8f33941153c425e5c39aedae687c86fcb001bf3a9526a9584459c",
+    "/usr/lib/python3.12/codecs.py": "7b7839e53a77961153240aecfe11edc8054d05b1dedd83894450dae21ec05785",
+    "/usr/lib/python3.12/collections/__init__.py": "0af967cd58036507b3d0fbc33b7a996c61dbb52a94b0b738c8bef12cd4cc7dd4",
+    "/usr/lib/python3.12/collections/abc.py": "9cb4208f99128a0489b6c8e6c61637617dd7d4250c59e065491957eda084dd10",
+    "/usr/lib/python3.12/concurrent/__init__.py": "87ad5c8954dd56fbbca04517bf87477ff4dce575170c7dd1281d7ef1f4214ac8",
+    "/usr/lib/python3.12/concurrent/futures/__init__.py": "9bcec785db3eddc6d462883957ba6d3ff4370501fece505101444bae542883e8",
+    "/usr/lib/python3.12/concurrent/futures/_base.py": "8c6d5f09f7c535d40fa1c30ebfcb35e0601c2abf32286a82cf151af7ddf72473",
+    "/usr/lib/python3.12/concurrent/futures/thread.py": "33f69dd18c908992bce91ad3aa6bd809a42684e2b66caaa09ad4934ca0a29f58",
+    "/usr/lib/python3.12/contextlib.py": "8b7a477f978a8532852fd81e241c78182516bc4975d672d580a5848a76e11eb6",
+    "/usr/lib/python3.12/contextvars.py": "5ed260be8d1f4fe92261b7810b4bb1e8539c42093d7493f677d076e1a87f459a",
+    "/usr/lib/python3.12/copy.py": "cbd25547933176fcf6bb05c2adc9f4796d15ac20b9b82dcf890daea7203daeab",
+    "/usr/lib/python3.12/copyreg.py": "c8eda41f05c6bf95a4da4726a530409d2485ae060b8d019b3a8034389a15d3e9",
+    "/usr/lib/python3.12/csv.py": "46004923196e98a67f87d30da64d070027c81f144f5ac91242fbfae33507dda8",
+    "/usr/lib/python3.12/ctypes/__init__.py": "0782592567ad71097198a3afe985ac3e2ea0b9b5e75452402c9460c89a86318a",
+    "/usr/lib/python3.12/ctypes/_endian.py": "c5d692bdce10dfee242752620061bab684633bc72445a3def484961ef1bdbf3a",
+    "/usr/lib/python3.12/dataclasses.py": "0e449d55d6206b0022f541ba32be88fafc934ff71d9aa65f31f101ca6147f2ae",
+    "/usr/lib/python3.12/datetime.py": "ef20dc6b3554cd585dddffdc573f1f9a7a54c522f2a3fb4576c44edbb1e14238",
+    "/usr/lib/python3.12/decimal.py": "000c00bad31d126b054c6ec7f3e02b27c0f9a4d579f987d3c4f879cee1bacb81",
+    "/usr/lib/python3.12/dis.py": "f6f02f5966fed0b1ce95768dc59d7905c64f60f454d79eed67fbeaa724069031",
+    "/usr/lib/python3.12/encodings/__init__.py": "78c4744d407690f321565488710b5aaf6486b5afa8d185637aa1e7633ab59cd8",
+    "/usr/lib/python3.12/encodings/aliases.py": "6fdcc49ba23a0203ae6cf28e608f8e6297d7c4d77d52e651db3cb49b9564c6d2",
+    "/usr/lib/python3.12/encodings/ascii.py": "578aa1173f7cc60dad2895071287fe6182bd14787b3fbf47a6c7983dfe3675e3",
+    "/usr/lib/python3.12/encodings/utf_8.py": "ba0cac060269583523ca9506473a755203037c57d466a11aa89a30a5f6756f3d",
+    "/usr/lib/python3.12/enum.py": "c8ead615c159598370295649eb296819ad4b40d50b200c4fec2d4269bf7af9ae",
+    "/usr/lib/python3.12/fnmatch.py": "6683da36e47af523f3f41e18ad244d837783e19e98911cc0b7415dea81494ebc",
+    "/usr/lib/python3.12/functools.py": "cca971c456e1bec8b751aecdf41466f34dbf72321ee0840627280ba2ccf9d033",
+    "/usr/lib/python3.12/genericpath.py": "2b0b35d2206778af4081cf81dd9b513876e72c35a55bec941402e1fa62b1f1aa",
+    "/usr/lib/python3.12/gettext.py": "1cc6fd33bdce3bb29c0c37ec9a2f5bf15a315e9776b329247e6675c028a8af39",
+    "/usr/lib/python3.12/gzip.py": "31e7275c5c20d1b414063c28088b68e7a3e657af60c9c23435bf92e77a1fd1e5",
+    "/usr/lib/python3.12/hashlib.py": "6dbdebf270868b391080e21dc9687eddfaf321c965ad979f68d3f5c423c613ab",
+    "/usr/lib/python3.12/heapq.py": "6d43277e5c76fc0f073cd388fcff852d14d068f6bb6d4886c340f8b75a1229a9",
+    "/usr/lib/python3.12/hmac.py": "7facd1330e5487ed995eda5c8619df0d3e32f69cb619f97662372fb76325746e",
+    "/usr/lib/python3.12/importlib/__init__.py": "c9e1b3dbc619ac31e7017ac43668a20200872c1c0e79ae379c0dab6ed399b730",
+    "/usr/lib/python3.12/importlib/_abc.py": "80aab7931dc999dee581c8b8b56fcd973fe156335a96ceeaf6acfc03cebf10e8",
+    "/usr/lib/python3.12/importlib/_bootstrap.py": "9653944363a4773cc32bbb34426024597a9d2ee4cd42e7912b4daf8cadfb53ed",
+    "/usr/lib/python3.12/importlib/_bootstrap_external.py": "949e115a77dd6b25280195c30b6f5146a303212816b3221430ad82467d4f3133",
+    "/usr/lib/python3.12/importlib/machinery.py": "d045cd7ecf2a12b6ecbfbef79eb114e87ef2ebd756f5b705f73e6f3266e3dede",
+    "/usr/lib/python3.12/importlib/util.py": "ca54e6458dbe521d591e5b8d9bb651ef929bfae946706c98470cdd569041a64f",
+    "/usr/lib/python3.12/inspect.py": "13945f061d93cf7b8f812d2afc279ff0b3aea799c7146b1c0c58c6e644bbc3e1",
+    "/usr/lib/python3.12/io.py": "7cec3cb8ac004058dd0a5af246e6d950fb59c7ddd0058fda48bcb3fcb98d8822",
+    "/usr/lib/python3.12/ipaddress.py": "cc9831e239bd81c1480a12733bded744002d93815fd0d083c77aea348c956e67",
+    "/usr/lib/python3.12/json/__init__.py": "d5d41e2c29049515d295d81a6d40b4890fbec8d8482cfb401630f8ef2f77e4d5",
+    "/usr/lib/python3.12/json/decoder.py": "9f02654649816145bc76f8c210a5fe3ba1de142d4d97a1c93105732e747c285b",
+    "/usr/lib/python3.12/json/encoder.py": "af7bd40a0d0d0a3e726a9b4b3a2a543019f6ab97a340d0162a9c29ca9da97869",
+    "/usr/lib/python3.12/json/scanner.py": "8604d9d03786d0d509abb49e9f069337278ea988c244069ae8ca2c89acc2cb08",
+    "/usr/lib/python3.12/keyword.py": "18c2be738c04ad20ad375f6a71db34b3823c7f40b0340f5294d0e89f3c9b093b",
+    "/usr/lib/python3.12/lib-dynload/_bz2.cpython-312-x86_64-linux-gnu.so": "c9e6b91f9ebcdf863a9fd9d1591f93090fbcd7fc4beed35e9be8354e0c9267c3",
+    "/usr/lib/python3.12/lib-dynload/_contextvars.cpython-312-x86_64-linux-gnu.so": "014d5f1b46a77da005a25d2ed8a2174b4f38f6b2661b8fe280ca7ab052641cdb",
+    "/usr/lib/python3.12/lib-dynload/_ctypes.cpython-312-x86_64-linux-gnu.so": "99d7998349b1a868fbbfd23b782015205a27ea841595d784ca478873d30ccb8a",
+    "/usr/lib/python3.12/lib-dynload/_decimal.cpython-312-x86_64-linux-gnu.so": "4f901f6b532da1b54abb19470f29868dd9169b9c6e47ac65df3bc6fc66afcdf9",
+    "/usr/lib/python3.12/lib-dynload/_hashlib.cpython-312-x86_64-linux-gnu.so": "4f8e3e7100ba83dfb202f24fc3e5c32805ed32f9285b34a3803e8886d94a5c22",
+    "/usr/lib/python3.12/lib-dynload/_json.cpython-312-x86_64-linux-gnu.so": "86adefd58de5d9c739951d839431c239c4ef050c1865f77c4b4a6ac2f9f85e39",
+    "/usr/lib/python3.12/lib-dynload/_lzma.cpython-312-x86_64-linux-gnu.so": "7f9a27cc8eb4e6ed6a6596553aafebc5bdb5ae62400036e47daf24034d529722",
+    "/usr/lib/python3.12/lib-dynload/_queue.cpython-312-x86_64-linux-gnu.so": "935a110d6a710cab665a7515bd5d74f842fac1d26e94b595f1bf279a87ed3849",
+    "/usr/lib/python3.12/lib-dynload/_zoneinfo.cpython-312-x86_64-linux-gnu.so": "a28645a118a9202a6c676686298762506a3d729eb594bf163cb11e91b1ab02b9",
+    "/usr/lib/python3.12/lib-dynload/mmap.cpython-312-x86_64-linux-gnu.so": "534daaaed686b8eac54229b13fb66c97ea39979045f840a4c8fa92159320d026",
+    "/usr/lib/python3.12/lib-dynload/resource.cpython-312-x86_64-linux-gnu.so": "9025fcfbe13f5c348b1e2480a43d8045270aafbea542de3b67993d8d136b7dd7",
+    "/usr/lib/python3.12/linecache.py": "c985113d9219c02950916e75090158bccf44cacac09014741b1c59b07968d111",
+    "/usr/lib/python3.12/locale.py": "d1134b7212bad37b7b81339061dc37a19a194aa183ec2cb60412cf365993b151",
+    "/usr/lib/python3.12/logging/__init__.py": "43f86bbc08fdd5c7b6e697abffe1381f534a92bb32e1f1aee8360d6a142592a1",
+    "/usr/lib/python3.12/lzma.py": "58fb9d2fdc8a8af7b25e218f17ea3b51bdfa53bdf40f440ab33c605974ca5c2e",
+    "/usr/lib/python3.12/ntpath.py": "c4dd79bf103677daaad873952b89fc1f973425e7b250006cc35af4c164181da8",
+    "/usr/lib/python3.12/numbers.py": "ac381960a3dc1db0498b0bd43d8ef278d6599713121a186b153ff09d9552e0db",
+    "/usr/lib/python3.12/opcode.py": "192f6008508f28d3273bff42eaea9b01c8394dab1607cd36aea778bdd166c3a6",
+    "/usr/lib/python3.12/operator.py": "b2af20f67667203c1730e686cc5d0427becc94db4c97f1d3efe3ed2158473f6a",
+    "/usr/lib/python3.12/os.py": "316d1b7307fd851bded3423c9d437e0a383c725d993f0fcff2e8b749fe560b62",
+    "/usr/lib/python3.12/pathlib.py": "b43e134bf7479759838b4ecec3d78e0e67fdfde2d671c5c2d7886a47da93885d",
+    "/usr/lib/python3.12/pickle.py": "865b5788a1e35433f89d047187a514057e15ddc2a301b06b5f85da62b4259c04",
+    "/usr/lib/python3.12/platform.py": "ed0defe8ff7c116710493ffd099b566d3de686ab1b431a3d5401056798e59341",
+    "/usr/lib/python3.12/posixpath.py": "c443d7b8afad1717e7060ce49b3e04423058de56cd4246ee6bcc1ac962eb5c2b",
+    "/usr/lib/python3.12/pprint.py": "1585c8d74d7f485590db2af46680ae0a73737ca9fb66022b2bcbbc4c4925e203",
+    "/usr/lib/python3.12/queue.py": "f6c37fc37cd7440979f7d22d40ee818fa3b714c573610c08fa52911d541193f0",
+    "/usr/lib/python3.12/random.py": "0693d4ded36916f5b07d6c395cc331dbf1011bb70e90daaa29eaa32490a09425",
+    "/usr/lib/python3.12/re/__init__.py": "8ff3c37c63b917fcf8dc8d50993a502292a3dc159e41de4f4018c72a53d1c07b",
+    "/usr/lib/python3.12/re/_casefix.py": "41572ac50cf96b04496e676d8a6708898bb8e752e06dad34ed4c50c5d8f1fe40",
+    "/usr/lib/python3.12/re/_compiler.py": "c05067f8bfa4c13cbbf1eedc4d5cafc9b621bcb6ebc5771ba0518a18095af15a",
+    "/usr/lib/python3.12/re/_constants.py": "fa4fdb200f238f9e7817b63892b0d69833d8165134801e775e10cc113348a375",
+    "/usr/lib/python3.12/re/_parser.py": "a51a85b37cf3f44ba7ff25754da5f31306e4ccfa6eb3c017f9d37bdf4e770840",
+    "/usr/lib/python3.12/reprlib.py": "8da31054076803065758311f54b18b8a616824941977d907dc3ee729228e9015",
+    "/usr/lib/python3.12/secrets.py": "277000574358a6ecda4bb40e73332ae81a3bc1c8e1fa36f50e5c6a7d4d3f0f17",
+    "/usr/lib/python3.12/selectors.py": "1eeb102373e18c96311203f30c516e785bd8642275aa0bd66e43a284c9692385",
+    "/usr/lib/python3.12/shutil.py": "819e518cb7a539d09b2526138015541b34d2646afb9c2f6ae4ffd476d6a0fcf4",
+    "/usr/lib/python3.12/signal.py": "0363c964c90ac0b3e515de5749205e6e6454051a1211058375d84d91eab6071a",
+    "/usr/lib/python3.12/stat.py": "052af0327eae6941b69b05c088b3e748f79995635f80ac4cc7125eb333eb4c77",
+    "/usr/lib/python3.12/string.py": "24aeae1f0526250f442022022bf98df9a823b1cb330543ee79e70e44907462e9",
+    "/usr/lib/python3.12/struct.py": "9c231f9497caf513a22dee8f790b07f969b0e45854a0bdd6dd84b492e08c2856",
+    "/usr/lib/python3.12/subprocess.py": "baa9f9138d8d20df6284f67e7d2e790f847f65e2c5370de322d54cccd737f2d9",
+    "/usr/lib/python3.12/sysconfig.py": "e21755a918f488db1bd21d23120ee36ad09382c553b79735a121ee1fbdbcc08d",
+    "/usr/lib/python3.12/tarfile.py": "96cd030cdff4c6389219f9692e2c9db2e82043e2882cede722b0c80d9c2fda92",
+    "/usr/lib/python3.12/tempfile.py": "8c8033ed1426ace79e07a6608887d2a1694d817d63d61b04c3d59339f24b4269",
+    "/usr/lib/python3.12/textwrap.py": "62867e40cdea6669b361f72af4d7daf0359f207c92cbeddfc7c7506397c1f31c",
+    "/usr/lib/python3.12/threading.py": "8273b4cf5b6f274b4993f5cae08634dd272c6952af9867ff9aa13ed446f1549b",
+    "/usr/lib/python3.12/token.py": "fc76ed1a1cbdb2c961d27cd67acee766abcfcdab06661701db4d9524efb5bd41",
+    "/usr/lib/python3.12/tokenize.py": "a39cd5ee895abc085117448fba78ccc18bea3faf073ac18c5365b26e0dd1fe7c",
+    "/usr/lib/python3.12/traceback.py": "a96b7d5bfe46a8be9b90613b1555dbd795d51f46aec6b769af06cec465bee39e",
+    "/usr/lib/python3.12/types.py": "345474ef027a1273f353da9bdc1f7c18f65335e72e681bcc0376774cc51f2405",
+    "/usr/lib/python3.12/typing.py": "c45d935c17234b1d6ae42d2d5499d3e03b4e2548fae0c4fce15477e23502214d",
+    "/usr/lib/python3.12/urllib/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/usr/lib/python3.12/urllib/parse.py": "a67b5694763137dbac085adbf0c22821d435ec8ca22d3bd3786d2c9f4ee748d5",
+    "/usr/lib/python3.12/uuid.py": "fe357bff7241e9fd6f86ee81567fd20aeec2e17460428ea9b7924bebf57301fc",
+    "/usr/lib/python3.12/warnings.py": "8eb1bb88d0beb82ebecfe7ee5cf54ed9b77b4a7acee1989e392a65de42017c49",
+    "/usr/lib/python3.12/weakref.py": "56f8d313fb74019e53eb9287400702fbce788b7fe30e097b0b6e06296f3f080c",
+    "/usr/lib/python3.12/xml/__init__.py": "34296f728e7fe68cccb97a9f6edbf3bf3a686f44044c744fe85f207a92ed4811",
+    "/usr/lib/python3.12/xml/etree/ElementPath.py": "ae8a80a8b51567b4f0965481682705e70c73dd6bfa145283f630d6833f1b4975",
+    "/usr/lib/python3.12/xml/etree/ElementTree.py": "ec5e469d55df6c219ed11005e00508a19e2068d12889a4cef3ac2e1f88b104bf",
+    "/usr/lib/python3.12/xml/etree/__init__.py": "91950edfb196c105d93886f8af7ea3c0a79e06a6b63be3e5a4ea09804e8672a6",
+    "/usr/lib/python3.12/zipfile/__init__.py": "fa12220ba68d58a75767133c93af70d968a4be79da05ef3d67fb32ad5f518f84",
+    "/usr/lib/python3.12/zipfile/_path/__init__.py": "be1a1a534b92d4f597b7fde633a5ff847fa9e6725c0dd6867839e735d39f31c2",
+    "/usr/lib/python3.12/zipfile/_path/glob.py": "7020d375669c257879b5b1278e7649ef51cbfe16e9aef967e5aca51cca11f893",
+    "/usr/lib/python3.12/zipimport.py": "4ac94d92219c2e1c0d67ad3fff3753ec3a3756af62a36a2f696f02cd12d518f0",
+    "/usr/lib/python3.12/zoneinfo/__init__.py": "ac7fb403e4371d07482ef2fda81dbcf6879484e9fc41d4be42c156d7e54c68a8",
+    "/usr/lib/python3.12/zoneinfo/_common.py": "67deaf0ba41aa4865e007297677207485a89b75629eea0ee5c472be8a3e83bf6",
+    "/usr/lib/python3.12/zoneinfo/_tzpath.py": "5dc473af6f6ae35e5531cc9705a1e4923aa07e7d35f6b4c275b90c6a3c2591c4",
+}
+BOOTSTRAP_PYCACHE_PREFIX = Path(
+    "/tmp/planora-puproj-frontier-joint-v15-bootstrap-pycache"
+)
+EXPECTED_SUPERVISOR_SYS_PATH = (
+    "/usr/lib/python312.zip",
+    "/usr/lib/python3.12",
+    "/usr/lib/python3.12/lib-dynload",
+)
+WHOLE_LAUNCH_MEMORY_LIMIT_KIB = 1_400_000
+POST_POPEN_ADMISSION_TEST_HOOK = None
+
+RUNNER_FD_LOADER = r"""
+import fcntl, hashlib, json, os, stat, sys
+fd = int(sys.argv[1]); expected = sys.argv[2]; runtime_root_fd = int(sys.argv[3]); barrier_fd = int(sys.argv[4]); forwarded = sys.argv[5:]
+if os.read(barrier_fd, 1) != b"G": raise RuntimeError("parent start barrier rejected")
+os.close(barrier_fd)
+required = fcntl.F_SEAL_SEAL | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_GROW | fcntl.F_SEAL_WRITE
+stable = lambda row: (int(row.st_dev), int(row.st_ino), int(row.st_size), stat.S_IFMT(row.st_mode), stat.S_IMODE(row.st_mode), int(row.st_uid), int(row.st_nlink))
+before = os.fstat(fd); identity = stable(before); seals = int(fcntl.fcntl(fd, fcntl.F_GET_SEALS))
+if not stat.S_ISREG(before.st_mode) or seals & required != required: raise RuntimeError("runner capture contract rejected")
+parts=[]; offset=0
+while offset < before.st_size:
+    block=os.pread(fd,min(1<<20,before.st_size-offset),offset)
+    if not block: raise RuntimeError("runner capture ended early")
+    parts.append(block); offset += len(block)
+after=os.fstat(fd)
+if stable(after) != identity or int(fcntl.fcntl(fd, fcntl.F_GET_SEALS)) != seals: raise RuntimeError("runner capture drift")
+source=b"".join(parts); actual=hashlib.sha256(source).hexdigest()
+if actual != expected: raise RuntimeError("runner captured hash mismatch")
+runtime_binding=json.loads(os.environ["PUPROJ_FRONTIER_V15_RUNTIME_BUNDLE"]); runtime_row=os.fstat(runtime_root_fd)
+runtime_identity=(int(runtime_row.st_dev),int(runtime_row.st_ino),stat.S_IMODE(runtime_row.st_mode),int(runtime_row.st_uid))
+if runtime_binding.get("root_fd") != runtime_root_fd or tuple(runtime_binding.get("root_identity",())) != runtime_identity or not stat.S_ISDIR(runtime_row.st_mode) or runtime_identity[2:] != (0o500,os.getuid()): raise RuntimeError("sealed runtime root binding rejected")
+if not sys.flags.isolated or not sys.flags.no_site or not sys.dont_write_bytecode: raise RuntimeError("Python isolation flags rejected")
+sys.path.insert(0,f"/proc/self/fd/{runtime_root_fd}")
+sys.dont_write_bytecode=True; filename=f"<sealed-puproj-frontier-v15-runner:{actual}>"; sys.argv=[filename,*forwarded]
+namespace={"__name__":"__main__","__file__":filename,"__package__":None,"__cached__":None,"__captured_sha256__":actual,"__runner_loader_protocol__":"planora.puproj.frontier-v15-runner-loader.v1"}
+exec(compile(source,filename,"exec",dont_inherit=True),namespace)
+"""
+
+
+def _stable_identity(row: os.stat_result) -> tuple[int, ...]:
+    return (
+        int(row.st_dev),
+        int(row.st_ino),
+        int(row.st_size),
+        stat.S_IFMT(row.st_mode),
+        stat.S_IMODE(row.st_mode),
+        int(row.st_uid),
+        int(row.st_nlink),
+    )
+
+
+def _hash_stable_system_file(
+    path: Path, *, maximum_bytes: int = 64 << 20
+) -> dict[str, Any]:
+    raw_path = str(path)
+    try:
+        relative = path.relative_to(SYSTEM_PYTHON_ROOT)
+    except ValueError as error:
+        raise RuntimeError(
+            f"system Python path outside frozen root: {raw_path}"
+        ) from error
+    if not relative.parts or ".." in relative.parts or path.suffix in {".pyc", ".pyo"}:
+        raise RuntimeError(f"system Python path rejected: {raw_path}")
+    if os.path.realpath(raw_path) != raw_path:
+        raise RuntimeError(f"system Python symlink path rejected: {raw_path}")
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        before = os.fstat(descriptor)
+        raw = _pread_stable(descriptor, maximum_bytes=maximum_bytes)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if (
+        _stable_identity(before) != _stable_identity(after)
+        or not stat.S_ISREG(after.st_mode)
+        or int(after.st_uid) != SYSTEM_PYTHON_OWNER_UID
+        or stat.S_IMODE(after.st_mode) & 0o022
+    ):
+        raise RuntimeError(f"system Python ownership/mode drift: {raw_path}")
+    observed = sha256(raw).hexdigest()
+    expected = SYSTEM_PYTHON_HASHES.get(raw_path)
+    if expected is None or observed != expected:
+        raise RuntimeError(
+            f"unpinned or mutated system Python file rejected: {raw_path}"
+        )
+    if not os.statvfs(path).f_flag & getattr(os, "ST_RDONLY", 1):
+        raise RuntimeError("system Python filesystem is no longer read-only")
+    parent = path.parent
+    while True:
+        row = os.lstat(parent)
+        if (
+            not stat.S_ISDIR(row.st_mode)
+            or int(row.st_uid) != SYSTEM_PYTHON_OWNER_UID
+            or stat.S_IMODE(row.st_mode) & 0o022
+        ):
+            raise RuntimeError(f"system Python parent trust rejected: {parent}")
+        if parent == Path("/"):
+            break
+        parent = parent.parent
+    return {
+        "path": raw_path,
+        "sha256": observed,
+        "size": len(raw),
+        "identity": list(_stable_identity(after)),
+        "owner_uid": int(after.st_uid),
+        "root": str(SYSTEM_PYTHON_ROOT),
+        "read_only_filesystem": True,
+    }
+
+
+def verify_system_python_provenance(*, phase: str) -> dict[str, Any]:
+    if (
+        not sys.flags.isolated
+        or not sys.flags.no_site
+        or not sys.dont_write_bytecode
+        or sys.pycache_prefix != str(BOOTSTRAP_PYCACHE_PREFIX)
+        or BOOTSTRAP_PYCACHE_PREFIX.exists()
+        or tuple(sys.path) != EXPECTED_SUPERVISOR_SYS_PATH
+    ):
+        raise RuntimeError(
+            "supervisor Python isolation/private-pycache contract rejected"
+        )
+    argparse_path = getattr(argparse, "__file__", None)
+    if argparse_path != str(EXPECTED_ARGPARSE_PATH):
+        raise RuntimeError("real frozen argparse module was not loaded")
+    rows: dict[str, dict[str, Any]] = {}
+    for module in tuple(sys.modules.values()):
+        raw_path = getattr(module, "__file__", None)
+        if not isinstance(raw_path, str) or not raw_path:
+            continue
+        if raw_path.startswith(("<sealed-puproj-", "<captured-puproj-")):
+            continue
+        if not raw_path.startswith("/"):
+            raise RuntimeError(
+                f"arbitrary relative Python module path rejected: {raw_path}"
+            )
+        row = _hash_stable_system_file(Path(raw_path))
+        previous = rows.get(raw_path)
+        if previous is not None and previous != row:
+            raise RuntimeError("duplicate system Python module identity drift")
+        rows[raw_path] = row
+    if (
+        rows.get(str(EXPECTED_ARGPARSE_PATH), {}).get("sha256")
+        != EXPECTED_ARGPARSE_SHA256
+    ):
+        raise RuntimeError("frozen argparse SHA-256 drift")
+    ordered = [rows[path] for path in sorted(rows)]
+    return {
+        "phase": phase,
+        "system_python_root": str(SYSTEM_PYTHON_ROOT),
+        "system_python_owner_uid": SYSTEM_PYTHON_OWNER_UID,
+        "argparse_path": str(EXPECTED_ARGPARSE_PATH),
+        "argparse_sha256": EXPECTED_ARGPARSE_SHA256,
+        "private_pycache_prefix": str(BOOTSTRAP_PYCACHE_PREFIX),
+        "live_pyc_rejected": True,
+        "rows": ordered,
+        "row_count": len(ordered),
+        "manifest_sha256": sha256(
+            json.dumps(ordered, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest(),
+    }
+
+
+def compare_system_python_provenance(
+    start: Mapping[str, Any], end: Mapping[str, Any]
+) -> dict[str, Any]:
+    start_rows = {row["path"]: row for row in start["rows"]}
+    end_rows = {row["path"]: row for row in end["rows"]}
+    for path, row in start_rows.items():
+        if end_rows.get(path) != row:
+            raise RuntimeError(f"supervisor system Python provenance changed: {path}")
+    return {
+        "start_row_count": len(start_rows),
+        "end_row_count": len(end_rows),
+        "start_subset_stable": True,
+        "new_admitted_rows": sorted(set(end_rows) - set(start_rows)),
+    }
+
+
+def _expected_hash(label: str) -> str:
+    return EXPECTED_RUNNER_SHA256 if label == "runner" else EXPECTED_HASHES[label]
+
+
+def supervisor_execution_sha256() -> str:
+    value = globals().get("__captured_sha256__")
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise RuntimeError("supervisor captured execution hash missing")
+    return value
+
+
+def verify_current_supervisor_contract() -> tuple[int, ...]:
+    binding = globals().get("__external_supervisor_binding__")
+    path_value = globals().get("__external_supervisor_path__")
+    if not isinstance(binding, dict) or not isinstance(path_value, str):
+        raise RuntimeError("external supervisor path binding missing")
+    path = Path(path_value)
+    current = os.lstat(path)
+    identity = (
+        *_stable_identity(current),
+        int(current.st_mtime_ns),
+        int(current.st_ctime_ns),
+    )
+    keys = (
+        "device",
+        "inode",
+        "size",
+        "file_type",
+        "mode",
+        "uid",
+        "nlink",
+        "mtime_ns",
+        "ctime_ns",
+    )
+    if tuple(binding.get(key) for key in keys) != identity:
+        raise RuntimeError("supervisor current path contract drift")
+    if binding.get("sha256") != supervisor_execution_sha256():
+        raise RuntimeError("supervisor current hash binding drift")
+    if not stat.S_ISREG(current.st_mode):
+        raise RuntimeError("supervisor current path is not regular")
+    sealed_fd = binding.get("sealed_fd")
+    if type(sealed_fd) is not int:
+        raise RuntimeError("sealed supervisor descriptor binding missing")
+    sealed = os.fstat(sealed_fd)
+    sealed_raw = _pread_stable(sealed_fd, maximum_bytes=1 << 20)
+    sealed_seals = int(fcntl.fcntl(sealed_fd, fcntl.F_GET_SEALS))
+    if (
+        sealed_seals & REQUIRED_SEALS != REQUIRED_SEALS
+        or binding.get("sealed_seals") != sealed_seals
+        or sha256(sealed_raw).hexdigest() != supervisor_execution_sha256()
+        or len(sealed_raw) != int(sealed.st_size)
+    ):
+        raise RuntimeError("sealed supervisor execution descriptor replay rejected")
+    return identity
+
+
+def verify_external_launcher_contract() -> dict[str, Any]:
+    binding = globals().get("__external_launcher_binding__")
+    if not isinstance(binding, dict):
+        raise RuntimeError("external sealed launcher binding missing")
+    descriptor = binding.get("fd")
+    watch_fd = binding.get("source_watch_fd")
+    path_value = binding.get("path")
+    if (
+        type(descriptor) is not int
+        or type(watch_fd) is not int
+        or not isinstance(path_value, str)
+    ):
+        raise RuntimeError("external sealed launcher descriptor binding rejected")
+    before = os.fstat(descriptor)
+    raw = _pread_stable(descriptor, maximum_bytes=1 << 20)
+    seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+    source = os.lstat(path_value)
+    source_identity = (
+        int(source.st_dev),
+        int(source.st_ino),
+        int(source.st_size),
+        stat.S_IFMT(source.st_mode),
+        stat.S_IMODE(source.st_mode),
+        int(source.st_uid),
+        int(source.st_nlink),
+        int(source.st_mtime_ns),
+        int(source.st_ctime_ns),
+    )
+    try:
+        mutation_events = os.read(watch_fd, 65_536)
+    except BlockingIOError:
+        mutation_events = b""
+    if (
+        seals & REQUIRED_SEALS != REQUIRED_SEALS
+        or tuple(binding.get("source_identity", ())) != source_identity
+        or binding.get("sha256") != sha256(raw).hexdigest()
+        or binding.get("device") != int(before.st_dev)
+        or binding.get("inode") != int(before.st_ino)
+        or binding.get("size") != int(before.st_size)
+        or binding.get("seals") != seals
+        or binding.get("transport")
+        != "native_bootstrap_sealed_memfd_before_launcher_execution"
+        or mutation_events
+    ):
+        raise RuntimeError("external launcher sealed/source/mutation replay rejected")
+    return {
+        "path": path_value,
+        "sha256": binding["sha256"],
+        "source_identity": list(source_identity),
+        "sealed_device": int(before.st_dev),
+        "sealed_inode": int(before.st_ino),
+        "sealed_size": int(before.st_size),
+        "seals": seals,
+        "mutation_watch_clear": True,
+        "transport": binding["transport"],
+        "bootstrap_sha256": binding.get("bootstrap_sha256"),
+    }
+
+
+def verify_external_freeze_manifest_contract() -> dict[str, Any]:
+    binding = globals().get("__external_freeze_manifest_binding__")
+    if not isinstance(binding, dict):
+        raise RuntimeError("external freeze-manifest binding missing")
+    descriptor = binding.get("fd")
+    path_value = binding.get("path")
+    if type(descriptor) is not int or not isinstance(path_value, str):
+        raise RuntimeError("external freeze-manifest descriptor binding rejected")
+    before = os.fstat(descriptor)
+    raw = _pread_stable(descriptor, maximum_bytes=1 << 20)
+    seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+    named = os.lstat(path_value)
+    named_identity = (
+        int(named.st_dev),
+        int(named.st_ino),
+        int(named.st_size),
+        stat.S_IFMT(named.st_mode),
+        stat.S_IMODE(named.st_mode),
+        int(named.st_uid),
+        int(named.st_nlink),
+        int(named.st_mtime_ns),
+        int(named.st_ctime_ns),
+    )
+    payload = json.loads(raw.decode("utf-8"))
+    if (
+        seals & REQUIRED_SEALS != REQUIRED_SEALS
+        or tuple(binding.get("source_identity", ())) != named_identity
+        or binding.get("sha256") != sha256(raw).hexdigest()
+        or binding.get("device") != int(before.st_dev)
+        or binding.get("inode") != int(before.st_ino)
+        or binding.get("size") != int(before.st_size)
+        or binding.get("seals") != seals
+        or binding.get("transport")
+        != "native_bootstrap_sealed_memfd_before_target_execution"
+        or payload.get("native_bootstrap_protocol")
+        != "planora.native-sealed-python-bootstrap.v1"
+    ):
+        raise RuntimeError("external freeze-manifest sealed/source replay rejected")
+    return {
+        "path": path_value,
+        "sha256": binding["sha256"],
+        "source_identity": list(named_identity),
+        "sealed_device": int(before.st_dev),
+        "sealed_inode": int(before.st_ino),
+        "sealed_size": int(before.st_size),
+        "seals": seals,
+        "transport": binding["transport"],
+        "protocol": payload["native_bootstrap_protocol"],
+    }
+
+
+def _read_key_values(path: Path) -> dict[str, int]:
+    values: dict[str, int] = {}
+    for line in path.read_text(encoding="ascii").splitlines():
+        if ":" in line:
+            key, raw = line.split(":", 1)
+        else:
+            fields = line.split(None, 1)
+            if len(fields) != 2:
+                continue
+            key, raw = fields
+        match = re.search(r"-?[0-9]+", raw)
+        if match:
+            values[key] = int(match.group(0))
+    return values
+
+
+def host_sample() -> dict[str, int]:
+    memory = _read_key_values(Path("/proc/meminfo"))
+    vmstat = _read_key_values(Path("/proc/vmstat"))
+    return {
+        "mem_available_kib": memory["MemAvailable"],
+        "swap_free_kib": memory["SwapFree"],
+        "pswpin_pages": vmstat.get("pswpin", 0),
+        "pswpout_pages": vmstat.get("pswpout", 0),
+    }
+
+
+def breach_reason(
+    *,
+    elapsed: float,
+    group_rss_kib: int,
+    group_vmswap_kib: int,
+    sample: Mapping[str, int],
+    launch: bool,
+) -> str | None:
+    floor = LAUNCH_MIN_MEM_AVAILABLE_KIB if launch else RUNTIME_MIN_MEM_AVAILABLE_KIB
+    if sample["mem_available_kib"] < floor:
+        return "host_mem_available_floor"
+    if group_rss_kib >= PROCESS_GROUP_RSS_LIMIT_KIB:
+        return "process_group_rss_limit"
+    if group_vmswap_kib >= PROCESS_GROUP_VMSWAP_LIMIT_KIB:
+        return "process_group_vmswap_limit"
+    if elapsed >= SUPERVISOR_HARD_WALL_SECONDS:
+        return "supervisor_hard_wall"
+    return None
+
+
+def _process_identity(pid: int) -> tuple[int, int, int, int] | None:
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        return None
+    close = raw.rfind(")")
+    fields = raw[close + 2 :].split()
+    if len(fields) <= 19:
+        return None
+    return int(fields[1]), int(fields[2]), int(fields[3]), int(fields[19])
+
+
+def _process_group_from_stat(path: Path) -> int | None:
+    try:
+        pid = int(path.parent.name)
+    except ValueError:
+        return None
+    identity = _process_identity(pid)
+    return identity[1] if identity is not None else None
+
+
+def process_group_usage(process_group: int) -> tuple[int, int, tuple[int, ...]]:
+    rss = 0
+    swap = 0
+    pids: list[int] = []
+    for entry in Path("/proc").iterdir():
+        if (
+            not entry.name.isdigit()
+            or _process_group_from_stat(entry / "stat") != process_group
+        ):
+            continue
+        try:
+            status = _read_key_values(entry / "status")
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            continue
+        pids.append(int(entry.name))
+        rss += status.get("VmRSS", 0)
+        swap += status.get("VmSwap", 0)
+    return rss, swap, tuple(sorted(pids))
+
+
+def whole_launch_usage(
+    supervisor_pid: int, process_group: int | None
+) -> tuple[int, int, tuple[int, ...]]:
+    """Union supervisor and child-PGID PIDs, counting every PID exactly once."""
+    pids: set[int] = {supervisor_pid}
+    if process_group is not None:
+        _child_rss, _child_swap, child_pids = process_group_usage(process_group)
+        pids.update(child_pids)
+    rss = 0
+    swap = 0
+    admitted: list[int] = []
+    for pid in sorted(pids):
+        try:
+            status = _read_key_values(Path(f"/proc/{pid}/status"))
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            continue
+        admitted.append(pid)
+        rss += status.get("VmRSS", 0)
+        swap += status.get("VmSwap", 0)
+    return rss, swap, tuple(admitted)
+
+
+def whole_launch_breach(rss_kib: int, vmswap_kib: int) -> str | None:
+    if rss_kib + vmswap_kib >= WHOLE_LAUNCH_MEMORY_LIMIT_KIB:
+        return "whole_launch_vmrss_plus_vmswap_limit"
+    return None
+
+
+def probe_breach(
+    *, elapsed: float, group_rss_kib: int, group_vmswap_kib: int,
+    whole_rss_kib: int, whole_vmswap_kib: int, sample: Mapping[str, int]
+) -> str | None:
+    if sample["mem_available_kib"] < PROBE_RUNTIME_MIN_MEM_AVAILABLE_KIB:
+        return "probe_runtime_memavailable_floor"
+    if group_rss_kib >= PROBE_PROCESS_GROUP_RSS_LIMIT_KIB:
+        return "probe_process_group_rss_limit"
+    if group_vmswap_kib >= PROBE_PROCESS_GROUP_VMSWAP_LIMIT_KIB:
+        return "probe_process_group_vmswap_limit"
+    if whole_rss_kib + whole_vmswap_kib >= PROBE_WHOLE_LAUNCH_MEMORY_LIMIT_KIB:
+        return "probe_whole_launch_vmrss_plus_vmswap_limit"
+    if elapsed >= PROBE_HARD_WALL_SECONDS:
+        return "probe_hard_wall"
+    return None
+
+
+def _probe_check_deadline(deadline: float, phase: str) -> None:
+    if time.monotonic() >= deadline:
+        raise TimeoutError(f"probe absolute deadline exceeded: {phase}")
+
+
+def _probe_elapsed(deadline: float) -> float:
+    return max(0.0, time.monotonic() - (deadline - PROBE_HARD_WALL_SECONDS))
+
+
+def _stream_capture(
+    path: Path, expected: str, label: str, *, probe_deadline: float | None = None
+) -> tuple[int, dict[str, Any]]:
+    if probe_deadline is not None:
+        _probe_check_deadline(probe_deadline, f"capture:{label}:before")
+    parent_before = os.lstat(path.parent)
+    if not stat.S_ISDIR(parent_before.st_mode):
+        raise RuntimeError(f"capture parent {label} is not a directory")
+    parent_fd = os.open(
+        path.parent, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+    )
+    source_fd = -1
+    target_fd = -1
+    try:
+        parent_opened = os.fstat(parent_fd)
+        source_fd = os.open(
+            path.name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=parent_fd
+        )
+        source_before = os.fstat(source_fd)
+        if not stat.S_ISREG(source_before.st_mode) or source_before.st_nlink != 1:
+            raise RuntimeError(f"capture source {label} contract rejected")
+        target_fd = os.memfd_create(
+            f"puproj-v15-{label}", getattr(os, "MFD_ALLOW_SEALING", 0x0002)
+        )
+        digest = sha256()
+        offset = 0
+        while offset < source_before.st_size:
+            if probe_deadline is not None:
+                _probe_check_deadline(probe_deadline, f"capture:{label}:read")
+            block = os.pread(
+                source_fd, min(1 << 20, source_before.st_size - offset), offset
+            )
+            if not block:
+                raise RuntimeError(f"capture source {label} ended early")
+            digest.update(block)
+            view = memoryview(block)
+            while view:
+                written = os.write(target_fd, view)
+                if written <= 0:
+                    raise RuntimeError(
+                        f"capture target {label} stopped accepting bytes"
+                    )
+                view = view[written:]
+            offset += len(block)
+        source_after = os.fstat(source_fd)
+        named_after = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+        parent_after = os.lstat(path.parent)
+        if _stable_identity(source_before) != _stable_identity(
+            source_after
+        ) or _stable_identity(source_after) != _stable_identity(named_after):
+            raise RuntimeError(f"capture source {label} identity drift")
+        if (parent_opened.st_dev, parent_opened.st_ino) != (
+            parent_before.st_dev,
+            parent_before.st_ino,
+        ) or (parent_after.st_dev, parent_after.st_ino) != (
+            parent_before.st_dev,
+            parent_before.st_ino,
+        ):
+            raise RuntimeError(f"capture parent {label} identity drift")
+        actual = digest.hexdigest()
+        if actual != expected:
+            raise RuntimeError(f"capture source {label} hash drift: {actual}")
+        os.lseek(target_fd, 0, os.SEEK_SET)
+        os.fchmod(target_fd, 0o500 if label == "python_binary" else 0o400)
+        fcntl.fcntl(target_fd, fcntl.F_ADD_SEALS, REQUIRED_SEALS)
+        sealed = os.fstat(target_fd)
+        seals = int(fcntl.fcntl(target_fd, fcntl.F_GET_SEALS))
+        evidence = {
+            "label": label,
+            "path": str(path),
+            "fd": target_fd,
+            "sha256": actual,
+            "expected_sha256": expected,
+            "device": int(sealed.st_dev),
+            "inode": int(sealed.st_ino),
+            "size": int(sealed.st_size),
+            "file_type": stat.S_IFMT(sealed.st_mode),
+            "mode": stat.S_IMODE(sealed.st_mode),
+            "uid": int(sealed.st_uid),
+            "nlink": int(sealed.st_nlink),
+            "seals": seals,
+            "required_seals": REQUIRED_SEALS,
+            "source_identity": list(_stable_identity(source_after)),
+            "source_parent_identity": [
+                int(parent_after.st_dev),
+                int(parent_after.st_ino),
+                stat.S_IMODE(parent_after.st_mode),
+                int(parent_after.st_uid),
+            ],
+            "transport": "sealed_memfd",
+        }
+        target_fd = -1
+        if probe_deadline is not None:
+            _probe_check_deadline(probe_deadline, f"capture:{label}:after")
+        return int(evidence["fd"]), evidence
+    finally:
+        if source_fd >= 0:
+            os.close(source_fd)
+        if target_fd >= 0:
+            os.close(target_fd)
+        os.close(parent_fd)
+
+
+def verify_sealed_capture(
+    descriptor: int, evidence: Mapping[str, Any], *, probe_deadline: float | None = None
+) -> dict[str, Any]:
+    if probe_deadline is not None:
+        _probe_check_deadline(probe_deadline, f"capture_replay:{evidence.get('label')}:before")
+    before = os.fstat(descriptor)
+    identity = _stable_identity(before)
+    seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+    digest = sha256()
+    offset = 0
+    while offset < before.st_size:
+        if probe_deadline is not None:
+            _probe_check_deadline(probe_deadline, f"capture_replay:{evidence.get('label')}:read")
+        block = os.pread(descriptor, min(1 << 20, before.st_size - offset), offset)
+        if not block:
+            raise RuntimeError("sealed capture ended early")
+        digest.update(block)
+        offset += len(block)
+    after = os.fstat(descriptor)
+    if (
+        _stable_identity(after) != identity
+        or int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS)) != seals
+    ):
+        raise RuntimeError("sealed capture identity/seals drift")
+    keys = ("device", "inode", "size", "file_type", "mode", "uid", "nlink")
+    if (
+        tuple(evidence.get(key) for key in keys) != identity
+        or seals & REQUIRED_SEALS != REQUIRED_SEALS
+    ):
+        raise RuntimeError("sealed capture binding rejected")
+    actual = digest.hexdigest()
+    if actual != evidence.get("sha256") or actual != evidence.get("expected_sha256"):
+        raise RuntimeError("sealed capture digest drift")
+    if probe_deadline is not None:
+        _probe_check_deadline(probe_deadline, f"capture_replay:{evidence.get('label')}:after")
+    return {
+        key: evidence[key]
+        for key in (
+            *keys,
+            "sha256",
+            "seals",
+            "required_seals",
+            "transport",
+            "path",
+            "label",
+        )
+    }
+
+
+def verify_source_contract(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    path = Path(str(evidence["path"]))
+    parent = os.lstat(path.parent)
+    current = os.lstat(path)
+    if list(_stable_identity(current)) != evidence.get("source_identity"):
+        raise RuntimeError(f"source final identity drift: {evidence['label']}")
+    parent_identity = [
+        int(parent.st_dev),
+        int(parent.st_ino),
+        stat.S_IMODE(parent.st_mode),
+        int(parent.st_uid),
+    ]
+    if parent_identity != evidence.get("source_parent_identity"):
+        raise RuntimeError(f"source final parent drift: {evidence['label']}")
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        digest = sha256()
+        offset = 0
+        while offset < current.st_size:
+            block = os.pread(descriptor, min(1 << 20, current.st_size - offset), offset)
+            if not block:
+                raise RuntimeError("source final rehash ended early")
+            digest.update(block)
+            offset += len(block)
+        opened = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if _stable_identity(opened) != _stable_identity(
+        current
+    ) or digest.hexdigest() != evidence.get("sha256"):
+        raise RuntimeError(f"source final rehash drift: {evidence['label']}")
+    return {
+        "path": str(path),
+        "sha256": digest.hexdigest(),
+        "identity": list(_stable_identity(current)),
+    }
+
+
+def _pread_stable(descriptor: int, *, maximum_bytes: int) -> bytes:
+    before = os.fstat(descriptor)
+    if not stat.S_ISREG(before.st_mode) or before.st_size > maximum_bytes:
+        raise RuntimeError("descriptor read contract rejected")
+    chunks: list[bytes] = []
+    offset = 0
+    while offset < before.st_size:
+        block = os.pread(descriptor, min(1 << 20, before.st_size - offset), offset)
+        if not block:
+            raise RuntimeError("descriptor read ended early")
+        chunks.append(block)
+        offset += len(block)
+    after = os.fstat(descriptor)
+    if _stable_identity(after) != _stable_identity(before):
+        raise RuntimeError("descriptor identity drift while reading")
+    return b"".join(chunks)
+
+
+def _record_runtime_entries(
+    captures: Mapping[str, Mapping[str, Any]],
+) -> tuple[dict[str, tuple[str, int, str]], list[str]]:
+    entries: dict[str, tuple[str, int, str]] = {}
+    excluded: list[str] = []
+    for label in sorted(RUNTIME_RECORDS):
+        raw = _pread_stable(int(captures[label]["fd"]), maximum_bytes=8 << 20)
+        for row in csv.reader(raw.decode("utf-8").splitlines()):
+            if len(row) != 3:
+                raise RuntimeError(f"runtime RECORD row malformed: {label}")
+            raw_path, encoded, raw_size = row
+            relative = PurePosixPath(raw_path)
+            if (
+                not raw_path
+                or relative.is_absolute()
+                or ".." in relative.parts
+                or "\\" in raw_path
+                or relative.as_posix() != raw_path
+                or not encoded.startswith("sha256=")
+                or not raw_size
+            ):
+                excluded.append(f"{label}:{raw_path}")
+                continue
+            if relative.suffix == ".pyc" or "__pycache__" in relative.parts:
+                excluded.append(f"{label}:{raw_path}")
+                continue
+            padding = "=" * (-len(encoded.removeprefix("sha256=")) % 4)
+            digest = base64.urlsafe_b64decode(
+                encoded.removeprefix("sha256=") + padding
+            ).hex()
+            size = int(raw_size)
+            if size < 0 or size > MAX_RUNTIME_FILE_BYTES:
+                raise RuntimeError(f"runtime RECORD size rejected: {raw_path}")
+            key = relative.as_posix()
+            previous = entries.get(key)
+            value = (digest, size, label)
+            if previous is not None:
+                raise RuntimeError(f"duplicate runtime RECORD entry: {key}")
+            entries[key] = value
+    if len(entries) > MAX_RUNTIME_BUNDLE_FILES:
+        raise RuntimeError("runtime bundle file-count limit exceeded")
+    if (
+        sum(size for _digest, size, _label in entries.values())
+        > MAX_RUNTIME_BUNDLE_BYTES
+    ):
+        raise RuntimeError("runtime bundle byte limit exceeded")
+    if (
+        frozenset(RUNTIME_RECORDS) != EXPECTED_RUNTIME_RECORD_LABELS
+        or len(entries) != EXPECTED_RUNTIME_BUNDLE_FILES
+        or sum(size for _digest, size, _label in entries.values())
+        != EXPECTED_RUNTIME_BUNDLE_BYTES
+        or len(excluded) != EXPECTED_RUNTIME_EXCLUDED_ROWS
+    ):
+        raise RuntimeError("frozen runtime bundle cardinality drift")
+    return entries, sorted(excluded)
+
+
+def _open_bundle_parent(root_fd: int, parts: tuple[str, ...]) -> int:
+    current = os.dup(root_fd)
+    try:
+        for part in parts:
+            try:
+                os.mkdir(part, 0o700, dir_fd=current)
+            except FileExistsError:
+                pass
+            following = os.open(
+                part,
+                os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=current,
+            )
+            row = os.fstat(following)
+            if not stat.S_ISDIR(row.st_mode) or row.st_uid != os.getuid():
+                os.close(following)
+                raise RuntimeError("runtime bundle directory contract rejected")
+            os.close(current)
+            current = following
+        result = current
+        current = -1
+        return result
+    finally:
+        if current >= 0:
+            os.close(current)
+
+
+def _seal_bytes(name: str, raw: bytes) -> tuple[int, tuple[int, ...], int]:
+    descriptor = os.memfd_create(name, getattr(os, "MFD_ALLOW_SEALING", 0x0002))
+    try:
+        view = memoryview(raw)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise RuntimeError("sealed runtime target stopped accepting bytes")
+            view = view[written:]
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        os.fchmod(descriptor, 0o400)
+        fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS, REQUIRED_SEALS)
+        identity = _stable_identity(os.fstat(descriptor))
+        seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+        if seals & REQUIRED_SEALS != REQUIRED_SEALS:
+            raise RuntimeError("sealed runtime target seal rejected")
+        return descriptor, identity, seals
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def build_runtime_bundle(
+    *, runtime_root_fd: int, captures: Mapping[str, Mapping[str, Any]],
+    probe_mode: bool = False, probe_deadline: float | None = None
+) -> tuple[int, int, list[int], dict[str, Any], dict[str, Any]]:
+    if probe_mode:
+        if probe_deadline is None:
+            raise RuntimeError("probe runtime bundle requires absolute deadline")
+        _probe_check_deadline(probe_deadline, "runtime_bundle:before_record")
+    entries, excluded = _record_runtime_entries(captures)
+    root_fd = os.dup(runtime_root_fd)
+    source_root_fd = os.open(
+        SITE_PACKAGES,
+        os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0),
+    )
+    runtime_fds: list[int] = []
+    directory_paths: set[str] = set()
+    manifest_entries: list[dict[str, Any]] = []
+    try:
+        for index, (relative, (expected, expected_size, record_label)) in enumerate(
+            sorted(entries.items())
+        ):
+            if index % 64 == 0:
+                if probe_deadline is not None:
+                    _probe_check_deadline(probe_deadline, "runtime_bundle:entry")
+                sample = host_sample()
+                whole_rss, whole_swap, _whole_pids = whole_launch_usage(
+                    os.getpid(), None
+                )
+                gate = (
+                    probe_breach(
+                        elapsed=_probe_elapsed(probe_deadline), group_rss_kib=0, group_vmswap_kib=0,
+                        whole_rss_kib=whole_rss, whole_vmswap_kib=whole_swap,
+                        sample=sample,
+                    )
+                    if probe_mode
+                    else whole_launch_breach(whole_rss, whole_swap) or breach_reason(
+                        elapsed=0, group_rss_kib=0, group_vmswap_kib=0,
+                        sample=sample, launch=True,
+                    )
+                )
+                if gate is not None:
+                    raise RuntimeError(f"runtime bundle resource gate: {gate}")
+            source_fd = os.open(
+                relative,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=source_root_fd,
+            )
+            try:
+                source_before = os.fstat(source_fd)
+                if not stat.S_ISREG(source_before.st_mode):
+                    raise RuntimeError(f"runtime source is not regular: {relative}")
+                raw = _pread_stable(source_fd, maximum_bytes=MAX_RUNTIME_FILE_BYTES)
+                source_after = os.fstat(source_fd)
+            finally:
+                os.close(source_fd)
+            actual = sha256(raw).hexdigest()
+            if actual != expected or len(raw) != expected_size:
+                raise RuntimeError(f"runtime source RECORD mismatch: {relative}")
+            runtime_fd, identity, seals = _seal_bytes(f"puproj-runtime-{index}", raw)
+            runtime_fds.append(runtime_fd)
+            parts = PurePosixPath(relative).parts
+            parent_parts = tuple(parts[:-1])
+            for depth in range(1, len(parent_parts) + 1):
+                directory_paths.add(PurePosixPath(*parent_parts[:depth]).as_posix())
+            parent_fd = _open_bundle_parent(root_fd, parent_parts)
+            try:
+                os.symlink(
+                    f"/proc/self/fd/{runtime_fd}",
+                    parts[-1],
+                    dir_fd=parent_fd,
+                )
+            finally:
+                os.close(parent_fd)
+            manifest_entries.append(
+                {
+                    "relative_path": relative,
+                    "record_label": record_label,
+                    "fd": runtime_fd,
+                    "sha256": actual,
+                    "size": len(raw),
+                    "device": identity[0],
+                    "inode": identity[1],
+                    "file_type": identity[3],
+                    "mode": identity[4],
+                    "uid": identity[5],
+                    "nlink": identity[6],
+                    "seals": seals,
+                    "required_seals": REQUIRED_SEALS,
+                    "source_identity": list(_stable_identity(source_after)),
+                }
+            )
+        for relative in sorted(
+            directory_paths, key=lambda value: value.count("/"), reverse=True
+        ):
+            descriptor = os.open(
+                relative,
+                os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=root_fd,
+            )
+            try:
+                os.fchmod(descriptor, 0o500)
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        os.fchmod(root_fd, 0o500)
+        os.fsync(root_fd)
+        root_row = os.fstat(root_fd)
+        root_identity = (
+            int(root_row.st_dev),
+            int(root_row.st_ino),
+            stat.S_IMODE(root_row.st_mode),
+            int(root_row.st_uid),
+        )
+        manifest = {
+            "schema": "planora.puproj.frontier-v15-sealed-runtime.v1",
+            "site_packages_source": str(SITE_PACKAGES),
+            "source_root_identity": list(_stable_identity(os.fstat(source_root_fd))),
+            "root_fd": root_fd,
+            "root_identity": list(root_identity),
+            "entries": manifest_entries,
+            "excluded_record_rows": excluded,
+            "pyc_entries_excluded": True,
+        }
+        manifest_raw = json.dumps(
+            manifest, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        manifest_fd, manifest_identity, manifest_seals = _seal_bytes(
+            "puproj-runtime-manifest", manifest_raw
+        )
+        binding = {
+            "protocol": "planora.puproj.frontier-v15-sealed-runtime.v1",
+            "root_fd": root_fd,
+            "root_identity": list(root_identity),
+            "manifest_fd": manifest_fd,
+            "manifest_sha256": sha256(manifest_raw).hexdigest(),
+            "manifest_size": len(manifest_raw),
+            "manifest_identity": list(manifest_identity),
+            "manifest_seals": manifest_seals,
+            "required_seals": REQUIRED_SEALS,
+        }
+        post_capture_sample = host_sample()
+        post_snapshot = (
+            probe_prechild_accounting_snapshot(os.getpid())
+            if probe_mode
+            else None
+        )
+        if post_snapshot is not None:
+            post_whole_rss = int(post_snapshot["whole_rss_kib"])
+            post_whole_swap = int(post_snapshot["whole_vmswap_kib"])
+            post_whole_pids = tuple(int(pid) for pid in post_snapshot["pids"])
+        else:
+            post_whole_rss, post_whole_swap, post_whole_pids = whole_launch_usage(
+                os.getpid(), None
+            )
+        post_capture_gate = (
+            probe_breach(
+                elapsed=_probe_elapsed(probe_deadline), group_rss_kib=0, group_vmswap_kib=0,
+                whole_rss_kib=post_whole_rss,
+                whole_vmswap_kib=post_whole_swap,
+                sample=post_capture_sample,
+            )
+            if probe_mode
+            else whole_launch_breach(post_whole_rss, post_whole_swap) or breach_reason(
+                elapsed=0, group_rss_kib=0, group_vmswap_kib=0,
+                sample=post_capture_sample, launch=True,
+            )
+        )
+        if post_capture_gate is not None:
+            raise RuntimeError(f"runtime bundle resource gate: {post_capture_gate}")
+        if probe_deadline is not None:
+            _probe_check_deadline(probe_deadline, "runtime_bundle:after")
+        summary = {
+            "manifest_sha256": binding["manifest_sha256"],
+            "manifest_size": len(manifest_raw),
+            "file_count": len(manifest_entries),
+            "total_bytes": sum(row["size"] for row in manifest_entries),
+            "excluded_record_row_count": len(excluded),
+            "root_identity": list(root_identity),
+            "transport": "read_only_symlink_tree_to_sealed_memfds",
+            "post_capture_host_sample": post_capture_sample,
+            "post_capture_whole_launch_rss_kib": post_whole_rss,
+            "post_capture_whole_launch_vmswap_kib": post_whole_swap,
+            "post_capture_whole_launch_pids": list(post_whole_pids),
+            "post_capture_whole_launch_per_pid": (
+                post_snapshot["per_pid"] if post_snapshot is not None else []
+            ),
+            "post_capture_accounting_snapshot_reconciled": (
+                post_snapshot["reconciled"] if post_snapshot is not None else True
+            ),
+        }
+        return root_fd, manifest_fd, runtime_fds, binding, summary
+    except BaseException:
+        for descriptor in runtime_fds:
+            os.close(descriptor)
+        os.close(root_fd)
+        raise
+    finally:
+        os.close(source_root_fd)
+
+
+def replay_runtime_bundle(
+    binding: Mapping[str, Any], *, probe_deadline: float | None = None
+) -> dict[str, Any]:
+    if probe_deadline is not None:
+        _probe_check_deadline(probe_deadline, "runtime_replay:before")
+    root_fd = int(binding["root_fd"])
+    manifest_fd = int(binding["manifest_fd"])
+    root_row = os.fstat(root_fd)
+    root_identity = (
+        int(root_row.st_dev),
+        int(root_row.st_ino),
+        stat.S_IMODE(root_row.st_mode),
+        int(root_row.st_uid),
+    )
+    if (
+        not stat.S_ISDIR(root_row.st_mode)
+        or tuple(binding.get("root_identity", ())) != root_identity
+        or root_identity[2:] != (0o500, os.getuid())
+    ):
+        raise RuntimeError("sealed runtime root replay rejected")
+    manifest_row = os.fstat(manifest_fd)
+    manifest_identity = _stable_identity(manifest_row)
+    manifest_seals = int(fcntl.fcntl(manifest_fd, fcntl.F_GET_SEALS))
+    raw = _pread_stable(manifest_fd, maximum_bytes=16 << 20)
+    if (
+        tuple(binding.get("manifest_identity", ())) != manifest_identity
+        or binding.get("manifest_seals") != manifest_seals
+        or manifest_seals & REQUIRED_SEALS != REQUIRED_SEALS
+        or binding.get("manifest_sha256") != sha256(raw).hexdigest()
+        or binding.get("manifest_size") != len(raw)
+    ):
+        raise RuntimeError("sealed runtime manifest replay rejected")
+    manifest = json.loads(raw.decode("utf-8"))
+    entries = manifest.get("entries")
+    if not isinstance(entries, list) or len(entries) > MAX_RUNTIME_BUNDLE_FILES:
+        raise RuntimeError("sealed runtime replay entry count rejected")
+    total = 0
+    seen: set[str] = set()
+    for entry in entries:
+        if probe_deadline is not None:
+            _probe_check_deadline(probe_deadline, "runtime_replay:entry")
+        relative = entry.get("relative_path")
+        descriptor = entry.get("fd")
+        if (
+            not isinstance(relative, str)
+            or relative in seen
+            or type(descriptor) is not int
+        ):
+            raise RuntimeError("sealed runtime replay entry rejected")
+        before = os.fstat(descriptor)
+        identity = _stable_identity(before)
+        seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+        payload = _pread_stable(descriptor, maximum_bytes=MAX_RUNTIME_FILE_BYTES)
+        if (
+            tuple(
+                entry.get(key)
+                for key in (
+                    "device",
+                    "inode",
+                    "size",
+                    "file_type",
+                    "mode",
+                    "uid",
+                    "nlink",
+                )
+            )
+            != identity
+            or seals != entry.get("seals")
+            or seals & REQUIRED_SEALS != REQUIRED_SEALS
+            or sha256(payload).hexdigest() != entry.get("sha256")
+            or len(payload) != entry.get("size")
+            or os.readlink(relative, dir_fd=root_fd) != f"/proc/self/fd/{descriptor}"
+        ):
+            raise RuntimeError(f"sealed runtime replay mismatch: {relative}")
+        seen.add(relative)
+        total += len(payload)
+    if probe_deadline is not None:
+        _probe_check_deadline(probe_deadline, "runtime_replay:after")
+    return {
+        "manifest_sha256": sha256(raw).hexdigest(),
+        "file_count": len(seen),
+        "total_bytes": total,
+        "root_identity": list(root_identity),
+        "all_seals_and_links_replayed": True,
+    }
+
+
+def _arm_child(parent_pid: int) -> None:
+    os.setsid()
+    resource.setrlimit(
+        resource.RLIMIT_AS, (ADDRESS_SPACE_CAP_BYTES, ADDRESS_SPACE_CAP_BYTES)
+    )
+    result = LIBC.prctl(PR_SET_PDEATHSIG, int(PARENT_DEATH_SIGNAL), 0, 0, 0)
+    if result != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), "prctl")
+    stop_signals = {signal.SIGHUP, signal.SIGINT, signal.SIGTERM}
+    for signum in stop_signals:
+        signal.signal(signum, signal.SIG_DFL)
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, stop_signals)
+    if os.getppid() != parent_pid:
+        os.kill(os.getpid(), PARENT_DEATH_SIGNAL)
+
+
+def _enable_subreaper() -> None:
+    result = LIBC.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0)
+    if result != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), "prctl(PR_SET_CHILD_SUBREAPER)")
+
+
+def _signal_handlers(state: dict[str, int | None]) -> dict[int, Any]:
+    previous: dict[int, Any] = {}
+
+    def handler(signum: int, _frame: Any) -> None:
+        state["signal"] = signum
+
+    for signum in (
+        signal.SIGINT,
+        signal.SIGTERM,
+        getattr(signal, "SIGHUP", signal.SIGTERM),
+    ):
+        previous[signum] = signal.signal(signum, handler)
+    return previous
+
+
+def _candidate_group_identities(process_group: int) -> list[tuple[int, tuple[int, int, int, int]]]:
+    rows: list[tuple[int, tuple[int, int, int, int]]] = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        identity = _process_identity(pid)
+        if identity is not None and identity[1] == process_group:
+            rows.append((pid, identity))
+    return sorted(rows)
+
+
+def create_owned_group(process_group: int) -> dict[str, Any]:
+    if process_group <= 1 or process_group == os.getpgrp():
+        raise RuntimeError("unsafe process-group ownership target")
+    identity = _process_identity(process_group)
+    if identity is None or identity[1:3] != (process_group, process_group):
+        raise RuntimeError("original session leader identity unavailable")
+    descriptor = os.pidfd_open(process_group, 0)
+    if _process_identity(process_group) != identity:
+        os.close(descriptor)
+        raise RuntimeError("original session leader identity drift")
+    return {
+        "leader_pid": process_group,
+        "leader_identity": identity,
+        "leader_pidfd": descriptor,
+        "members": {
+            (process_group, identity[3]): {
+                "pid": process_group,
+                "identity": identity,
+                "pidfd": descriptor,
+            }
+        },
+        "admission_errors": [],
+        "leader_generation_gone": False,
+        "admission_sealed": False,
+    }
+
+
+def _seal_member_admission(
+    ownership: dict[str, Any], pending: list[dict[str, Any]], reason: str
+) -> None:
+    ownership["leader_generation_gone"] = True
+    ownership["admission_sealed"] = True
+    ownership["admission_seal_reason"] = reason
+    for row in pending:
+        try:
+            os.close(int(row["pidfd"]))
+        except OSError:
+            pass
+
+
+def admit_owned_members(ownership: dict[str, Any]) -> None:
+    """Admit new members only while the captured session-leader generation is live."""
+    if ownership.get("admission_sealed", False):
+        return
+    leader = int(ownership["leader_pid"])
+    anchor = tuple(ownership["leader_identity"])
+    if _process_identity(leader) != anchor:
+        _seal_member_admission(ownership, [], "leader_anchor_precheck_failed")
+        return
+    members = ownership["members"]
+    candidates = _candidate_group_identities(leader)
+    if _process_identity(leader) != anchor:
+        _seal_member_admission(ownership, [], "leader_anchor_post_enumeration_failed")
+        return
+    pending: list[dict[str, Any]] = []
+    for pid, identity in candidates:
+        if identity[2] != leader:
+            continue
+        key = (pid, identity[3])
+        if key in members:
+            continue
+        try:
+            descriptor = os.pidfd_open(pid, 0)
+        except (OSError, ValueError) as exc:
+            ownership["admission_errors"].append(
+                f"pidfd_open:{pid}:{type(exc).__name__}:{exc}"
+            )
+            continue
+        if _process_identity(pid) != identity:
+            os.close(descriptor)
+            ownership["admission_errors"].append(f"pidfd_identity_drift:{pid}")
+            continue
+        pending.append(
+            {"pid": pid, "identity": identity, "pidfd": descriptor, "key": key}
+        )
+    if _process_identity(leader) != anchor:
+        _seal_member_admission(
+            ownership, pending, "leader_anchor_precommit_failed"
+        )
+        return
+    for row in pending:
+        members[row.pop("key")] = row
+
+
+def _live_owned_members(ownership: dict[str, Any]) -> list[dict[str, Any]]:
+    live: list[dict[str, Any]] = []
+    leader = int(ownership["leader_pid"])
+    for row in ownership["members"].values():
+        identity = _process_identity(int(row["pid"]))
+        if identity == tuple(row["identity"]) and identity[1:3] == (leader, leader):
+            live.append(row)
+    return live
+
+
+def owned_group_usage(ownership: dict[str, Any]) -> tuple[int, int, tuple[int, ...]]:
+    admit_owned_members(ownership)
+    rss = 0
+    swap = 0
+    pids: list[int] = []
+    for row in _live_owned_members(ownership):
+        pid = int(row["pid"])
+        try:
+            status = _read_key_values(Path(f"/proc/{pid}/status"))
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            continue
+        pids.append(pid)
+        rss += status.get("VmRSS", 0)
+        swap += status.get("VmSwap", 0)
+    return rss, swap, tuple(sorted(pids))
+
+
+def whole_owned_launch_usage(
+    supervisor_pid: int, ownership: dict[str, Any]
+) -> tuple[int, int, tuple[int, ...]]:
+    group_rss, group_swap, group_pids = owned_group_usage(ownership)
+    pids = set(group_pids)
+    pids.add(supervisor_pid)
+    rss = group_rss
+    swap = group_swap
+    if supervisor_pid not in group_pids:
+        status = _read_key_values(Path(f"/proc/{supervisor_pid}/status"))
+        rss += status.get("VmRSS", 0)
+        swap += status.get("VmSwap", 0)
+    return rss, swap, tuple(sorted(pids))
+
+
+def probe_accounting_snapshot(
+    supervisor_pid: int, ownership: dict[str, Any]
+) -> dict[str, Any]:
+    """Read one generation-bound PID set once and derive every probe total from it."""
+    admit_owned_members(ownership)
+    expected: dict[int, tuple[int, int, int, int]] = {}
+    leader = int(ownership["leader_pid"])
+    for member in _live_owned_members(ownership):
+        pid = int(member["pid"])
+        identity = tuple(int(value) for value in member["identity"])
+        if identity[1:3] != (leader, leader):
+            raise RuntimeError(f"probe accounting generation mismatch: {pid}")
+        expected[pid] = identity
+    supervisor_identity = _process_identity(supervisor_pid)
+    if supervisor_identity is None:
+        raise RuntimeError("probe accounting supervisor identity unavailable")
+    expected[supervisor_pid] = supervisor_identity
+    rows: list[dict[str, Any]] = []
+    for pid, identity in sorted(expected.items()):
+        if _process_identity(pid) != identity:
+            raise RuntimeError(f"probe accounting identity drift before read: {pid}")
+        status = _read_key_values(Path(f"/proc/{pid}/status"))
+        if _process_identity(pid) != identity:
+            raise RuntimeError(f"probe accounting identity drift after read: {pid}")
+        rows.append(
+            {
+                "pid": pid,
+                "identity": list(identity),
+                "generation_admitted_child": pid != supervisor_pid,
+                "vmrss_kib": int(status.get("VmRSS", 0)),
+                "vmswap_kib": int(status.get("VmSwap", 0)),
+            }
+        )
+    child_rows = [row for row in rows if row["generation_admitted_child"]]
+    group_rss = sum(int(row["vmrss_kib"]) for row in child_rows)
+    group_swap = sum(int(row["vmswap_kib"]) for row in child_rows)
+    whole_rss = sum(int(row["vmrss_kib"]) for row in rows)
+    whole_swap = sum(int(row["vmswap_kib"]) for row in rows)
+    return {
+        "pids": [int(row["pid"]) for row in rows],
+        "per_pid": rows,
+        "group_rss_kib": group_rss,
+        "group_vmswap_kib": group_swap,
+        "whole_rss_kib": whole_rss,
+        "whole_vmswap_kib": whole_swap,
+        "reconciled": (
+            whole_rss == sum(int(row["vmrss_kib"]) for row in rows)
+            and whole_swap == sum(int(row["vmswap_kib"]) for row in rows)
+        ),
+    }
+
+
+def probe_prechild_accounting_snapshot(supervisor_pid: int) -> dict[str, Any]:
+    identity = _process_identity(supervisor_pid)
+    if identity is None:
+        raise RuntimeError("probe prechild supervisor identity unavailable")
+    if _process_identity(supervisor_pid) != identity:
+        raise RuntimeError("probe prechild supervisor identity drift before read")
+    status = _read_key_values(Path(f"/proc/{supervisor_pid}/status"))
+    if _process_identity(supervisor_pid) != identity:
+        raise RuntimeError("probe prechild supervisor identity drift after read")
+    row = {
+        "pid": supervisor_pid,
+        "identity": list(identity),
+        "generation_admitted_child": False,
+        "vmrss_kib": int(status.get("VmRSS", 0)),
+        "vmswap_kib": int(status.get("VmSwap", 0)),
+    }
+    return {
+        "pids": [supervisor_pid],
+        "per_pid": [row],
+        "whole_rss_kib": row["vmrss_kib"],
+        "whole_vmswap_kib": row["vmswap_kib"],
+        "reconciled": True,
+    }
+
+
+def signal_owned_members(ownership: dict[str, Any], signum: int) -> dict[str, Any]:
+    admit_owned_members(ownership)
+    sent: list[int] = []
+    errors: list[str] = []
+    leader = int(ownership["leader_pid"])
+    rows = sorted(_live_owned_members(ownership), key=lambda row: int(row["pid"]) == leader)
+    for row in rows:
+        pid = int(row["pid"])
+        try:
+            signal.pidfd_send_signal(int(row["pidfd"]), signum)
+            sent.append(pid)
+        except (OSError, ValueError) as exc:
+            errors.append(f"pidfd_send:{pid}:{type(exc).__name__}:{exc}")
+            continue
+    return {"signal": int(signum), "sent_pids": sent, "errors": errors}
+
+
+def ensure_owned_group_empty(ownership: dict[str, Any]) -> dict[str, Any]:
+    """Best-effort total cleanup; ownership ambiguity is reported, never signalled."""
+    actions: list[dict[str, Any]] = []
+    errors: list[str] = []
+    initial: list[int] = []
+    remaining: list[int] = []
+    ambiguous: list[int] = []
+    try:
+        try:
+            admit_owned_members(ownership)
+            initial = [int(row["pid"]) for row in _live_owned_members(ownership)]
+        except Exception as exc:
+            errors.append(f"initial_snapshot:{type(exc).__name__}:{exc}")
+        if initial:
+            try:
+                action = signal_owned_members(ownership, signal.SIGTERM)
+                actions.append(action)
+                errors.extend(str(value) for value in action["errors"])
+            except Exception as exc:
+                errors.append(f"sigterm_stage:{type(exc).__name__}:{exc}")
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline:
+                try:
+                    remaining = [int(row["pid"]) for row in _live_owned_members(ownership)]
+                except Exception as exc:
+                    errors.append(f"term_poll:{type(exc).__name__}:{exc}")
+                    break
+                if not remaining:
+                    break
+                time.sleep(0.05)
+        if remaining:
+            try:
+                action = signal_owned_members(ownership, signal.SIGKILL)
+                actions.append(action)
+                errors.extend(str(value) for value in action["errors"])
+            except Exception as exc:
+                errors.append(f"sigkill_stage:{type(exc).__name__}:{exc}")
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline:
+                try:
+                    remaining = [int(row["pid"]) for row in _live_owned_members(ownership)]
+                except Exception as exc:
+                    errors.append(f"kill_poll:{type(exc).__name__}:{exc}")
+                    break
+                if not remaining:
+                    break
+                time.sleep(0.05)
+        try:
+            admitted = {(int(row["pid"]), int(row["identity"][3])) for row in ownership["members"].values()}
+            ambiguous = [
+                pid for pid, identity in _candidate_group_identities(int(ownership["leader_pid"]))
+                if (pid, identity[3]) not in admitted
+            ]
+        except Exception as exc:
+            errors.append(f"ambiguity_scan:{type(exc).__name__}:{exc}")
+        errors.extend(str(value) for value in ownership.get("admission_errors", ()))
+    except Exception as exc:
+        errors.append(f"cleanup_outer:{type(exc).__name__}:{exc}")
+    finally:
+        for row in list(ownership.get("members", {}).values()):
+            try:
+                os.close(int(row["pidfd"]))
+            except OSError:
+                pass
+    return {
+        "initial_owned_pids": sorted(initial),
+        "actions": actions,
+        "final_owned_pids": sorted(remaining),
+        "ambiguous_unowned_numeric_group_pids": sorted(ambiguous),
+        "errors": errors,
+        "leader_generation_gone": bool(ownership.get("leader_generation_gone")),
+        "empty": not remaining and not ambiguous and not errors,
+    }
+
+
+def wait_child_and_drain(
+    child: subprocess.Popen[bytes], ownership: dict[str, Any], *, timeout: float
+) -> tuple[int, str | None, dict[str, Any]]:
+    """A wait failure is evidence, never a control-flow edge around final draining."""
+    child_exit_code = -1
+    wait_error: str | None = None
+    try:
+        child_exit_code = child.wait(timeout=timeout)
+    except Exception as exc:
+        wait_error = f"child_wait:{type(exc).__name__}:{exc}"
+    finally:
+        cleanup = ensure_owned_group_empty(ownership)
+    return child_exit_code, wait_error, cleanup
+
+
+def monitor_probe_child(
+    child: subprocess.Popen[bytes], ownership: dict[str, Any], *, deadline: float
+) -> dict[str, Any]:
+    breach: str | None = None
+    monitor_error: str | None = None
+    peak_snapshot: dict[str, Any] | None = None
+    child_exit_code = -1
+    wait_error: str | None = None
+    cleanup: dict[str, Any] = {"empty": False, "errors": ["cleanup_not_run"]}
+    try:
+        while child.poll() is None:
+            _probe_check_deadline(deadline, "monitor:sample")
+            snapshot = probe_accounting_snapshot(os.getpid(), ownership)
+            if not snapshot["reconciled"]:
+                raise RuntimeError("probe accounting snapshot did not reconcile")
+            if (
+                peak_snapshot is None
+                or snapshot["whole_rss_kib"] + snapshot["whole_vmswap_kib"]
+                > peak_snapshot["whole_rss_kib"] + peak_snapshot["whole_vmswap_kib"]
+            ):
+                peak_snapshot = snapshot
+            breach = probe_breach(
+                elapsed=_probe_elapsed(deadline),
+                group_rss_kib=snapshot["group_rss_kib"],
+                group_vmswap_kib=snapshot["group_vmswap_kib"],
+                whole_rss_kib=snapshot["whole_rss_kib"],
+                whole_vmswap_kib=snapshot["whole_vmswap_kib"],
+                sample=host_sample(),
+            )
+            if breach is not None:
+                signal_owned_members(ownership, signal.SIGTERM)
+                break
+            time.sleep(POLL_SECONDS)
+    except Exception as exc:
+        monitor_error = f"probe_monitor:{type(exc).__name__}:{exc}"
+    finally:
+        child_exit_code, wait_error, cleanup = wait_child_and_drain(
+            child,
+            ownership,
+            timeout=max(0.0, min(5.0, deadline - time.monotonic())),
+        )
+    return {
+        "breach": breach,
+        "monitor_error": monitor_error,
+        "peak_snapshot": peak_snapshot,
+        "child_exit_code": child_exit_code,
+        "wait_error": wait_error,
+        "cleanup": cleanup,
+    }
+
+
+def planned_command(
+    python_fd: int,
+    runner_fd: int,
+    runtime_root_fd: int,
+    barrier_fd: int,
+    pycache_prefix: Path,
+    *,
+    sealed_import_probe: bool = False,
+) -> list[str]:
+    command = [
+        f"/proc/self/fd/{python_fd}",
+        "-I",
+        "-S",
+        "-B",
+        "-X",
+        f"pycache_prefix={pycache_prefix}",
+        "-c",
+        RUNNER_FD_LOADER,
+        str(runner_fd),
+        EXPECTED_RUNNER_SHA256,
+        str(runtime_root_fd),
+        str(barrier_fd),
+    ]
+    if sealed_import_probe:
+        return [*command, "--sealed-import-probe"]
+    return [
+        *command,
+        "--execute-frontier",
+        "--allow-official-input",
+        "--allow-solver",
+        "--allow-publication",
+    ]
+
+
+def _read_relative_regular(
+    dirfd: int, name: str, *, maximum_bytes: int
+) -> tuple[bytes, dict[str, int]]:
+    descriptor = os.open(name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=dirfd)
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > maximum_bytes:
+            raise RuntimeError(f"child artifact {name} contract rejected")
+        chunks: list[bytes] = []
+        offset = 0
+        while offset < before.st_size:
+            block = os.pread(descriptor, min(1 << 20, before.st_size - offset), offset)
+            if not block:
+                raise RuntimeError(f"child artifact {name} ended early")
+            chunks.append(block)
+            offset += len(block)
+        after = os.fstat(descriptor)
+        named = os.stat(name, dir_fd=dirfd, follow_symlinks=False)
+        if _stable_identity(before) != _stable_identity(after) or _stable_identity(
+            after
+        ) != _stable_identity(named):
+            raise RuntimeError(f"child artifact {name} identity drift")
+        return b"".join(chunks), {
+            "device": int(after.st_dev),
+            "inode": int(after.st_ino),
+            "size": int(after.st_size),
+            "mode": stat.S_IMODE(after.st_mode),
+            "uid": int(after.st_uid),
+        }
+    finally:
+        os.close(descriptor)
+
+
+def _pread_retained_named(
+    dirfd: int,
+    name: str,
+    descriptor: int,
+    *,
+    maximum_bytes: int,
+    probe_deadline: float,
+) -> tuple[bytes, dict[str, int]]:
+    _probe_check_deadline(probe_deadline, f"retained_read:{name}:before")
+    before = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_size > maximum_bytes
+        or before.st_uid != os.getuid()
+    ):
+        raise RuntimeError(f"retained child artifact {name} contract rejected")
+    chunks: list[bytes] = []
+    offset = 0
+    while offset < before.st_size:
+        _probe_check_deadline(probe_deadline, f"retained_read:{name}:read")
+        block = os.pread(descriptor, min(1 << 20, before.st_size - offset), offset)
+        if not block:
+            raise RuntimeError(f"retained child artifact {name} ended early")
+        chunks.append(block)
+        offset += len(block)
+    after = os.fstat(descriptor)
+    named = os.stat(name, dir_fd=dirfd, follow_symlinks=False)
+    identity = _stable_identity(before)
+    if identity != _stable_identity(after) or identity != _stable_identity(named):
+        raise RuntimeError(f"retained child artifact {name} identity drift")
+    _probe_check_deadline(probe_deadline, f"retained_read:{name}:after")
+    return b"".join(chunks), {
+        "device": int(after.st_dev),
+        "inode": int(after.st_ino),
+        "size": int(after.st_size),
+        "mode": stat.S_IMODE(after.st_mode),
+        "uid": int(after.st_uid),
+    }
+
+
+def _exact_nonnegative_int(value: Any) -> bool:
+    return type(value) is int and value >= 0
+
+
+def _exact_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _exact_string_list(value: Any) -> bool:
+    return (
+        isinstance(value, list)
+        and all(isinstance(item, str) and item for item in value)
+        and len(value) == len(set(value))
+    )
+
+
+PROBE_CHILD_SUCCESS_KEYS = frozenset(
+    {
+        "schema",
+        "status",
+        "elapsed_seconds",
+        "executing_python",
+        "runtime_bundle",
+        "runtime_install",
+        "loaded_runtime",
+        "system_runtime_comparison",
+        "imported_planora_modules",
+        "imported_planora_module_count",
+        "official_instance_opened",
+        "checkpoint_or_incumbent_opened",
+        "solver_execution_started",
+        "solver_child_process_started",
+        "probe_child_process_started",
+        "solve_call_count",
+        "official_solution_xml_published",
+        "runner_sha256_start",
+        "runner_sha256_end",
+        "runner_hash_stable",
+    }
+)
+
+
+def admit_probe_child_report(report: Any) -> dict[str, Any]:
+    if not isinstance(report, dict) or set(report) != PROBE_CHILD_SUCCESS_KEYS:
+        raise RuntimeError("probe child report exact schema rejected")
+    elapsed = _finite_elapsed(report.get("elapsed_seconds"))
+    if elapsed is None or elapsed >= PROBE_HARD_WALL_SECONDS:
+        raise RuntimeError("probe child elapsed rejected")
+
+    executing = report.get("executing_python")
+    executing_keys = {
+        "sha256", "identity", "sys_executable", "proc_self_exe_bound",
+        "isolated", "no_site", "dont_write_bytecode", "transport",
+    }
+    identity = executing.get("identity") if isinstance(executing, dict) else None
+    if (
+        not isinstance(executing, dict)
+        or set(executing) != executing_keys
+        or executing.get("sha256") != EXPECTED_HASHES["python_binary"]
+        or not isinstance(identity, list)
+        or len(identity) != 7
+        or not all(_exact_nonnegative_int(value) for value in identity)
+        or identity[2] <= 0
+        or identity[3] != stat.S_IFREG
+        or identity[4:] != [0o500, os.getuid(), 0]
+        or not isinstance(executing.get("sys_executable"), str)
+        or not executing["sys_executable"].startswith("/proc/self/fd/")
+        or executing.get("proc_self_exe_bound") is not True
+        or executing.get("isolated") is not True
+        or executing.get("no_site") is not True
+        or executing.get("dont_write_bytecode") is not True
+        or executing.get("transport") != "sealed_executable_memfd"
+    ):
+        raise RuntimeError("probe child executing Python structure rejected")
+
+    runtime = report.get("runtime_bundle")
+    runtime_keys = {
+        "manifest_sha256", "manifest_size", "file_count", "total_bytes",
+        "excluded_record_row_count", "root_identity",
+        "all_files_sealed_before_third_party_import", "pyc_entries_excluded",
+        "transport",
+    }
+    root_identity = runtime.get("root_identity") if isinstance(runtime, dict) else None
+    if (
+        not isinstance(runtime, dict)
+        or set(runtime) != runtime_keys
+        or not _exact_sha256(runtime.get("manifest_sha256"))
+        or not _exact_nonnegative_int(runtime.get("manifest_size"))
+        or not 0 < runtime["manifest_size"] <= 16 << 20
+        or runtime.get("file_count") != 3_077
+        or runtime.get("total_bytes") != 191_956_270
+        or runtime.get("excluded_record_row_count") != 2_098
+        or not isinstance(root_identity, list)
+        or len(root_identity) != 4
+        or not all(_exact_nonnegative_int(value) for value in root_identity)
+        or root_identity[2:] != [0o500, os.getuid()]
+        or runtime.get("all_files_sealed_before_third_party_import") is not True
+        or runtime.get("pyc_entries_excluded") is not True
+        or runtime.get("transport") != "read_only_symlink_tree_to_sealed_memfds"
+    ):
+        raise RuntimeError("probe child runtime bundle structure rejected")
+
+    runtime_install = report.get("runtime_install")
+    install_keys = {
+        "sealed_source_finder_installed", "native_dependency_memfds_preloaded",
+        "native_dependency_paths", "native_dependency_preload_failures",
+        "live_site_packages_on_sys_path",
+    }
+    dependency_paths = (
+        runtime_install.get("native_dependency_paths")
+        if isinstance(runtime_install, dict) else None
+    )
+    if (
+        not isinstance(runtime_install, dict)
+        or set(runtime_install) != install_keys
+        or runtime_install.get("sealed_source_finder_installed") is not True
+        or not _exact_nonnegative_int(
+            runtime_install.get("native_dependency_memfds_preloaded")
+        )
+        or not _exact_string_list(dependency_paths)
+        or runtime_install["native_dependency_memfds_preloaded"] != len(dependency_paths)
+        or runtime_install.get("native_dependency_preload_failures") != []
+        or runtime_install.get("live_site_packages_on_sys_path") is not False
+    ):
+        raise RuntimeError("probe child runtime install structure rejected")
+
+    loaded = report.get("loaded_runtime")
+    loaded_keys = {
+        "python_version", "python_cache_tag", "python_executable_realpath",
+        "python_binary_sha256", "pyc_reads_disabled_by_private_prefix",
+        "dont_write_bytecode", "sealed_record_hashes", "loaded_files",
+        "loaded_file_count", "loaded_manifest_sha256",
+    }
+    loaded_files = loaded.get("loaded_files") if isinstance(loaded, dict) else None
+    sealed_records = (
+        loaded.get("sealed_record_hashes") if isinstance(loaded, dict) else None
+    )
+    expected_records = {
+        root: EXPECTED_HASHES[label]
+        for root, label in {
+            "ortools": "runtime_ortools_record", "numpy": "runtime_numpy_record",
+            "pandas": "runtime_pandas_record", "dateutil": "runtime_dateutil_record",
+            "six": "runtime_six_record", "lxml": "runtime_lxml_record",
+            "absl": "runtime_absl_record", "immutabledict": "runtime_immutabledict_record",
+            "google": "runtime_protobuf_record",
+            "typing_extensions": "runtime_typing_extensions_record",
+        }.items()
+    }
+    if (
+        not isinstance(loaded, dict)
+        or set(loaded) != loaded_keys
+        or any(
+            not isinstance(loaded.get(key), str) or not loaded[key]
+            for key in ("python_version", "python_cache_tag", "python_executable_realpath")
+        )
+        or loaded.get("python_binary_sha256") != EXPECTED_HASHES["python_binary"]
+        or loaded.get("pyc_reads_disabled_by_private_prefix") is not True
+        or loaded.get("dont_write_bytecode") is not True
+        or sealed_records != expected_records
+        or not isinstance(loaded_files, list)
+        or not _exact_nonnegative_int(loaded.get("loaded_file_count"))
+        or loaded["loaded_file_count"] != len(loaded_files)
+        or not 0 < len(loaded_files) <= 3_077
+        or not _exact_sha256(loaded.get("loaded_manifest_sha256"))
+    ):
+        raise RuntimeError("probe child loaded runtime structure rejected")
+    loaded_paths: set[str] = set()
+    for row in loaded_files:
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"path", "sha256", "size", "transport"}
+            or not isinstance(row.get("path"), str)
+            or not row["path"]
+            or row["path"] in loaded_paths
+            or not _exact_sha256(row.get("sha256"))
+            or not _exact_nonnegative_int(row.get("size"))
+            or row.get("transport") not in {
+                "sealed_descriptor_loader", "sealed_native_descriptor"
+            }
+        ):
+            raise RuntimeError("probe child loaded runtime row rejected")
+        loaded_paths.add(row["path"])
+
+    comparison = report.get("system_runtime_comparison")
+    comparison_keys = {
+        "start_file_count", "end_file_count", "start_subset_stable",
+        "new_post_import_files", "start_python_module_count",
+        "end_python_module_count", "new_post_import_python_modules", "boundary",
+    }
+    if (
+        not isinstance(comparison, dict)
+        or set(comparison) != comparison_keys
+        or any(
+            not _exact_nonnegative_int(comparison.get(key))
+            for key in (
+                "start_file_count", "end_file_count",
+                "start_python_module_count", "end_python_module_count",
+            )
+        )
+        or comparison["end_file_count"] < comparison["start_file_count"]
+        or comparison["end_python_module_count"] < comparison["start_python_module_count"]
+        or comparison.get("start_subset_stable") is not True
+        or not _exact_string_list(comparison.get("new_post_import_files"))
+        or not _exact_string_list(comparison.get("new_post_import_python_modules"))
+        or comparison.get("boundary") != "trusted_system_runtime_observed_and_hashed_not_sealed"
+    ):
+        raise RuntimeError("probe child runtime comparison rejected")
+
+    expected_modules = {
+        f"benchmarks.{label}": EXPECTED_HASHES[label]
+        for label in PLANORA_FRESH_MODULES
+    }
+    imported = report.get("imported_planora_modules")
+    if not isinstance(imported, list) or len(imported) != 13:
+        raise RuntimeError("probe child module list rejected")
+    actual_modules: dict[str, str] = {}
+    for row in imported:
+        if not isinstance(row, dict) or set(row) != {"module", "sha256"}:
+            raise RuntimeError("probe child module row rejected")
+        module = row.get("module")
+        digest = row.get("sha256")
+        if (
+            not isinstance(module, str)
+            or not _exact_sha256(digest)
+            or module in actual_modules
+        ):
+            raise RuntimeError("probe child module identity rejected")
+        actual_modules[module] = digest
+    if (
+        report.get("schema") != "planora.puproj.frontier-joint-v15-sealed-import-probe-child.v1"
+        or report.get("status") != "PASS"
+        or type(report.get("imported_planora_module_count")) is not int
+        or report["imported_planora_module_count"] != 13
+        or actual_modules != expected_modules
+        or report.get("official_instance_opened") is not False
+        or report.get("checkpoint_or_incumbent_opened") is not False
+        or report.get("solver_execution_started") is not False
+        or report.get("solver_child_process_started") is not False
+        or report.get("probe_child_process_started") is not True
+        or type(report.get("solve_call_count")) is not int
+        or report["solve_call_count"] != 0
+        or report.get("official_solution_xml_published") is not False
+        or report.get("runner_sha256_start") != EXPECTED_RUNNER_SHA256
+        or report.get("runner_sha256_end") != EXPECTED_RUNNER_SHA256
+        or report.get("runner_hash_stable") is not True
+    ):
+        raise RuntimeError("probe child report admission rejected")
+    return report
+
+
+def _probe_stream_diagnostics(
+    stdout_raw: bytes,
+    stderr_raw: bytes,
+    *,
+    child_exit_code: int | None,
+) -> dict[str, Any]:
+    stderr_tail = stderr_raw[-PROBE_DIAGNOSTIC_TAIL_BYTES:]
+    return {
+        "schema": "planora.puproj.frontier-joint-v15-child-stream-diagnostics.v1",
+        "child_exit_code": child_exit_code,
+        "capture_limit_bytes_per_stream": PROBE_CAPTURE_MAX_BYTES,
+        "stdout": {
+            "size": len(stdout_raw),
+            "sha256": sha256(stdout_raw).hexdigest(),
+        },
+        "stderr": {
+            "size": len(stderr_raw),
+            "sha256": sha256(stderr_raw).hexdigest(),
+            "tail_base64": base64.b64encode(stderr_tail).decode("ascii"),
+            "tail_size": len(stderr_tail),
+            "tail_limit_bytes": PROBE_DIAGNOSTIC_TAIL_BYTES,
+            "tail_truncated": len(stderr_raw) > len(stderr_tail),
+            "encoding": "base64_exact_bytes",
+        },
+    }
+
+
+def diagnose_probe_child_report(
+    stdout_raw: bytes,
+    stderr_raw: bytes,
+    *,
+    child_exit_code: int | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any]]:
+    """Classify child output before exact 20-key success admission."""
+    streams = _probe_stream_diagnostics(
+        stdout_raw,
+        stderr_raw,
+        child_exit_code=child_exit_code,
+    )
+    transport_failures: list[str] = []
+    if child_exit_code != 0:
+        transport_failures.append("child_exit_failure")
+    if stderr_raw:
+        transport_failures.append("child_stderr_failure")
+
+    def rejected(classification: str, **details: Any):
+        envelope = {
+            "schema": "planora.puproj.frontier-joint-v15-child-rejection.v1",
+            "classification": classification,
+            "success_schema_key_count": len(PROBE_CHILD_SUCCESS_KEYS),
+            "child_exit_code": child_exit_code,
+            "transport_failures": transport_failures,
+            "streams": streams,
+            **details,
+        }
+        return None, envelope, streams
+
+    if not stdout_raw:
+        return rejected("empty_stdout")
+    try:
+        stdout_text = stdout_raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        return rejected(
+            "stdout_decoding_failure",
+            decoding={
+                "encoding": "utf-8",
+                "start": error.start,
+                "end": error.end,
+                "reason": error.reason,
+            },
+        )
+    try:
+        decoded = json.loads(stdout_text)
+    except json.JSONDecodeError as error:
+        return rejected(
+            "json_decode_failure",
+            json_error={
+                "message": error.msg,
+                "line": error.lineno,
+                "column": error.colno,
+                "position": error.pos,
+            },
+        )
+    if not isinstance(decoded, dict):
+        return rejected(
+            "non_object_json",
+            decoded_json_type=type(decoded).__name__,
+        )
+    actual_keys = set(decoded)
+    missing_keys = sorted(PROBE_CHILD_SUCCESS_KEYS - actual_keys)
+    unexpected_keys = sorted(actual_keys - PROBE_CHILD_SUCCESS_KEYS)
+    if missing_keys or unexpected_keys:
+        return rejected(
+            "schema_key_mismatch",
+            missing_keys=missing_keys,
+            unexpected_keys=unexpected_keys,
+        )
+    if child_exit_code != 0:
+        return rejected(
+            "child_exit_failure",
+            missing_keys=[],
+            unexpected_keys=[],
+        )
+    if stderr_raw:
+        return rejected(
+            "child_stderr_failure",
+            missing_keys=[],
+            unexpected_keys=[],
+        )
+    try:
+        admitted = admit_probe_child_report(decoded)
+    except RuntimeError as error:
+        return rejected(
+            "success_schema_admission_rejected",
+            missing_keys=[],
+            unexpected_keys=[],
+            admission_error=str(error)[:256],
+        )
+    return admitted, None, streams
+
+
+def _finite_elapsed(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    result = float(value)
+    return result if math.isfinite(result) and result >= 0 else None
+
+
+def _rename_noreplace(dirfd: int, source: str, destination: str) -> None:
+    result = LIBC.renameat2(
+        ctypes.c_int(dirfd),
+        ctypes.c_char_p(os.fsencode(source)),
+        ctypes.c_int(dirfd),
+        ctypes.c_char_p(os.fsencode(destination)),
+        ctypes.c_uint(RENAME_NOREPLACE),
+    )
+    if result != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), destination)
+
+
+def child_acceptance_v15(
+    *,
+    dirfd: int,
+    run_dir: Path,
+    child_exit_code: int,
+    observed_child_elapsed_seconds: float,
+) -> tuple[str, list[str], dict[str, Any]]:
+    """Admit only a complete fresh solution or a strict controlled unknown."""
+
+    errors: list[str] = []
+    artifacts: dict[str, Any] = {
+        "observed_child_elapsed_seconds": observed_child_elapsed_seconds
+    }
+    names = sorted(entry.name for entry in os.scandir(f"/proc/self/fd/{dirfd}"))
+    unexpected = sorted(
+        set(names)
+        - {"child.stdout.log", "child.stderr.log", "solution.xml", "runner-report.json"}
+    )
+    if unexpected:
+        errors.append("unexpected_child_artifacts:" + ",".join(unexpected))
+    stdout_bytes, stdout_identity = _read_relative_regular(
+        dirfd, "child.stdout.log", maximum_bytes=32 << 20
+    )
+    stderr_bytes, stderr_identity = _read_relative_regular(
+        dirfd, "child.stderr.log", maximum_bytes=32 << 20
+    )
+    artifacts["stdout"] = {**stdout_identity, "sha256": sha256(stdout_bytes).hexdigest()}
+    artifacts["stderr"] = {**stderr_identity, "sha256": sha256(stderr_bytes).hexdigest()}
+    try:
+        child = json.loads(stdout_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        child = {}
+        errors.append("child_stdout_invalid_json")
+    if not isinstance(child, dict):
+        child = {}
+        errors.append("child_stdout_top_level_not_object")
+    artifacts["child_payload"] = child
+    if (
+        child.get("runner_sha256_start") != EXPECTED_RUNNER_SHA256
+        or child.get("runner_sha256_end") != EXPECTED_RUNNER_SHA256
+        or child.get("runner_hash_stable") is not True
+    ):
+        errors.append("runner_hash_claim_mismatch")
+    output_names = set(names) - {"child.stdout.log", "child.stderr.log"}
+    if child_exit_code == 3:
+        if output_names != {"runner-report.json"}:
+            errors.append("controlled_unknown_output_set_mismatch")
+            return "FAILED", errors, artifacts
+        raw, identity = _read_relative_regular(dirfd, "runner-report.json", maximum_bytes=32 << 20)
+        report = json.loads(raw)
+        artifacts["runner-report.json"] = {**identity, "sha256": sha256(raw).hexdigest(), "payload": report}
+        if (
+            child.get("status") != "CONTROLLED_UNKNOWN_PUBLISHED"
+            or child.get("admissible_as_solution") is not False
+            or child.get("official_solution_xml_published") is not False
+            or report.get("schema") != "planora.pu-proj.frontier-joint-v15.fresh-report.v1"
+            or report.get("status") != "CONTROLLED_UNKNOWN"
+            or report.get("solver_input_mode") != "OFFICIAL_INPUT_ONLY_FRESH"
+            or report.get("checkpoint_or_incumbent_accessed") is not False
+            or report.get("admissible_as_solution") is not False
+        ):
+            errors.append("controlled_unknown_schema_mismatch")
+        return ("CONTROLLED_UNKNOWN" if not errors else "FAILED"), errors, artifacts
+    if child_exit_code != 0 or output_names != {"solution.xml", "runner-report.json"}:
+        errors.append(f"complete_output_or_exit_mismatch:{child_exit_code}")
+        return "FAILED", errors, artifacts
+    solution, solution_identity = _read_relative_regular(dirfd, "solution.xml", maximum_bytes=256 << 20)
+    report_raw, report_identity = _read_relative_regular(dirfd, "runner-report.json", maximum_bytes=32 << 20)
+    report = json.loads(report_raw)
+    artifacts["solution.xml"] = {**solution_identity, "sha256": sha256(solution).hexdigest()}
+    artifacts["runner-report.json"] = {**report_identity, "sha256": sha256(report_raw).hexdigest(), "payload": report}
+    publication = child.get("publication")
+    generic = report.get("generic_validation") if isinstance(report, dict) else None
+    if (
+        child.get("status") != "COMPLETE_VALID_PUBLISHED"
+        or child.get("class_count") != 8_813
+        or child.get("student_count") != 38_437
+        or child.get("admissible_as_solution") is not True
+        or child.get("official_solution_xml_published") is not True
+        or not isinstance(publication, dict)
+        or publication.get("solution.xml", {}).get("publication_order") != 1
+        or publication.get("runner-report.json", {}).get("publication_order") != 2
+        or report.get("schema") != "planora.pu-proj.frontier-joint-v15.fresh-report.v1"
+        or report.get("status") != "COMPLETE_VALID"
+        or report.get("solver_input_mode") != "OFFICIAL_INPUT_ONLY_FRESH"
+        or report.get("checkpoint_or_incumbent_accessed") is not False
+        or report.get("competitor_schedule_or_result_used") is not False
+        or report.get("competitor_placement_or_hint_used") is not False
+        or report.get("class_count") != 8_813
+        or report.get("student_count") != 38_437
+        or report.get("local_semantic_errors") != []
+        or report.get("local_document_errors") != []
+        or not isinstance(generic, dict)
+        or generic.get("status") != "COMPLETE_VALID"
+        or generic.get("classes") != 8_813
+        or generic.get("students") != 38_437
+        or publication.get("solution.xml", {}).get("sha256") != sha256(solution).hexdigest()
+        or publication.get("runner-report.json", {}).get("sha256") != sha256(report_raw).hexdigest()
+    ):
+        errors.append("complete_fresh_claim_mismatch")
+    return ("COMPLETE_VALID" if not errors else "FAILED"), errors, artifacts
+
+
+def publish_supervisor_report(
+    *,
+    dirfd: int,
+    parent: Path,
+    parent_identity: tuple[int, int, int, int],
+    payload: Mapping[str, Any],
+    probe_deadline: float | None = None,
+) -> dict[str, Any]:
+    """Create an unpublished, sealed supervisor envelope.
+
+    The returned mapping is an internal capability containing an open memfd.  It
+    is deliberately not JSON serializable.  Callers must pass it exactly once to
+    ``consume_supervisor_report``; no pathname is ever an authority for these
+    bytes.
+    """
+    if probe_deadline is not None:
+        _probe_check_deadline(probe_deadline, "publication:before")
+    raw = (
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    ).encode("utf-8")
+    descriptor = os.memfd_create(
+        "planora-puproj-v15-supervisor-envelope",
+        getattr(os, "MFD_ALLOW_SEALING", 0x0002),
+    )
+    try:
+        os.fchmod(descriptor, 0o400)
+        view = memoryview(raw)
+        while view:
+            if probe_deadline is not None:
+                _probe_check_deadline(probe_deadline, "publication:write")
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise RuntimeError("supervisor report stopped accepting bytes")
+            view = view[written:]
+        fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS, REQUIRED_SEALS)
+        retained = os.fstat(descriptor)
+        identity = (
+            int(retained.st_dev), int(retained.st_ino), stat.S_IFMT(retained.st_mode),
+            stat.S_IMODE(retained.st_mode), int(retained.st_uid), int(retained.st_nlink),
+        )
+        seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+        if (
+            not stat.S_ISREG(retained.st_mode)
+            or stat.S_IMODE(retained.st_mode) != 0o400
+            or int(retained.st_uid) != os.getuid()
+            or int(retained.st_nlink) != 0
+            or retained.st_size != len(raw)
+            or seals & REQUIRED_SEALS != REQUIRED_SEALS
+        ):
+            raise RuntimeError("supervisor envelope sealing rejected")
+        return {
+            "descriptor": descriptor,
+            "raw": raw,
+            "identity": identity,
+            "seals": seals,
+            "dirfd": dirfd,
+            "parent": parent,
+            "parent_identity": parent_identity,
+            "probe_deadline": probe_deadline,
+        }
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _supervisor_report_alias(name: str) -> bool:
+    return (
+        name == "supervisor-report.json"
+        or name.startswith(".supervisor-report.")
+        or (name.endswith("-report.json") and name != "runner-report.json")
+    )
+
+
+def _purge_supervisor_report_aliases(dirfd: int) -> list[str]:
+    removed: list[str] = []
+    for name in os.listdir(dirfd):
+        if not _supervisor_report_alias(name):
+            continue
+        try:
+            row = os.stat(name, dir_fd=dirfd, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        try:
+            if stat.S_ISDIR(row.st_mode):
+                os.rmdir(name, dir_fd=dirfd)
+            else:
+                os.unlink(name, dir_fd=dirfd)
+        except FileNotFoundError:
+            continue
+        removed.append(name)
+    residual = [name for name in os.listdir(dirfd) if _supervisor_report_alias(name)]
+    if residual:
+        raise RuntimeError(f"supervisor report aliases remain: {sorted(residual)!r}")
+    return sorted(removed)
+
+
+def consume_supervisor_report(binding: Mapping[str, Any]) -> dict[str, Any]:
+    """Consume one sealed descriptor binding and return serializable evidence."""
+    descriptor = binding.get("descriptor")
+    if type(descriptor) is not int:
+        raise RuntimeError("supervisor envelope descriptor binding rejected")
+    dirfd = binding["dirfd"]
+    deadline = binding["probe_deadline"]
+    try:
+        if deadline is not None:
+            _probe_check_deadline(deadline, "publication:retained_pread")
+        expected_raw = binding["raw"]
+        expected_identity = binding["identity"]
+        chunks: list[bytes] = []
+        offset = 0
+        while offset < len(expected_raw):
+            if deadline is not None:
+                _probe_check_deadline(deadline, "publication:retained_pread")
+            block = os.pread(descriptor, min(1 << 20, len(expected_raw) - offset), offset)
+            if not block:
+                raise RuntimeError("supervisor envelope retained descriptor ended early")
+            chunks.append(block)
+            offset += len(block)
+        exact = b"".join(chunks)
+        retained = os.fstat(descriptor)
+        identity = (
+            int(retained.st_dev), int(retained.st_ino), stat.S_IFMT(retained.st_mode),
+            stat.S_IMODE(retained.st_mode), int(retained.st_uid), int(retained.st_nlink),
+        )
+        seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+        named_parent = os.lstat(binding["parent"])
+        current_parent_identity = (
+            int(named_parent.st_dev), int(named_parent.st_ino),
+            stat.S_IMODE(named_parent.st_mode), int(named_parent.st_uid),
+        )
+        if (
+            exact != expected_raw
+            or identity != expected_identity
+            or retained.st_size != len(expected_raw)
+            or seals != binding["seals"]
+            or seals & REQUIRED_SEALS != REQUIRED_SEALS
+            or current_parent_identity != binding["parent_identity"]
+        ):
+            raise RuntimeError("supervisor descriptor envelope final replay failed")
+        removed_aliases = _purge_supervisor_report_aliases(dirfd)
+        if deadline is not None:
+            _probe_check_deadline(deadline, "publication:after_descriptor_replay")
+        completed = time.monotonic()
+        elapsed: float | None = None
+        if deadline is not None:
+            elapsed = completed - (deadline - PROBE_HARD_WALL_SECONDS)
+            if (
+                not math.isfinite(elapsed)
+                or elapsed < 0
+                or completed >= deadline
+                or elapsed >= PROBE_HARD_WALL_SECONDS
+            ):
+                raise TimeoutError("probe envelope completed outside absolute wall")
+        return {
+            "sha256": sha256(exact).hexdigest(),
+            "size": len(exact),
+            "device": identity[0],
+            "inode": identity[1],
+            "seals": seals,
+            "verification_transport": "sealed_memfd_creation_binding_retained_fd_pread",
+            "authoritative_path": None,
+            "named_publication": False,
+            "removed_untrusted_aliases": removed_aliases,
+            "publication_completed_elapsed_seconds": elapsed,
+        }
+    finally:
+        os.close(descriptor)
+
+
+def _private_directory(
+    prefix: str,
+) -> tuple[Path, int, tuple[int, int, int, int]]:
+    for _attempt in range(32):
+        name = (
+            datetime.now(UTC).strftime(prefix + "-%Y%m%dT%H%M%SZ-")
+            + uuid.uuid4().hex[:16]
+        )
+        path = Path("/tmp") / name
+        try:
+            os.mkdir(path, 0o700)
+        except FileExistsError:
+            continue
+        descriptor = os.open(
+            path, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+        )
+        row = os.fstat(descriptor)
+        identity = (
+            int(row.st_dev),
+            int(row.st_ino),
+            stat.S_IMODE(row.st_mode),
+            int(row.st_uid),
+        )
+        if identity[2:] != (0o700, os.getuid()):
+            os.close(descriptor)
+            raise RuntimeError("private run directory contract rejected")
+        return path, descriptor, identity
+    raise RuntimeError("unable to allocate private run directory")
+
+
+def _private_run_directory() -> tuple[Path, int, tuple[int, int, int, int]]:
+    return _private_directory("planora-puproj-frontier-v15-run")
+
+
+def _private_runtime_directory() -> tuple[Path, int, tuple[int, int, int, int]]:
+    return _private_directory("planora-puproj-frontier-v15-runtime")
+
+
+def minimal_child_environment(
+    *,
+    captures: Mapping[str, Any],
+    output_binding: Mapping[str, Any],
+    runtime_binding: Mapping[str, Any],
+    scratch_dir: Path,
+) -> dict[str, str]:
+    pycache_prefix = str(Path(str(output_binding["path"])) / ".pycache-v15")
+    return {
+        "PATH": "/usr/bin:/bin",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "TZ": "UTC",
+        "TMPDIR": str(scratch_dir),
+        CAPTURE_MANIFEST_ENV: json.dumps(
+            captures, sort_keys=True, separators=(",", ":")
+        ),
+        OUTPUT_BINDING_ENV: json.dumps(
+            output_binding, sort_keys=True, separators=(",", ":")
+        ),
+        RUNTIME_BUNDLE_ENV: json.dumps(
+            runtime_binding, sort_keys=True, separators=(",", ":")
+        ),
+        PYCACHE_PREFIX_ENV: pycache_prefix,
+    }
+
+
+def run_supervised() -> dict[str, Any]:
+    supervisor_start = supervisor_execution_sha256()
+    supervisor_contract_start = verify_current_supervisor_contract()
+    resource.setrlimit(
+        resource.RLIMIT_AS, (ADDRESS_SPACE_CAP_BYTES, ADDRESS_SPACE_CAP_BYTES)
+    )
+    launcher_contract_start = verify_external_launcher_contract()
+    freeze_manifest_start = verify_external_freeze_manifest_contract()
+    system_python_start = verify_system_python_provenance(phase="run_start")
+    baseline = host_sample()
+    initial_whole_rss, initial_whole_swap, initial_whole_pids = whole_launch_usage(
+        os.getpid(), None
+    )
+    initial = (
+        "host_initial_capture_headroom"
+        if baseline["mem_available_kib"] < INITIAL_MIN_MEM_AVAILABLE_KIB
+        else whole_launch_breach(initial_whole_rss, initial_whole_swap)
+        or breach_reason(
+            elapsed=0,
+            group_rss_kib=0,
+            group_vmswap_kib=0,
+            sample=baseline,
+            launch=True,
+        )
+    )
+    if initial is not None:
+        return {
+            "status": "NO_GO",
+            "resource_gate": initial,
+            "host_sample": baseline,
+            "official_instance_opened": False,
+            "solver_child_process_started": False,
+            "solver_execution_started": False,
+            "official_solution_xml_published": False,
+        }
+    captures: dict[str, dict[str, Any]] = {}
+    inherited: list[int] = []
+    run_dir_fd = -1
+    runtime_initial_fd = -1
+    scratch_fd = -1
+    stdout_fd = -1
+    stderr_fd = -1
+    barrier_read_fd = -1
+    barrier_write_fd = -1
+    try:
+        for label, path in CAPTURE_SOURCES.items():
+            capture_whole_rss, capture_whole_swap, _capture_whole_pids = (
+                whole_launch_usage(os.getpid(), None)
+            )
+            capture_whole_gate = whole_launch_breach(
+                capture_whole_rss, capture_whole_swap
+            )
+            if capture_whole_gate is not None:
+                raise MemoryError(capture_whole_gate)
+            descriptor, evidence = _stream_capture(path, _expected_hash(label), label)
+            inherited.append(descriptor)
+            captures[label] = evidence
+        after_capture = host_sample()
+        capture_gate = breach_reason(
+            elapsed=0,
+            group_rss_kib=0,
+            group_vmswap_kib=0,
+            sample=after_capture,
+            launch=True,
+        )
+        if capture_gate is not None:
+            return {
+                "status": "NO_GO",
+                "resource_gate": capture_gate,
+                "host_sample": after_capture,
+                "official_instance_opened": True,
+                "solver_child_process_started": False,
+                "solver_execution_started": False,
+                "official_solution_xml_published": False,
+            }
+        run_dir, run_dir_fd, run_dir_identity = _private_run_directory()
+        inherited.append(run_dir_fd)
+        scratch_dir, scratch_fd, scratch_identity = _private_directory(
+            "planora-puproj-frontier-v15-scratch"
+        )
+        inherited.append(scratch_fd)
+        runtime_dir, runtime_initial_fd, _runtime_initial_identity = (
+            _private_runtime_directory()
+        )
+        (
+            runtime_root_fd,
+            runtime_manifest_fd,
+            runtime_file_fds,
+            runtime_binding,
+            runtime_summary,
+        ) = build_runtime_bundle(
+            runtime_root_fd=runtime_initial_fd,
+            captures=captures,
+        )
+        os.close(runtime_initial_fd)
+        runtime_initial_fd = -1
+        inherited.extend((runtime_root_fd, runtime_manifest_fd, *runtime_file_fds))
+        named_runtime = os.lstat(runtime_dir)
+        if (
+            int(named_runtime.st_dev),
+            int(named_runtime.st_ino),
+            stat.S_IMODE(named_runtime.st_mode),
+            int(named_runtime.st_uid),
+        ) != tuple(runtime_binding["root_identity"]):
+            raise RuntimeError("sealed runtime named root final replay failed")
+        runtime_summary["directory"] = str(runtime_dir)
+        output_binding = {
+            "fd": run_dir_fd,
+            "path": str(run_dir),
+            "device": run_dir_identity[0],
+            "inode": run_dir_identity[1],
+            "mode": run_dir_identity[2],
+            "uid": run_dir_identity[3],
+        }
+        environment = minimal_child_environment(
+            captures=captures,
+            output_binding=output_binding,
+            runtime_binding=runtime_binding,
+            scratch_dir=scratch_dir,
+        )
+        pycache_prefix = run_dir / ".pycache-v15"
+        barrier_read_fd, barrier_write_fd = os.pipe2(os.O_CLOEXEC)
+        command = planned_command(
+            captures["python_binary"]["fd"],
+            captures["runner"]["fd"],
+            runtime_root_fd,
+            barrier_read_fd,
+            pycache_prefix,
+        )
+        stdout_fd = os.open(
+            "child.stdout.log",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o400,
+            dir_fd=run_dir_fd,
+        )
+        stderr_fd = os.open(
+            "child.stderr.log",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o400,
+            dir_fd=run_dir_fd,
+        )
+        prechild_whole_rss, prechild_whole_swap, prechild_whole_pids = (
+            whole_launch_usage(os.getpid(), None)
+        )
+        prechild_whole_gate = whole_launch_breach(
+            prechild_whole_rss, prechild_whole_swap
+        )
+        if prechild_whole_gate is not None:
+            raise MemoryError(prechild_whole_gate)
+        parent_pid = os.getpid()
+        signal_state: dict[str, int | None] = {"signal": None}
+        previous = _signal_handlers(signal_state)
+        _enable_subreaper()
+        started = time.monotonic()
+        child = subprocess.Popen(
+            command,
+            pass_fds=tuple((*inherited, barrier_read_fd)),
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_fd,
+            stderr=stderr_fd,
+            close_fds=True,
+            preexec_fn=lambda: _arm_child(parent_pid),
+        )
+        process_group = child.pid
+        os.close(barrier_read_fd)
+        barrier_read_fd = -1
+        ownership = create_owned_group(process_group)
+        os.write(barrier_write_fd, b"G")
+        os.close(barrier_write_fd)
+        barrier_write_fd = -1
+        peak_rss = 0
+        peak_vmswap = 0
+        peak_pids: tuple[int, ...] = ()
+        if (
+            prechild_whole_rss + prechild_whole_swap
+            >= initial_whole_rss + initial_whole_swap
+        ):
+            peak_whole_rss = prechild_whole_rss
+            peak_whole_vmswap = prechild_whole_swap
+            peak_whole_pids = prechild_whole_pids
+        else:
+            peak_whole_rss = initial_whole_rss
+            peak_whole_vmswap = initial_whole_swap
+            peak_whole_pids = initial_whole_pids
+        breach = None
+        stop_action = None
+        group_cleanup: dict[str, Any] | None = None
+        supervision_error: str | None = None
+        child_exit_code = -1
+        observed_child_elapsed = 0.0
+        try:
+            if POST_POPEN_ADMISSION_TEST_HOOK is not None:
+                POST_POPEN_ADMISSION_TEST_HOOK(child, process_group)
+            while child.poll() is None:
+                sample = host_sample()
+                elapsed = time.monotonic() - started
+                rss, vmswap, pids = owned_group_usage(ownership)
+                whole_rss, whole_vmswap, whole_pids = whole_owned_launch_usage(
+                    os.getpid(), ownership
+                )
+                if rss + vmswap > peak_rss + peak_vmswap:
+                    peak_pids = pids
+                peak_rss = max(peak_rss, rss)
+                peak_vmswap = max(peak_vmswap, vmswap)
+                if whole_rss + whole_vmswap > peak_whole_rss + peak_whole_vmswap:
+                    peak_whole_rss = whole_rss
+                    peak_whole_vmswap = whole_vmswap
+                    peak_whole_pids = whole_pids
+                if signal_state["signal"] is not None:
+                    breach = f"supervisor_signal:{signal_state['signal']}"
+                else:
+                    breach = whole_launch_breach(
+                        whole_rss, whole_vmswap
+                    ) or breach_reason(
+                        elapsed=elapsed,
+                        group_rss_kib=rss,
+                        group_vmswap_kib=vmswap,
+                        sample=sample,
+                        launch=False,
+                    )
+                if breach is not None:
+                    stop_action = signal_owned_members(ownership, signal.SIGTERM)
+                    break
+                time.sleep(POLL_SECONDS)
+        except Exception as exc:
+            supervision_error = f"supervision:{type(exc).__name__}:{exc}"
+        finally:
+            observed_child_elapsed = time.monotonic() - started
+            child_exit_code, wait_error, group_cleanup = wait_child_and_drain(
+                child, ownership, timeout=5
+            )
+            if wait_error is not None:
+                supervision_error = wait_error
+            for signum, handler in previous.items():
+                try:
+                    signal.signal(signum, handler)
+                except Exception as exc:
+                    group_cleanup["errors"].append(
+                        f"restore_signal:{signum}:{type(exc).__name__}:{exc}"
+                    )
+                    group_cleanup["empty"] = False
+        os.close(stdout_fd)
+        stdout_fd = -1
+        os.close(stderr_fd)
+        stderr_fd = -1
+        status, errors, artifacts = child_acceptance_v15(
+            dirfd=run_dir_fd,
+            run_dir=run_dir,
+            child_exit_code=child_exit_code,
+            observed_child_elapsed_seconds=observed_child_elapsed,
+        )
+        solver_return_proven = status in {
+            "COMPLETE_VALID",
+            "CONTROLLED_UNKNOWN",
+        }
+        if supervision_error is not None:
+            errors.append(supervision_error)
+            status = "FAILED"
+        if breach is not None:
+            errors.append(f"resource_or_signal_breach:{breach}")
+            status = "FAILED"
+        if not group_cleanup["empty"]:
+            errors.append("process_group_cleanup_incomplete")
+            status = "FAILED"
+        scratch_names = sorted(
+            entry.name for entry in os.scandir(f"/proc/self/fd/{scratch_fd}")
+        )
+        scratch_named = os.lstat(scratch_dir)
+        scratch_final_identity = (
+            int(scratch_named.st_dev),
+            int(scratch_named.st_ino),
+            stat.S_IMODE(scratch_named.st_mode),
+            int(scratch_named.st_uid),
+        )
+        if scratch_names or scratch_final_identity != scratch_identity:
+            errors.append("private_scratch_contract_rejected")
+            status = "FAILED"
+        capture_end = {
+            label: verify_sealed_capture(int(evidence["fd"]), evidence)
+            for label, evidence in captures.items()
+        }
+        runtime_bundle_end = replay_runtime_bundle(runtime_binding)
+        runtime_named_end = os.lstat(runtime_dir)
+        if (
+            int(runtime_named_end.st_dev),
+            int(runtime_named_end.st_ino),
+            stat.S_IMODE(runtime_named_end.st_mode),
+            int(runtime_named_end.st_uid),
+        ) != tuple(runtime_binding["root_identity"]):
+            errors.append("sealed_runtime_named_root_drift")
+            status = "FAILED"
+        source_end = {
+            label: verify_source_contract(evidence)
+            for label, evidence in captures.items()
+        }
+        if (
+            verify_current_supervisor_contract() != supervisor_contract_start
+            or supervisor_execution_sha256() != supervisor_start
+        ):
+            errors.append("supervisor_contract_drift")
+            status = "FAILED"
+        if verify_external_launcher_contract() != launcher_contract_start:
+            errors.append("launcher_contract_drift")
+            status = "FAILED"
+        if verify_external_freeze_manifest_contract() != freeze_manifest_start:
+            errors.append("freeze_manifest_contract_drift")
+            status = "FAILED"
+        system_python_end = verify_system_python_provenance(phase="run_end")
+        system_python_comparison = compare_system_python_provenance(
+            system_python_start, system_python_end
+        )
+        final_host = host_sample()
+        payload = {
+            "schema": "planora.pu-proj.frontier-joint-v15-supervisor.v1",
+            "status": status,
+            "errors": errors,
+            "breach": breach,
+            "stop_action": stop_action,
+            "child_exit_code": child_exit_code,
+            "observed_child_elapsed_seconds": observed_child_elapsed,
+            "child_acceptance_cooperative_deadline_seconds": CHILD_ACCEPTANCE_COOPERATIVE_DEADLINE_SECONDS,
+            "supervisor_hard_wall_seconds": SUPERVISOR_HARD_WALL_SECONDS,
+            "peak_process_group_rss_kib": peak_rss,
+            "peak_process_group_vmswap_kib": peak_vmswap,
+            "peak_process_group_pids": list(peak_pids),
+            "initial_whole_launch_rss_kib": initial_whole_rss,
+            "initial_whole_launch_vmswap_kib": initial_whole_swap,
+            "initial_whole_launch_pids": list(initial_whole_pids),
+            "prechild_whole_launch_rss_kib": prechild_whole_rss,
+            "prechild_whole_launch_vmswap_kib": prechild_whole_swap,
+            "prechild_whole_launch_pids": list(prechild_whole_pids),
+            "peak_whole_launch_rss_kib": peak_whole_rss,
+            "peak_whole_launch_vmswap_kib": peak_whole_vmswap,
+            "peak_whole_launch_vmrss_plus_vmswap_kib": peak_whole_rss
+            + peak_whole_vmswap,
+            "peak_whole_launch_pids": list(peak_whole_pids),
+            "whole_launch_memory_limit_kib": WHOLE_LAUNCH_MEMORY_LIMIT_KIB,
+            "whole_launch_pid_union_no_double_count": True,
+            "process_group_cleanup": group_cleanup,
+            "process_group_rss_limit_kib": PROCESS_GROUP_RSS_LIMIT_KIB,
+            "process_group_vmswap_limit_kib": PROCESS_GROUP_VMSWAP_LIMIT_KIB,
+            "runtime_mem_available_floor_kib": RUNTIME_MIN_MEM_AVAILABLE_KIB,
+            "host_swap_telemetry_only": {
+                "start_pswpin_pages": baseline["pswpin_pages"],
+                "start_pswpout_pages": baseline["pswpout_pages"],
+                "end_pswpin_pages": final_host["pswpin_pages"],
+                "end_pswpout_pages": final_host["pswpout_pages"],
+                "used_as_kill_gate": False,
+            },
+            "run_directory": str(run_dir),
+            "run_directory_identity": list(run_dir_identity),
+            "scratch_directory": str(scratch_dir),
+            "scratch_directory_identity": list(scratch_identity),
+            "scratch_directory_final_entries": scratch_names,
+            "sealed_runtime_bundle": runtime_summary,
+            "sealed_runtime_bundle_final_replay": runtime_bundle_end,
+            "command": command,
+            "artifacts": artifacts,
+            "sealed_captures": capture_end,
+            "final_source_rehash": source_end,
+            "supervisor_sha256": supervisor_start,
+            "native_bootstrap_and_launcher": launcher_contract_start,
+            "native_bootstrap_freeze_manifest": freeze_manifest_start,
+            "system_python_provenance_start": system_python_start,
+            "system_python_provenance_end": system_python_end,
+            "system_python_provenance_comparison": system_python_comparison,
+            "official_instance_opened": True,
+            "probe_child_process_started": True,
+            "solver_child_process_started": False,
+            "solver_execution_started": solver_return_proven,
+            "admissible_as_solution": status == "COMPLETE_VALID",
+            "official_solution_xml_published": status == "COMPLETE_VALID",
+        }
+        report_binding = publish_supervisor_report(
+            dirfd=run_dir_fd,
+            parent=run_dir,
+            parent_identity=run_dir_identity,
+            payload=payload,
+        )
+        report_evidence = consume_supervisor_report(report_binding)
+        payload["supervisor_descriptor_envelope_evidence"] = report_evidence
+        return payload
+    finally:
+        if barrier_write_fd >= 0:
+            try:
+                os.close(barrier_write_fd)
+            except OSError:
+                pass
+        if barrier_read_fd >= 0:
+            try:
+                os.close(barrier_read_fd)
+            except OSError:
+                pass
+        if stdout_fd >= 0:
+            os.close(stdout_fd)
+        if stderr_fd >= 0:
+            os.close(stderr_fd)
+        if runtime_initial_fd >= 0:
+            os.close(runtime_initial_fd)
+        for descriptor in inherited:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def static_pins() -> dict[str, dict[str, Any]]:
+    rows: dict[str, dict[str, Any]] = {}
+    for label, path in CAPTURE_SOURCES.items():
+        if label == "full_instance":
+            continue
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            before = os.fstat(descriptor)
+            digest = sha256()
+            offset = 0
+            while offset < before.st_size:
+                block = os.pread(
+                    descriptor, min(1 << 20, before.st_size - offset), offset
+                )
+                if not block:
+                    raise RuntimeError("static pin ended early")
+                digest.update(block)
+                offset += len(block)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        actual = digest.hexdigest()
+        if _stable_identity(before) != _stable_identity(
+            after
+        ) or actual != _expected_hash(label):
+            raise RuntimeError(f"static pin drift: {label}")
+        rows[label] = {
+            "path": str(path),
+            "sha256": actual,
+            "size": int(after.st_size),
+            "identity": list(_stable_identity(after)),
+        }
+    return rows
+
+
+def self_test() -> dict[str, Any]:
+    sample = {
+        "mem_available_kib": 2_000_000,
+        "swap_free_kib": 1_000_000,
+        "pswpin_pages": 100,
+        "pswpout_pages": 200,
+    }
+    if (
+        breach_reason(
+            elapsed=0,
+            group_rss_kib=PROCESS_GROUP_RSS_LIMIT_KIB,
+            group_vmswap_kib=0,
+            sample=sample,
+            launch=False,
+        )
+        != "process_group_rss_limit"
+    ):
+        raise AssertionError("RSS limit not enforced")
+    if (
+        breach_reason(
+            elapsed=0,
+            group_rss_kib=0,
+            group_vmswap_kib=PROCESS_GROUP_VMSWAP_LIMIT_KIB,
+            sample=sample,
+            launch=False,
+        )
+        != "process_group_vmswap_limit"
+    ):
+        raise AssertionError("VmSwap limit not enforced")
+    if (
+        breach_reason(
+            elapsed=SUPERVISOR_HARD_WALL_SECONDS,
+            group_rss_kib=0,
+            group_vmswap_kib=0,
+            sample=sample,
+            launch=False,
+        )
+        != "supervisor_hard_wall"
+    ):
+        raise AssertionError("hard wall not enforced")
+    if (
+        whole_launch_breach(WHOLE_LAUNCH_MEMORY_LIMIT_KIB - 1, 1)
+        != "whole_launch_vmrss_plus_vmswap_limit"
+    ):
+        raise AssertionError("whole-launch VmRSS+VmSwap limit not enforced")
+    self_rss, self_swap, self_pids = whole_launch_usage(os.getpid(), os.getpgrp())
+    if self_pids.count(os.getpid()) != 1:
+        raise AssertionError("whole-launch PID union double-counted supervisor")
+    command = planned_command(16, 17, 18, 19, Path("/tmp/nonexistent-private-pycache"))
+    for flag in (
+        "--execute-frontier",
+        "--allow-official-input",
+        "--allow-solver",
+        "--allow-publication",
+    ):
+        if flag not in command:
+            raise AssertionError(f"planned command lost gate {flag}")
+    return {
+        "status": "PASS",
+        "process_group_monitoring": True,
+        "pdeathsig": int(PARENT_DEATH_SIGNAL),
+        "address_space_cap_bytes": ADDRESS_SPACE_CAP_BYTES,
+        "initial_min_mem_available_kib": INITIAL_MIN_MEM_AVAILABLE_KIB,
+        "child_acceptance_cooperative_deadline_seconds": CHILD_ACCEPTANCE_COOPERATIVE_DEADLINE_SECONDS,
+        "supervisor_hard_wall_seconds": SUPERVISOR_HARD_WALL_SECONDS,
+        "process_group_rss_limit_kib": PROCESS_GROUP_RSS_LIMIT_KIB,
+        "process_group_vmswap_limit_kib": PROCESS_GROUP_VMSWAP_LIMIT_KIB,
+        "whole_launch_memory_limit_kib": WHOLE_LAUNCH_MEMORY_LIMIT_KIB,
+        "whole_launch_vmrss_plus_vmswap_enforced": True,
+        "whole_launch_pid_union_no_double_count": True,
+        "self_test_whole_launch_rss_kib": self_rss,
+        "self_test_whole_launch_vmswap_kib": self_swap,
+        "self_test_whole_launch_pids": list(self_pids),
+        "host_swap_counters_telemetry_only": True,
+        "runner_execution": "sealed_memfd_exact_bytes",
+        "repo_modules_execution": "sealed_memfd_exact_bytes",
+        "official_instance_opened": False,
+        "solver_execution_started": False,
+        "solver_child_process_started": False,
+        "official_solution_xml_published": False,
+    }
+
+
+def _probe_pid_evidence(ownership: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for member in _live_owned_members(ownership):
+        pid = int(member["pid"])
+        status = _read_key_values(Path(f"/proc/{pid}/status"))
+        rows.append(
+            {
+                "pid": pid,
+                "identity": list(member["identity"]),
+                "vmrss_kib": status.get("VmRSS", 0),
+                "vmswap_kib": status.get("VmSwap", 0),
+            }
+        )
+    supervisor_pid = os.getpid()
+    status = _read_key_values(Path(f"/proc/{supervisor_pid}/status"))
+    identity = _process_identity(supervisor_pid)
+    rows.append(
+        {
+            "pid": supervisor_pid,
+            "identity": list(identity) if identity is not None else None,
+            "vmrss_kib": status.get("VmRSS", 0),
+            "vmswap_kib": status.get("VmSwap", 0),
+        }
+    )
+    return sorted(rows, key=lambda row: row["pid"])
+
+
+def sealed_import_probe() -> dict[str, Any]:
+    started = time.monotonic()
+    deadline = started + PROBE_HARD_WALL_SECONDS
+    _probe_check_deadline(deadline, "initial_sample:before")
+    baseline = host_sample()
+    _probe_check_deadline(deadline, "initial_sample:after")
+    if baseline["mem_available_kib"] < PROBE_INITIAL_MIN_MEM_AVAILABLE_KIB:
+        return {
+            "schema": "planora.puproj.frontier-joint-v15-sealed-import-probe.v1",
+            "status": "NO_GO",
+            "resource_gate": "probe_initial_memavailable_floor",
+            "host_sample": baseline,
+            "initial_memavailable_floor_kib": PROBE_INITIAL_MIN_MEM_AVAILABLE_KIB,
+            "official_instance_opened": False,
+            "checkpoint_or_incumbent_opened": False,
+            "solver_execution_started": False,
+            "solver_child_process_started": False,
+            "official_solution_xml_published": False,
+            "chain_traversed": ["native_bootstrap", "sealed_launcher", "sealed_supervisor"],
+            "_probe_started_monotonic_internal": started,
+            "_probe_deadline_monotonic_internal": deadline,
+        }
+    captures: dict[str, dict[str, Any]] = {}
+    inherited: list[int] = []
+    run_dir_fd = scratch_fd = runtime_initial_fd = stdout_fd = stderr_fd = -1
+    barrier_read_fd = barrier_write_fd = -1
+    child: subprocess.Popen[bytes] | None = None
+    ownership: dict[str, Any] | None = None
+    drained = False
+    try:
+        for label, path in CAPTURE_SOURCES.items():
+            if label == "full_instance":
+                continue
+            descriptor, evidence = _stream_capture(
+                path, _expected_hash(label), label, probe_deadline=deadline
+            )
+            inherited.append(descriptor)
+            captures[label] = evidence
+        if "full_instance" in captures:
+            raise RuntimeError("probe captured official input")
+        _probe_check_deadline(deadline, "directories:before")
+        run_dir, run_dir_fd, run_dir_identity = _private_run_directory()
+        inherited.append(run_dir_fd)
+        scratch_dir, scratch_fd, scratch_identity = _private_directory(
+            "planora-puproj-frontier-v15-probe-scratch"
+        )
+        inherited.append(scratch_fd)
+        runtime_dir, runtime_initial_fd, _ = _private_runtime_directory()
+        (
+            runtime_root_fd, runtime_manifest_fd, runtime_file_fds,
+            runtime_binding, runtime_summary,
+        ) = build_runtime_bundle(
+            runtime_root_fd=runtime_initial_fd,
+            captures=captures,
+            probe_mode=True,
+            probe_deadline=deadline,
+        )
+        os.close(runtime_initial_fd)
+        runtime_initial_fd = -1
+        inherited.extend((runtime_root_fd, runtime_manifest_fd, *runtime_file_fds))
+        output_binding = {
+            "fd": run_dir_fd, "path": str(run_dir),
+            "device": run_dir_identity[0], "inode": run_dir_identity[1],
+            "mode": run_dir_identity[2], "uid": run_dir_identity[3],
+        }
+        environment = minimal_child_environment(
+            captures=captures, output_binding=output_binding,
+            runtime_binding=runtime_binding, scratch_dir=scratch_dir,
+        )
+        barrier_read_fd, barrier_write_fd = os.pipe2(os.O_CLOEXEC)
+        command = planned_command(
+            captures["python_binary"]["fd"], captures["runner"]["fd"],
+            runtime_root_fd, barrier_read_fd, run_dir / ".pycache-v15",
+            sealed_import_probe=True,
+        )
+        _probe_check_deadline(deadline, "child_descriptors:before")
+        stdout_fd = os.open(
+            "child.stdout.log", os.O_RDWR | os.O_CREAT | os.O_EXCL |
+            getattr(os, "O_NOFOLLOW", 0), 0o400, dir_fd=run_dir_fd,
+        )
+        stderr_fd = os.open(
+            "child.stderr.log", os.O_RDWR | os.O_CREAT | os.O_EXCL |
+            getattr(os, "O_NOFOLLOW", 0), 0o400, dir_fd=run_dir_fd,
+        )
+        parent_pid = os.getpid()
+        _enable_subreaper()
+        _probe_check_deadline(deadline, "child_spawn:before")
+        child = subprocess.Popen(
+            command, pass_fds=tuple((*inherited, barrier_read_fd)),
+            env=environment, stdin=subprocess.DEVNULL, stdout=stdout_fd,
+            stderr=stderr_fd, close_fds=True,
+            preexec_fn=lambda: _arm_child(parent_pid),
+        )
+        process_group = child.pid
+        os.close(barrier_read_fd)
+        barrier_read_fd = -1
+        ownership = create_owned_group(process_group)
+        os.write(barrier_write_fd, b"G")
+        os.close(barrier_write_fd)
+        barrier_write_fd = -1
+        monitor_result = monitor_probe_child(child, ownership, deadline=deadline)
+        drained = True
+        breach = monitor_result["breach"]
+        monitor_error = monitor_result["monitor_error"]
+        peak_snapshot = monitor_result["peak_snapshot"]
+        child_exit_code = monitor_result["child_exit_code"]
+        wait_error = monitor_result["wait_error"]
+        cleanup = monitor_result["cleanup"]
+        _probe_check_deadline(deadline, "cleanup:after")
+        if peak_snapshot is None:
+            peak_snapshot = probe_accounting_snapshot(os.getpid(), ownership)
+        stdout_raw, stdout_identity = _pread_retained_named(
+            run_dir_fd,
+            "child.stdout.log",
+            stdout_fd,
+            maximum_bytes=PROBE_CAPTURE_MAX_BYTES,
+            probe_deadline=deadline,
+        )
+        stderr_raw, stderr_identity = _pread_retained_named(
+            run_dir_fd,
+            "child.stderr.log",
+            stderr_fd,
+            maximum_bytes=PROBE_CAPTURE_MAX_BYTES,
+            probe_deadline=deadline,
+        )
+        _probe_check_deadline(deadline, "child_report:before")
+        child_report, child_report_rejection, child_stream_diagnostics = (
+            diagnose_probe_child_report(
+                stdout_raw,
+                stderr_raw,
+                child_exit_code=child_exit_code,
+            )
+        )
+        _probe_check_deadline(deadline, "child_report:after")
+        capture_replay = {
+            label: verify_sealed_capture(
+                int(value["fd"]), value, probe_deadline=deadline
+            )
+            for label, value in captures.items()
+        }
+        runtime_replay = replay_runtime_bundle(
+            runtime_binding, probe_deadline=deadline
+        )
+        errors: list[str] = []
+        if breach is not None:
+            errors.append(breach)
+        if wait_error is not None:
+            errors.append(wait_error)
+        if monitor_error is not None:
+            errors.append(monitor_error)
+        if child_exit_code != 0:
+            errors.append("probe_child_failed")
+        if not cleanup.get("empty", False):
+            errors.append("probe_cleanup_incomplete")
+        if child_report_rejection is not None:
+            errors.append(
+                "probe_child_report_" + child_report_rejection["classification"]
+            )
+        if child_report is not None and (
+            runtime_replay.get("file_count") != runtime_summary.get("file_count")
+            or runtime_replay.get("total_bytes") != runtime_summary.get("total_bytes")
+            or child_report["runtime_bundle"].get("file_count")
+            != runtime_replay.get("file_count")
+            or child_report["runtime_bundle"].get("total_bytes")
+            != runtime_replay.get("total_bytes")
+        ):
+            errors.append("probe_runtime_comparison_rejected")
+        _probe_check_deadline(deadline, "payload:before")
+        payload = {
+            "schema": "planora.puproj.frontier-joint-v15-sealed-import-probe.v1",
+            "status": "PASS" if not errors else "FAILED",
+            "errors": errors,
+            "resource_gate": breach,
+            "elapsed_seconds_before_publication": time.monotonic() - started,
+            "probe_hard_wall_seconds": PROBE_HARD_WALL_SECONDS,
+            "initial_memavailable_floor_kib": PROBE_INITIAL_MIN_MEM_AVAILABLE_KIB,
+            "runtime_memavailable_floor_kib": PROBE_RUNTIME_MIN_MEM_AVAILABLE_KIB,
+            "process_group_rss_limit_kib": PROBE_PROCESS_GROUP_RSS_LIMIT_KIB,
+            "process_group_vmswap_limit_kib": PROBE_PROCESS_GROUP_VMSWAP_LIMIT_KIB,
+            "whole_launch_vmrss_plus_vmswap_limit_kib": PROBE_WHOLE_LAUNCH_MEMORY_LIMIT_KIB,
+            "peak_process_group_rss_kib": peak_snapshot["group_rss_kib"],
+            "peak_process_group_vmswap_kib": peak_snapshot["group_vmswap_kib"],
+            "peak_whole_launch_rss_kib": peak_snapshot["whole_rss_kib"],
+            "peak_whole_launch_vmswap_kib": peak_snapshot["whole_vmswap_kib"],
+            "peak_whole_launch_vmrss_plus_vmswap_kib": peak_snapshot["whole_rss_kib"] + peak_snapshot["whole_vmswap_kib"],
+            "peak_whole_launch_unique_pids": peak_snapshot["pids"],
+            "peak_whole_launch_per_pid": peak_snapshot["per_pid"],
+            "peak_accounting_snapshot_reconciled": peak_snapshot["reconciled"],
+            "whole_launch_pid_union_no_double_count": True,
+            "child_exit_code": child_exit_code,
+            "child_report": child_report,
+            "child_report_rejection": child_report_rejection,
+            "child_stream_diagnostics": child_stream_diagnostics,
+            "child_stdout": {**stdout_identity, "sha256": sha256(stdout_raw).hexdigest()},
+            "child_stderr": {**stderr_identity, "sha256": sha256(stderr_raw).hexdigest()},
+            "sealed_captures": {label: value["sha256"] for label, value in captures.items()},
+            "sealed_capture_replay": capture_replay,
+            "sealed_runtime_bundle": runtime_summary,
+            "sealed_runtime_replay": runtime_replay,
+            "process_group_cleanup": cleanup,
+            "chain_traversed": ["native_bootstrap", "sealed_launcher", "sealed_supervisor", "sealed_runner_import_child"],
+            "official_instance_opened": False,
+            "checkpoint_or_incumbent_opened": False,
+            "solver_execution_started": False,
+            "solver_child_process_started": False,
+            "probe_child_process_started": True,
+            "official_solution_xml_published": False,
+            "publication_order": ["child.stdout.log", "child.stderr.log", "stdout_final_envelope"],
+        }
+        try:
+            binding = publish_supervisor_report(
+                dirfd=run_dir_fd, parent=run_dir,
+                parent_identity=run_dir_identity, payload=payload,
+                probe_deadline=deadline,
+            )
+            report = consume_supervisor_report(binding)
+            _probe_check_deadline(deadline, "publication:complete")
+            final_elapsed = time.monotonic() - started
+            if (
+                _finite_elapsed(final_elapsed) is None
+                or final_elapsed >= PROBE_HARD_WALL_SECONDS
+                or _finite_elapsed(report.get("publication_completed_elapsed_seconds")) is None
+                or report["publication_completed_elapsed_seconds"] > final_elapsed
+            ):
+                raise TimeoutError("probe final publication elapsed rejected")
+        except BaseException:
+            _purge_supervisor_report_aliases(run_dir_fd)
+            raise
+        payload["final_elapsed_through_descriptor_acceptance_seconds"] = final_elapsed
+        payload["publication_deadline_accepted"] = True
+        payload["probe_descriptor_envelope_evidence"] = report
+        payload["_probe_started_monotonic_internal"] = started
+        payload["_probe_deadline_monotonic_internal"] = deadline
+        return payload
+    finally:
+        if child is not None and ownership is not None and not drained:
+            try:
+                wait_child_and_drain(
+                    child,
+                    ownership,
+                    timeout=max(0.0, min(5.0, deadline - time.monotonic())),
+                )
+            except BaseException:
+                pass
+        for descriptor in (barrier_write_fd, barrier_read_fd, stdout_fd, stderr_fd, runtime_initial_fd):
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+        for descriptor in inherited:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def dry_run() -> dict[str, Any]:
+    sample = host_sample()
+    whole_rss, whole_swap, whole_pids = whole_launch_usage(os.getpid(), None)
+    gate = (
+        "host_initial_capture_headroom"
+        if sample["mem_available_kib"] < INITIAL_MIN_MEM_AVAILABLE_KIB
+        else whole_launch_breach(whole_rss, whole_swap)
+        or breach_reason(
+            elapsed=0,
+            group_rss_kib=0,
+            group_vmswap_kib=0,
+            sample=sample,
+            launch=True,
+        )
+    )
+    return {
+        "status": "GO_FOR_INDEPENDENT_REVIEW" if gate is None else "NO_GO",
+        "resource_gate": gate,
+        "host_sample": sample,
+        "static_pins_excluding_official_full_input": static_pins(),
+        "expected_full_official_input_sha256": EXPECTED_HASHES["full_instance"],
+        "full_official_input_path": str(FULL_INSTANCE),
+        "full_official_input_opened": False,
+        "solver_input_mode": "OFFICIAL_INPUT_ONLY_FRESH",
+        "checkpoint_or_incumbent_path_configured": False,
+        "checkpoint_or_incumbent_opened": False,
+        "competitor_schedule_or_result_used": False,
+        "competitor_placement_or_hint_used": False,
+        "run_directory_created": False,
+        "solver_execution_started": False,
+        "solver_child_process_started": False,
+        "official_solution_xml_published": False,
+        "launch_requires_explicit_flag": "--launch",
+        "child_acceptance_cooperative_deadline_seconds": CHILD_ACCEPTANCE_COOPERATIVE_DEADLINE_SECONDS,
+        "supervisor_hard_wall_seconds": SUPERVISOR_HARD_WALL_SECONDS,
+        "initial_min_mem_available_kib": INITIAL_MIN_MEM_AVAILABLE_KIB,
+        "sealed_runtime_bundle_expected_files": EXPECTED_RUNTIME_BUNDLE_FILES,
+        "sealed_runtime_bundle_expected_bytes": EXPECTED_RUNTIME_BUNDLE_BYTES,
+        "whole_launch_rss_kib": whole_rss,
+        "whole_launch_vmswap_kib": whole_swap,
+        "whole_launch_vmrss_plus_vmswap_kib": whole_rss + whole_swap,
+        "whole_launch_pids": list(whole_pids),
+        "whole_launch_memory_limit_kib": WHOLE_LAUNCH_MEMORY_LIMIT_KIB,
+        "whole_launch_pid_union_no_double_count": True,
+    }
+
+
+def main() -> int:
+    if globals().get(
+        "__external_loader_protocol__"
+    ) != EXTERNAL_LOADER_PROTOCOL or globals().get(
+        "__external_expected_supervisor_sha256__"
+    ) != globals().get("__captured_sha256__"):
+        raise SystemExit("direct PU-PROJ v15 supervisor execution rejected")
+    verify_current_supervisor_contract()
+    entry_launcher = verify_external_launcher_contract()
+    entry_freeze_manifest = verify_external_freeze_manifest_contract()
+    entry_system_python = verify_system_python_provenance(phase="entry")
+    parser = argparse.ArgumentParser()
+    modes = parser.add_mutually_exclusive_group(required=True)
+    modes.add_argument("--self-test", action="store_true")
+    modes.add_argument("--dry-run", action="store_true")
+    modes.add_argument("--sealed-import-probe", action="store_true")
+    modes.add_argument("--launch", action="store_true")
+    args = parser.parse_args()
+    start_hash = supervisor_execution_sha256()
+    start_contract = verify_current_supervisor_contract()
+    if args.self_test:
+        result = self_test()
+    elif args.dry_run:
+        result = dry_run()
+    elif args.sealed_import_probe:
+        result = sealed_import_probe()
+    else:
+        result = run_supervised()
+    if (
+        supervisor_execution_sha256() != start_hash
+        or verify_current_supervisor_contract() != start_contract
+    ):
+        raise RuntimeError("supervisor bytes/path changed during execution")
+    final_launcher = verify_external_launcher_contract()
+    if final_launcher != entry_launcher:
+        raise RuntimeError("launcher source/sealed binding changed during execution")
+    final_freeze_manifest = verify_external_freeze_manifest_contract()
+    if final_freeze_manifest != entry_freeze_manifest:
+        raise RuntimeError(
+            "freeze-manifest source/sealed binding changed during execution"
+        )
+    final_system_python = verify_system_python_provenance(phase="final")
+    system_python_comparison = compare_system_python_provenance(
+        entry_system_python, final_system_python
+    )
+    result["supervisor_sha256_start"] = start_hash
+    result["supervisor_sha256_end"] = start_hash
+    result["supervisor_hash_stable"] = True
+    result["supervisor_execution_transport"] = "external_captured_exact_bytes"
+    result["native_bootstrap_launcher_entry"] = entry_launcher
+    result["native_bootstrap_launcher_final"] = final_launcher
+    result["native_bootstrap_freeze_manifest_entry"] = entry_freeze_manifest
+    result["native_bootstrap_freeze_manifest_final"] = final_freeze_manifest
+    result["system_python_provenance_entry"] = entry_system_python
+    result["system_python_provenance_final"] = final_system_python
+    result["system_python_provenance_comparison"] = system_python_comparison
+    probe_started = result.pop("_probe_started_monotonic_internal", None)
+    probe_deadline = result.pop("_probe_deadline_monotonic_internal", None)
+    if args.sealed_import_probe:
+        if type(probe_started) is not float or type(probe_deadline) is not float:
+            raise RuntimeError("probe final stdout deadline binding rejected")
+        before_stdout_elapsed = time.monotonic() - probe_started
+        if (
+            not math.isfinite(before_stdout_elapsed)
+            or before_stdout_elapsed < 0
+            or before_stdout_elapsed >= PROBE_HARD_WALL_SECONDS
+            or time.monotonic() >= probe_deadline
+        ):
+            raise TimeoutError("probe final stdout envelope outside absolute wall")
+        result["final_elapsed_before_stdout_envelope_seconds"] = before_stdout_elapsed
+        result["final_stdout_envelope_deadline_bound"] = True
+    final_envelope = (json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+    written = sys.stdout.buffer.write(final_envelope)
+    sys.stdout.buffer.flush()
+    if written != len(final_envelope):
+        raise RuntimeError("final stdout envelope short write")
+    if args.sealed_import_probe:
+        _probe_check_deadline(probe_deadline, "stdout:after_final_envelope")
+    return (
+        0
+        if result.get("status")
+        in {"PASS", "GO_FOR_INDEPENDENT_REVIEW", "COMPLETE_VALID", "CONTROLLED_UNKNOWN"}
+        else 2
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

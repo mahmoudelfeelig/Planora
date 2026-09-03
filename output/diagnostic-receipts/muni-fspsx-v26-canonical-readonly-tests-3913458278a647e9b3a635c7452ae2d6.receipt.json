@@ -1,0 +1,43 @@
+{
+    "schema":  "planora.itc2019.canonical-test-receipt.v1",
+    "instance":  "muni-fspsx-fal17",
+    "diagnostic_chain":  "muni_v26",
+    "test_id":  "3913458278a647e9b3a635c7452ae2d6",
+    "decision":  "REJECTED",
+    "official_launch_authorized":  false,
+    "retained_probe_authorized":  false,
+    "process_exit_code":  1,
+    "expected":  {
+                     "tests_run":  119,
+                     "errors":  0,
+                     "skipped":  2,
+                     "failures":  0,
+                     "passed":  117
+                 },
+    "pretest_memavailable_samples_kib":  [
+                                             2261676,
+                                             2296952
+                                         ],
+    "post_exit_memavailable_kib":  2322612,
+    "residual_heavy_processes":  [
+
+                                 ],
+    "root_unchanged_at_48_exact_files":  true,
+    "official_input_opened":  false,
+    "progress_or_checkpoint_staged":  false,
+    "solver_run":  false,
+    "logs":  {
+                 "stderr":  {
+                                "path":  "C:\\mnt\\d\\stuff\\projects\\sites\\planora\\output\\diagnostic-receipts\\muni-fspsx-v26-canonical-readonly-tests-3913458278a647e9b3a635c7452ae2d6.stderr.log",
+                                "sha256":  "a8fa2770f9e4715fdfbad7f873689c4a17edc64b9f7f63e73eb463a62297b04c",
+                                "size":  21340
+                            },
+                 "stdout":  {
+                                "path":  "C:\\mnt\\d\\stuff\\projects\\sites\\planora\\output\\diagnostic-receipts\\muni-fspsx-v26-canonical-readonly-tests-3913458278a647e9b3a635c7452ae2d6.stdout.log",
+                                "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                "size":  0
+                            }
+             },
+    "plan_sha256":  "b8776382708c372e7c7597f00a9c9b6298d021372e5ef5dab56852223f50ccb0",
+    "exit_file_sha256":  "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+}

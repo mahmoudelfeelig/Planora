@@ -1,0 +1,60 @@
+{
+  "schema": "planora.muni-v32.terminal-gate-independent-review.v1",
+  "status": "GO",
+  "reviewed_at_utc": "2026-08-28T14:02:59.5447737Z",
+  "reviewer_tasks": [
+    "/root/v32_builder_static_audit",
+    "/root/v32_contract_audit"
+  ],
+  "candidate": "muni_v32",
+  "run_id": "4dc45edcd74446909290afadd5d3ecf0",
+  "verdict": "GO_FOR_EXACTLY_ONE_TERMINAL_GATE_INVOCATION",
+  "frozen_gate_pair": {
+    "gate": {
+      "path": "scripts/run_muni_v32_terminal_gate_once.ps1",
+      "size": 15717,
+      "sha256": "d9a30e1d172206bb1223d579f4be4a8681a4661362175b178f2a6933f68c2060",
+      "file_id": "0000000000000000000200000017c4f3",
+      "last_write_utc_ticks": 639235220267260660
+    },
+    "tests": {
+      "path": "tests/test_run_muni_v32_terminal_gate_once.py",
+      "size": 6532,
+      "sha256": "399b4f824cd1f221280a5ae4870d4dfe2fa55a1e5312ac313e6b48427a906cdf",
+      "file_id": "0000000000000000000200000017c4fa",
+      "last_write_utc_ticks": 639235221383761574
+    }
+  },
+  "review_scope": {
+    "files_edited_by_reviewers": false,
+    "wsl_execution_performed": false,
+    "default_runner_execution_performed": false,
+    "canonical_execution_performed": false
+  },
+  "independent_checks": {
+    "tests_passed": 6,
+    "ruff_passed": true,
+    "powershell5_parser_errors": 0,
+    "powershell7_parser_errors": 0,
+    "runner_command_ast_nodes": 2,
+    "dot_sourced_static_self_test_calls": 1,
+    "argument_free_default_calls": 1,
+    "default_call_is_final_try_operation": true,
+    "default_counter_zero_checked_then_set_to_one": true,
+    "complete_predecessor_pins": 61,
+    "ordinary_predecessor_read_guards": 60,
+    "exclusively_replayed_v28_archive_pins": 1,
+    "quartet_and_primary_review_read_guards": 5,
+    "total_unique_held_read_guards": 65,
+    "combined_retained_v30_v31_replay_bound": true,
+    "fresh_namespace_shared_lock_pass_absence_and_v32_root_rechecked": true,
+    "clean_memory_and_census_samples": 3,
+    "minimum_first_sample_separation_seconds": 5,
+    "automatic_retry_present": false
+  },
+  "fresh_state": {
+    "v32_run_artifact_count": 0,
+    "shared_lock_present": false
+  },
+  "blockers": []
+}

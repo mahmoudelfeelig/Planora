@@ -1,0 +1,257 @@
+{
+  "schema": "planora.muni-v33.independent-review.v1",
+  "status": "GO",
+  "reviewer_tasks": [
+    "/root/v33_guard_design_audit",
+    "/root/muni_v30_failure_forensics"
+  ],
+  "reviewed_at_utc": "2026-08-28T18:07:35.8829273Z",
+  "candidate": "muni_v33",
+  "run_id": "2339df35f57e441a8f92bd1f890fa68f",
+  "verdict": "GO_FOR_EXACTLY_ONE_DEFAULT_ONE_SHOT_SUBJECT_TO_ALL_LIVE_TERMINAL_GATES",
+  "terminal_live_gates_required": true,
+  "review_scope": {
+    "read_only_except_this_review_receipt": true,
+    "quartet_edits_performed_by_reviewers": false,
+    "builder_generation_performed_by_reviewers": false,
+    "nonconsuming_wsl_self_tests_performed_by_reviewers": false,
+    "default_runner_execution_performed": false,
+    "canonical_execution_performed": false,
+    "heavy_execution_performed": false,
+    "retained_v30_snapshot_mutation_performed": false,
+    "retained_v31_snapshot_mutation_performed": false,
+    "retained_v32_snapshot_mutation_performed": false
+  },
+  "frozen_quartet": {
+    "builder": {
+      "path": "scripts/build_muni_v33_successor.py",
+      "size": 127349,
+      "sha256": "288aec154b156a8a6a55523e31466188c1bc60c1f289751799d07c59ebd380d3",
+      "file_id": "0000000000000000000500000017c563",
+      "last_write_utc_ticks": 639235358848477442
+    },
+    "runner": {
+      "path": "scripts/run_muni_v33_canonical_tests.ps1",
+      "size": 350383,
+      "sha256": "1899d5c5e89e886181e951dbaf38b7671c640c9aa01d2d21d6d68863048fb0fb",
+      "file_id": "0000000000000000000500000017be8f",
+      "last_write_utc_ticks": 639235359747884240
+    },
+    "tests": {
+      "path": "tests/test_run_muni_v33_successor.py",
+      "size": 29488,
+      "sha256": "aed35db03be4e10f13d5705a0ef5b7624373a31d682fd3ac59400467f911243c",
+      "file_id": "0000000000000000000200000017c56a",
+      "last_write_utc_ticks": 639235358907779204
+    },
+    "authorization": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v33-canonical-tests-authorization-20260828T141639Z.receipt.json",
+      "size": 45158,
+      "sha256": "683809b26400464fdb2fff4559fd1953854b09c18fdef1f2d198ea280e80e9c5",
+      "file_id": "0000000000000000000200000017c56d",
+      "last_write_utc_ticks": 639235359756600098
+    }
+  },
+  "predecessor_observations": {
+    "validated_pin_count": 89,
+    "unique_pin_path_count": 89,
+    "all_exact_size_sha256_file_id_and_last_write_utc_ticks": true,
+    "carried_through_v31_pin_count": 61,
+    "direct_v32_source_provenance_artifact_pin_count": 28,
+    "guardable_ordinary_pin_count": 88,
+    "archive_replay_only_pin_count": 1,
+    "v28_receipt_absent": true,
+    "v28_pass_seal_absent": true,
+    "v29_receipt_absent": true,
+    "v29_pass_seal_absent": true,
+    "v30_receipt_absent": true,
+    "v30_pass_seal_absent": true,
+    "v31_receipt_absent": true,
+    "v31_pass_seal_absent": true,
+    "v32_receipt_absent": true,
+    "v32_pass_seal_absent": true,
+    "quintuple_pass_absence_validated_by_both_static_engines": true,
+    "v32_present_artifact_count": 20,
+    "v32_expected_absent_artifact_count": 13,
+    "v32_failure_claim_durably_published": true,
+    "v32_resource_launch_attempted": true,
+    "v32_canonical_launch_attempted": false,
+    "v32_canonical_suite_executed": false,
+    "v32_snapshot_retained_for_forensics": true
+  },
+  "retained_snapshot_observations": {
+    "v30": {
+      "root": "/tmp/planora-muni-v30-canonical-tests-e358bc6417224fe6a329ad3775853f01",
+      "files": 3146,
+      "directories": 368,
+      "bytes": 190900047,
+      "inventory_sha256": "b596146131ff2634d55a7f0907497f2fa44ae438174efcb67ee75023ecdb50bb",
+      "all_nlink_one": true
+    },
+    "v31": {
+      "root": "/tmp/planora-muni-v31-canonical-tests-5f2d84640f40404a82dd180d7043d9c5",
+      "files": 3146,
+      "directories": 368,
+      "bytes": 190900047,
+      "inventory_sha256": "e184534d26b0ec73670688726c02cf0b4d3c532213660f678b0dd99713c4438d",
+      "all_nlink_one": true
+    },
+    "v32": {
+      "root": "/tmp/planora-muni-v32-canonical-tests-4dc45edcd74446909290afadd5d3ecf0",
+      "files": 3146,
+      "directories": 368,
+      "bytes": 190900047,
+      "inventory_sha256": "0fd29582a2159cd58595b458b7832e478d64735b0ea4a594a3e9cda6d1adf4a3",
+      "all_nlink_one": true
+    }
+  },
+  "fresh_state_observations": {
+    "v33_run_artifact_prefix": "muni-fspsx-v33-canonical-readonly-tests-2339df35f57e441a8f92bd1f890fa68f",
+    "v33_run_artifact_count": 0,
+    "shared_lock_path": "output/diagnostic-receipts/planora-shared-heavy-wsl.lock",
+    "shared_lock_present": false,
+    "v33_temporary_directory_count": 0,
+    "retained_v28_archive_present": true,
+    "retained_v28_archive_size": 370,
+    "retained_v28_archive_sha256": "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98",
+    "retained_v28_archive_pid": 1140,
+    "retained_v28_archive_pid_present": false,
+    "review_receipt_is_outside_v33_run_artifact_namespace": true
+  },
+  "tests_run_by_primary": [
+    {
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_run_muni_v33_successor.py -q",
+      "status": "PASS",
+      "passed": 51
+    },
+    {
+      "command": ".venv/Scripts/python.exe -m ruff check scripts/build_muni_v33_successor.py tests/test_run_muni_v33_successor.py",
+      "status": "PASS"
+    },
+    {
+      "command": ".venv/Scripts/python.exe -m ruff format --check scripts/build_muni_v33_successor.py tests/test_run_muni_v33_successor.py",
+      "status": "PASS"
+    },
+    {
+      "command": "deterministic builder regeneration with exact before/after quartet hashes",
+      "status": "PASS",
+      "exact": true
+    },
+    {
+      "command": "PowerShell 5.1 and PowerShell 7 parser plus dynamic-command census",
+      "status": "PASS",
+      "parse_errors": 0,
+      "command_asts": 1047,
+      "dynamic_command_asts": 2
+    },
+    {
+      "command": "PowerShell 5.1 and PowerShell 7 -EmitExpectedAuthorization",
+      "status": "PASS",
+      "cross_engine_exact": true,
+      "matches_stored_authorization": true
+    },
+    {
+      "command": "PowerShell 5.1 and PowerShell 7 -StaticSelfTest",
+      "status": "PASS_FOR_FRESH_INDEPENDENT_STATIC_REVIEW",
+      "concurrent_rewrite_while_guarded": "REJECTED_BY_SHARE",
+      "wsl_executed": false,
+      "canonical_suite_executed": false
+    },
+    {
+      "command": "five serialized PowerShell 5.1 -LogBridgeSelfTest runs",
+      "status": "PASS",
+      "minimum_stable_reads": 248,
+      "maximum_stable_reads": 284,
+      "duplicates": 0,
+      "canonical_suite_executed": false,
+      "shared_lock_used": false
+    },
+    {
+      "command": "five serialized PowerShell 7 -LogBridgeSelfTest runs",
+      "status": "PASS",
+      "minimum_stable_reads": 260,
+      "maximum_stable_reads": 286,
+      "duplicates": 0,
+      "canonical_suite_executed": false,
+      "shared_lock_used": false
+    },
+    {
+      "command": "PowerShell 5.1 and PowerShell 7 -ResourceMonitorReadinessSelfTest",
+      "status": "PASS",
+      "namespace_permission_denials": 0,
+      "canonical_suite_executed": false,
+      "shared_lock_used": false,
+      "v33_artifacts_created": false
+    },
+    {
+      "command": "PowerShell 5.1 and PowerShell 7 readiness, canonical-monitor, and rejection-promotion self-tests",
+      "status": "PASS",
+      "validated_pin_count": 89,
+      "wsl_executed": false,
+      "canonical_suite_executed": false
+    },
+    {
+      "command": "PowerShell 5.1 and PowerShell 7 -RetainedPredecessorSnapshotsSelfTest",
+      "status": "PASS",
+      "v30": "EXACT_RETAINED_SNAPSHOT_REPLAY",
+      "v31": "EXACT_RETAINED_SNAPSHOT_REPLAY",
+      "v32": "EXACT_RETAINED_SNAPSHOT_REPLAY",
+      "canonical_suite_executed": false,
+      "shared_lock_used": false,
+      "v33_artifacts_created": false
+    },
+    {
+      "command": "PowerShell 5.1 and PowerShell 7 -RetainedV30SnapshotSelfTest",
+      "status": "PASS",
+      "v30": "EXACT_RETAINED_SNAPSHOT_REPLAY",
+      "canonical_suite_executed": false,
+      "shared_lock_used": false,
+      "v33_artifacts_created": false
+    }
+  ],
+  "tests_run_by_reviewers": [
+    {
+      "reviewer_task": "/root/v33_guard_design_audit",
+      "status": "GO",
+      "checks": "exact quartet replay; complete 89-pin merge and uniqueness; v32 20-present/13-absent failure custody; pass/rejection/seal propagation; both-engine static and parser checks; former in-call rewrite-point injection rejected by FileShare.Read"
+    },
+    {
+      "reviewer_task": "/root/muni_v30_failure_forensics",
+      "status": "GO",
+      "checks": "exact quartet replay; retry and publication lifetime analysis; whole-document held-handle predecessor custody; both-engine parser, authorization, static, pytest, Ruff, fresh namespace, and shared-lock checks"
+    }
+  ],
+  "source_contract_observations": {
+    "canonical_launch_site_count": 1,
+    "automatic_retry_authorized": false,
+    "complete_predecessor_evidence_bound_to_plan_pass_ordinary_rejection_emergency_rejection_and_seal": true,
+    "successful_replay_promotes_all_89_pins_without_cycle": true,
+    "failed_replay_contains_no_evidence_reference": true,
+    "v31_and_v32_failure_evidence_hashes_nonempty_in_rejection_paths": true,
+    "whole_document_predecessor_custody_exact_byte_replayed_from_held_guard": true,
+    "predecessor_custody_guard_held_through_pass_or_rejection_publication": true,
+    "retained_v30_v31_v32_initial_post_cleanup_rejection_and_final_replays_bound": true,
+    "terminal_archived_lock_guard_held_through_final_seal_flush": true,
+    "final_seal_create_only_durable_and_last_fallible_operation": true,
+    "stable_log_reader_restrictive_read_share_guard": true,
+    "stable_log_reader_same_held_handle_exact_prefix_replay": true,
+    "stable_log_reader_persistent_identity_length_and_prior_prefix_digest": true,
+    "stable_log_reader_integrity_failures_terminal_and_outside_retry_catches": true,
+    "former_in_call_same_inode_rewrite_writer_open_rejected_in_both_engines": true,
+    "short_lived_wsl_append_writer_liveness_repeated_in_both_engines": true,
+    "namespace_permission_denial_exemption_limited_to_exact_frozen_wsl_infrastructure": true,
+    "every_frozen_infrastructure_pid_rechecked_before_classification": true
+  },
+  "live_gate_remaining": {
+    "exact_retained_v30_v31_v32_replay": true,
+    "fresh_v33_root_artifact_and_shared_lock_absence": true,
+    "three_authenticated_resource_monitor_readiness_children": true,
+    "first_two_readiness_children_minimum_separation_seconds": 5,
+    "protected_evidence_guard_count": 93,
+    "archive_replay_only_pin_count": 1,
+    "terminal_gate_self_hash_guard": true,
+    "terminal_gate_review_hash_guard": true,
+    "exactly_one_argument_free_default_invocation": true
+  },
+  "blockers": []
+}

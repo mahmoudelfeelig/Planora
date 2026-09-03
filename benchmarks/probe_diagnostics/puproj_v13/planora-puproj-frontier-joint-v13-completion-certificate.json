@@ -1,0 +1,77 @@
+{
+  "schema": "planora.pu-proj.frontier-joint-v13.completion-certificate.v1",
+  "created_utc": "2026-08-26T16:40:12Z",
+  "verdict": "GO_FOR_INDEPENDENT_CODE_REVIEW_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "freeze_manifest": {
+    "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v13/planora-puproj-frontier-joint-v13-freeze.json",
+    "sha256": "0836ced34739218ad240853461f8044a15f88598a4c99f6484a76bdfec008bfc"
+  },
+  "artifacts": {
+    "bootstrap": "2513884b035414bbd328724c4d6d884572931001b09b928d37d2e51ef9e0dde6",
+    "bootstrap_source": "6d7b4f603a99fb22e6af7d64952a022bb4b8ab8cea00a1b67e6527ef9615c1d1",
+    "launcher": "04381450d30ef86077c0101b16f700768db605ff17aa006c29a3bcdfd23eef39",
+    "supervisor": "e3cc3701b4f08f1dea0ead3adfd7b4ee2f3fc4e830f5df170d649ed5c5e30ec7",
+    "runner": "f639590511d2d4de5de9caf722bbc2cdb1fba692951cb38e580634cf24ff6e1b",
+    "generic_validator": "7ca75fbe256c212130307d574ca1ef2592f46461b3eb33ef0ba2d5b4f8cfcc8c",
+    "tests": "94b6e7e3ba2a9ada1bdd849ef60eedd07ff79d18a6d5c701bb63c02789f2d274"
+  },
+  "implemented": {
+    "trusted_named_supervisor_report_eliminated": true,
+    "sealed_memfd_is_sole_internal_authority": true,
+    "retained_descriptor_pread_exact_bytes": true,
+    "publisher_returns_unconsumed_descriptor_capability": true,
+    "post_publisher_return_aliases_non_authoritative": true,
+    "during_pread_aliases_non_authoritative": true,
+    "post_final_descriptor_replay_aliases_purged": true,
+    "all_supervisor_report_pathnames_absent_before_acceptance": true,
+    "single_final_stdout_json_envelope": true,
+    "stdout_deadline_checked_after_envelope_write": true,
+    "non_authoritative_audit_copy_emitted": false,
+    "core_solution_and_runner_report_last_preserved": true,
+    "strict_nested_probe_schema_preserved": true,
+    "complete_stdout_envelope_elapsed_wall_acceptance_preserved": true,
+    "identity_pinned_accounting_preserved": true,
+    "generation_bound_cleanup_preserved": true,
+    "probe_child_rejection_diagnostics_precede_success_schema_admission": true,
+    "empty_stdout_json_decode_non_object_and_exact_key_mismatch_distinguished": true,
+    "child_exit_and_stderr_failures_distinguished": true,
+    "stderr_tail_is_bounded_base64_exact_bytes": true
+  },
+  "verification": {
+    "python_compile": "PASS",
+    "lightweight_synthetic_and_adversarial_tests": "58_of_58_PASS",
+    "full_lightweight_itc2019_suite": "NOT_RUN_FOR_V13_DIAGNOSTIC_CHAIN",
+    "post_return_and_during_pread_alias_regressions": "PASS_ORIGINAL_DESCRIPTOR_BYTES_ACCEPTED_ALIASES_ABSENT",
+    "post_final_replay_alias_regression": "PASS_ORIGINAL_DESCRIPTOR_BYTES_ACCEPTED_ALIAS_ABSENT",
+    "retained_fd_only_byte_read_regression": "PASS_NO_NAMED_PUBLICATION",
+    "strict_schema_nan_inf_null_regressions": "PASS_FAIL_CLOSED",
+    "late_descriptor_consumption_regression": "PASS_FAIL_CLOSED_AND_ALIASES_ABSENT",
+    "native_static_elf_rebuild": "PASS_BYTE_IDENTICAL",
+    "native_sealed_self_test": "PASS",
+    "probe_chain_low_memory_gate": "NO_GO_BEFORE_CAPTURE",
+    "probe_chain_low_memory_memavailable_kib": 1299876,
+    "probe_chain_traversed": ["native_bootstrap", "sealed_launcher", "sealed_supervisor"],
+    "probe_chain_official_input_opened": false,
+    "probe_chain_checkpoint_opened": false,
+    "probe_chain_solver_child_started": false,
+    "probe_chain_solution_published": false,
+    "ruff_check": "PASS",
+    "full_sealed_runtime_import_probe": "PENDING_MEMORY_GATE",
+    "full_probe_minimum_memavailable_kib": 1900000,
+    "official_launch_or_solve": "NOT_RUN"
+  },
+  "preservation": {
+    "puproj_v12_all_named_artifact_hashes": "PASS_UNCHANGED",
+    "files_outside_diagnostic_directory_modified": false
+  },
+  "limits": {
+    "probe_initial_memavailable_floor_kib": 1900000,
+    "probe_runtime_memavailable_floor_kib": 600000,
+    "probe_hard_wall_seconds": 180.0,
+    "probe_process_group_rss_limit_kib": 1200000,
+    "probe_process_group_vmswap_limit_kib": 131072,
+    "probe_whole_launch_vmrss_plus_vmswap_limit_kib": 1300000,
+    "independent_code_review_required": true,
+    "official_launch_authorized": false
+  }
+}

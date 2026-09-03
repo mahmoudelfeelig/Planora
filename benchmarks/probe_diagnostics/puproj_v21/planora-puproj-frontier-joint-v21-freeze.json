@@ -1,0 +1,79 @@
+{
+  "schema": "planora.pu-proj.frontier-joint-v21-freeze.v1",
+  "created_utc": "2026-08-27T00:55:59Z",
+  "native_bootstrap_protocol": "planora.native-sealed-python-bootstrap.v1",
+  "verdict": "GO_FOR_SEALED_IMPORT_PROBE_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "scope": "PU-PROJ v21 memory-bounded sparse admission, decomposed pressure representation, and optional student-pair tail admission",
+  "solver_input_mode": "OFFICIAL_INPUT_ONLY_FRESH",
+  "fairness": {
+    "official_input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "expected_classes": 8813,
+    "expected_students": 38437,
+    "checkpoint_or_incumbent_path_configured": false,
+    "competitor_schedule_or_result_used": false,
+    "future_matched_resource_cap_kib": 1600000
+  },
+  "control_plane": {
+    "supervisor": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v21/planora-puproj-frontier-joint-v21-supervisor.py",
+      "size": 151243,
+      "sha256": "2fee18265d421b1d7c2a81b867bce4175ff0b657e0d6cb6f52a3f87701e8ca19"
+    },
+    "launcher": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v21/planora-puproj-frontier-joint-v21-launcher.py",
+      "size": 6515,
+      "sha256": "4f76f536b0f110af644a95da920157a7df9acacbb53d6f213b5b82589b04b82a"
+    },
+    "runner": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v21/planora-puproj-frontier-joint-v21-runner.py",
+      "size": 86987,
+      "sha256": "ef2fdc7d68167f421eab3d3544969795ed18e78b02f2b7fff9b5db9aa4374e05"
+    }
+  },
+  "reused_runtime": {
+    "bootstrap": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-bootstrap",
+      "sha256": "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de"
+    },
+    "generic_validator": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v21/planora-puproj-frontier-joint-v19-generic-validator.py",
+      "sha256": "431a6d1260dbc491c540fa3bef85f188a3728fb00a578a4f243473e56a1c8037"
+    },
+    "stdlib_manifest": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v21/planora-puproj-frontier-joint-v19-stdlib.sha256",
+      "sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327"
+    }
+  },
+  "source_closure": {
+    "itc2019_decomposed_sha256": "3f4b92f91867cd1205f1702f36923b3c19cb8ad8d39b43d34a3b15e07f502e05",
+    "itc2019_sparse_joint_sha256": "2f2a40180f86fdcc7b76d9c10730cecbda7114713d504ecfe6b98008f105c2c2",
+    "itc2019_violation_lns_sha256": "9f1e4f66c4fadea2813ec86de451206102928c5c7b1dfdf786d900c8dc137343",
+    "sparse_joint_test_sha256": "1cd6a2fa31885f01ed3ba50de7a282b6dcad530a297a948ef428737113670d0b",
+    "violation_lns_test_sha256": "f1e3da3e1b2727e3f62a58864fc51cf44037f236d2f4d7a894bc212724fae91e"
+  },
+  "memory_interventions": {
+    "sparse_admission": "count-only before placement materialization",
+    "decomposed_pressure": "integer coarse-slot masks",
+    "supported_rooms": "interned immutable room tuples",
+    "rooted_tail": "streaming pair-visit gate before optional rooted call",
+    "rooted_pair_visit_cap": 200000,
+    "pu_structural_pair_visit_lower_bound": 919749
+  },
+  "resource_contract": {
+    "process_group_rss_limit_kib": 1550000,
+    "process_group_vmswap_limit_kib": 131072,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1600000,
+    "runtime_memavailable_floor_kib": 450000,
+    "address_space_cap_bytes": 2800000000,
+    "child_deadline_seconds": 300.0,
+    "supervisor_wall_seconds": 330.0
+  },
+  "verification": {
+    "focused_tests": "148_PASS",
+    "complete_lightweight_itc2019": "450_PASS_2_EXPECTED_SKIP",
+    "ruff": "PASS",
+    "sealed_import_probe": "NOT_RUN",
+    "official_solution_published": false,
+    "official_launch_authorized": false
+  }
+}

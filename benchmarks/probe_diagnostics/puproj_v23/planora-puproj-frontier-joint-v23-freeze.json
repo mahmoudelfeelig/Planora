@@ -1,0 +1,103 @@
+{
+  "schema": "planora.pu-proj.frontier-joint-v23-freeze.v1",
+  "created_utc": "2026-08-27T02:28:36Z",
+  "native_bootstrap_protocol": "planora.native-sealed-python-bootstrap.v1",
+  "verdict": "GO_FOR_WINDOWS_STATIC_REVIEW_ONLY_NO_GO_FOR_PROBE_OR_OFFICIAL_LAUNCH",
+  "scope": "PU-PROJ v23 semantics-preserving bounded decomposed model construction under unchanged v22 caps",
+  "parent": {
+    "v22_manifest_sha256": "fedf9e51de0e7b9eaf1d48d50ff5dc4ddbaaadca6becf63ddafc4590c8d80fb1",
+    "v22_launch_id": "2ef32306a20f483e9482fcd1c81c695a",
+    "v22_runner_report_sha256": "d8f64fd52d5e904c41e856c1f243ca367d5d19ea2a2b47a4ef789b4f96e61640",
+    "v22_result_receipt_sha256": "88ee411fea29d459fc9284578e9c74f2e949c3772d8e55f5a053e9189ecdf5e2",
+    "v22_status": "CONTROLLED_UNKNOWN"
+  },
+  "evidence_premise": {
+    "model_build_seconds": 258.94884728099714,
+    "solver_wall_time_seconds": 0.0,
+    "branches": 0,
+    "raw_cartesian_domain_values": 1937292,
+    "peak_process_group_rss_kib": 1525052,
+    "post_solve_trim_rss_kib": 632900
+  },
+  "solver_input_mode": "OFFICIAL_INPUT_ONLY_FRESH",
+  "fairness": {
+    "official_input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "expected_classes": 8813,
+    "expected_students": 38437,
+    "checkpoint_or_incumbent_path_configured": false,
+    "competitor_schedule_or_result_used": false,
+    "future_matched_resource_cap_kib": 1600000
+  },
+  "control_plane": {
+    "supervisor": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v23/planora-puproj-frontier-joint-v23-supervisor.py",
+      "size": 151247,
+      "sha256": "b99eceb7d1cd55708624ad6bcb144b5b1afbab05518d88bc3e05f27751f771fe"
+    },
+    "launcher": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v23/planora-puproj-frontier-joint-v23-launcher.py",
+      "size": 6510,
+      "sha256": "7186c85ea716170ffb2d51fbec94f791cc0f67850e8b3a7224591a35e52be3bf"
+    },
+    "runner": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v23/planora-puproj-frontier-joint-v23-runner.py",
+      "size": 89470,
+      "sha256": "cbeb81184ff3df1fd10610d885acde26b1a8717c952a7d40080398d3961681b1"
+    },
+    "focused_tests": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v23/planora-puproj-frontier-joint-v23-windows-static-tests.py",
+      "size": 6371,
+      "sha256": "a9274b92201f781f643a4a9f884f98ed4e9072ac7b009f4190015e9c486e47bd"
+    }
+  },
+  "reused_runtime": {
+    "bootstrap": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-bootstrap",
+      "sha256": "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de"
+    },
+    "generic_validator": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v23/planora-puproj-frontier-joint-v19-generic-validator.py",
+      "sha256": "431a6d1260dbc491c540fa3bef85f188a3728fb00a578a4f243473e56a1c8037"
+    },
+    "stdlib_manifest": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v23/planora-puproj-frontier-joint-v19-stdlib.sha256",
+      "sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327"
+    }
+  },
+  "source_closure": {
+    "itc2019_decomposed_sha256": "b4da091fae2d4d2a2400d700eddf06ce724db269a9e50fb01efd9d63c3cab66d",
+    "decomposed_focused_test_sha256": "14fc57a3ea22c8eedd8c7a34839c8c431783d92cb8220bcb4e8e9283f5156cda",
+    "itc2019_sparse_joint_sha256": "2f2a40180f86fdcc7b76d9c10730cecbda7114713d504ecfe6b98008f105c2c2",
+    "itc2019_violation_lns_sha256": "9f1e4f66c4fadea2813ec86de451206102928c5c7b1dfdf786d900c8dc137343"
+  },
+  "model_build_intervention": {
+    "semantics_changed": false,
+    "exact_constraint_order_changed": false,
+    "scalar_time_pair_cache_max_entries": 65536,
+    "compatibility_storage": "one integer bit-mask per first-domain row",
+    "matrix_cell_cache": "disabled while compact matrix rows are constructed",
+    "forbidden_table_transport": "streamed directly into the final OR-Tools repeated scalar protobuf field",
+    "duplicate_python_forbidden_tuple_list": false,
+    "cartesian_deadline_check_interval": 4096,
+    "fail_closed_on_deadline": true,
+    "outer_memory_caps_changed": false
+  },
+  "resource_contract": {
+    "process_group_rss_limit_kib": 1550000,
+    "process_group_vmswap_limit_kib": 131072,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1600000,
+    "runtime_memavailable_floor_kib": 450000,
+    "address_space_cap_bytes": 2800000000,
+    "child_deadline_seconds": 300.0,
+    "supervisor_wall_seconds": 330.0
+  },
+  "verification": {
+    "decomposed_focused_tests": "16_PASS",
+    "windows_static_chain_tests": "PASS",
+    "python_ast_and_compile": "PASS",
+    "ruff": "PASS",
+    "sealed_import_probe": "NOT_RUN",
+    "official_solution_published": false,
+    "official_launch_authorized": false
+  }
+}

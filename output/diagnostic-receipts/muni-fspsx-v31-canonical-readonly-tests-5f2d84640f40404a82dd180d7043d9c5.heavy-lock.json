@@ -1,0 +1,33 @@
+{
+    "lock":  {
+                 "schema":  "planora.shared-heavy-wsl-lock.v2",
+                 "run_id":  "5f2d84640f40404a82dd180d7043d9c5",
+                 "authorization_sha256":  "8b1530c6afb5ef0dd0e1469ab69d798e91c70fe2070956517a6f164ec8c4d6ff",
+                 "runner_sha256":  "ee8fcdd6cb1fdc03e9e7ac9eb792746239afbb8f9c818fc216427e8dbdd3b71c",
+                 "predecessor_custody_sha256":  "0f85a09b20fdc1ad9998f7487c4dd74044a46c232fb4c7a0ae016eb730e763e6",
+                 "created_at_utc":  "2026-08-28T12:49:20.8938835Z",
+                 "mechanism":  "CreateNew_ReadWrite_FileShareNone_DeleteOnClose_same_handle_seek_read_hash",
+                 "owner_pid":  2500
+             },
+    "lock_sha256":  "a8b8ed36bab8b9c78adbd3c19d0371e777274dde9e40d86ef558aba00e4e7a85",
+    "held_open":  true,
+    "same_handle_verified":  true,
+    "delete_on_close":  true,
+    "predecessor_custody_sha256":  "0f85a09b20fdc1ad9998f7487c4dd74044a46c232fb4c7a0ae016eb730e763e6",
+    "retained_v30_snapshot_custody_sha256":  "8778df173746d78f6d98b6abe46ec5aedd808b0643503fac905a669a8b7c3d57",
+    "retained_v30_snapshot_custody_pin":  {
+                                              "path":  "output/diagnostic-receipts/muni-fspsx-v31-canonical-readonly-tests-5f2d84640f40404a82dd180d7043d9c5.retained-v30-snapshot-custody.json",
+                                              "size":  1433,
+                                              "sha256":  "8778df173746d78f6d98b6abe46ec5aedd808b0643503fac905a669a8b7c3d57",
+                                              "file_id":  "0000000000000000000200000017bfe3",
+                                              "last_write_utc_ticks":  639235181615399642
+                                          },
+    "stale_archive_pin":  {
+                              "path":  "output/diagnostic-receipts/retained-stale-planora-shared-heavy-wsl-v28-e7cf1df162074402994a9d0ad763c824.lock.json",
+                              "size":  370,
+                              "sha256":  "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98",
+                              "file_id":  "0000000000000000000c000000172456",
+                              "last_write_utc_ticks":  639235031172129106
+                          },
+    "predecessor_evidence_sha256":  "4c6163f21641007f36a595cc42e274ca2dc2730d97b0d626030a1a024d9e8f96"
+}

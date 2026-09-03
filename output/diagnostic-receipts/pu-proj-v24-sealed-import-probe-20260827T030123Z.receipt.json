@@ -1,0 +1,121 @@
+{
+  "schema": "planora.diagnostic-receipt.v1",
+  "created_at_utc": "2026-08-27T03:01:23Z",
+  "subject": "pu-proj-fal19 v24 retained sealed-import probe",
+  "probe_id": "d591e38c01a24ffc81ef791087b6133a",
+  "scope": "exactly one retained no-solver probe; no official instance; no official launch authorization",
+  "decision": "PASS_FOR_INDEPENDENT_OFFICIAL_LAUNCH_REVIEW_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "outer_exit_code": 0,
+  "evidence": {
+    "stdout": {
+      "path": "output/diagnostic-receipts/pu-proj-v24-sealed-import-probe-20260827T0257Z-d591e38c01a24ffc81ef791087b6133a.stdout.json",
+      "size": 201003,
+      "sha256": "7c7639fff3f911bbd5f56943b40a0c466d49a567bff58a9f25e2f3018305f97b"
+    },
+    "stderr": {
+      "path": "output/diagnostic-receipts/pu-proj-v24-sealed-import-probe-20260827T0257Z-d591e38c01a24ffc81ef791087b6133a.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "authorization_receipt": {
+      "path": "output/diagnostic-receipts/pu-proj-v24-retained-probe-authorization-20260827T025531Z.receipt.json",
+      "sha256": "42ac212f7b44af460c7dd3e35fe8be295b7d453c07bead1322a7f5298e8be52f"
+    }
+  },
+  "pinned_inputs": {
+    "benchmarks/itc2019_decomposed.py": "0b6f07a64c139f3cfdcc9d5dd8ce945be1d7278e7f52b6eee2719e1f5560debf",
+    "tests/test_itc2019_decomposed_extended_budget.py": "82eed00c7de130f5c198cbf51b2c0b0ee158fe9003ee373812473cd29b189e6d",
+    "scripts/build_puproj_v24_chain.ps1": "f1170b58f940232803a241ea7ffacf7c158b2d50a15ad785eceb2e53b9a0b71a"
+  },
+  "probe_result": {
+    "schema": "planora.puproj.frontier-joint-v19-sealed-import-probe.v1",
+    "status": "PASS",
+    "errors": [],
+    "child_exit_code": 0,
+    "child_schema": "planora.puproj.frontier-joint-v19-sealed-import-probe-child.v1",
+    "child_status": "PASS",
+    "solve_call_count": 0,
+    "official_instance_opened": false,
+    "solver_execution_started": false,
+    "solver_child_process_started": false,
+    "probe_child_process_started": true,
+    "checkpoint_or_incumbent_opened": false,
+    "official_solution_xml_published": false,
+    "imported_planora_module_count": 13,
+    "runner_hash_stable": true,
+    "supervisor_hash_stable": true,
+    "chain_traversed": [
+      "native_bootstrap",
+      "sealed_launcher",
+      "sealed_supervisor",
+      "sealed_runner_import_child"
+    ]
+  },
+  "sealed_runtime": {
+    "all_files_sealed_before_third_party_import": true,
+    "live_site_packages_on_sys_path": false,
+    "sealed_source_finder_installed": true,
+    "native_dependency_memfds_preloaded": 112,
+    "native_dependency_preload_failures": [],
+    "file_count": 3077,
+    "total_bytes": 191956270,
+    "excluded_record_row_count": 2098,
+    "manifest_sha256": "c7447c18e04e111a1471b45137eabed2b163d7cfd063164109f77112526020b7",
+    "transport": "read_only_symlink_tree_to_sealed_memfds",
+    "replay_all_seals_and_links": true,
+    "post_capture_accounting_snapshot_reconciled": true
+  },
+  "descriptor": {
+    "named_publication": false,
+    "authoritative_path": null,
+    "verification_transport": "sealed_memfd_creation_binding_retained_fd_pread",
+    "seals": 15,
+    "size": 138025,
+    "sha256": "383ebe1b2c9f01c0bb752b56d120590d153a40389135595bf41f6aa0a4b656ea",
+    "publication_deadline_accepted": true,
+    "publication_completed_elapsed_seconds": 26.253772704003495,
+    "final_elapsed_before_stdout_envelope_seconds": 26.366581795002276,
+    "publication_order": [
+      "child.stdout.log",
+      "child.stderr.log",
+      "stdout_final_envelope"
+    ]
+  },
+  "resource_accounting": {
+    "initial_memavailable_floor_kib": 1900000,
+    "runtime_memavailable_floor_kib": 600000,
+    "peak_process_group_rss_kib": 134012,
+    "peak_process_group_vmswap_kib": 0,
+    "peak_whole_launch_rss_kib": 201148,
+    "peak_whole_launch_vmswap_kib": 0,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 201148,
+    "whole_launch_pid_union_no_double_count": true,
+    "peak_accounting_snapshot_reconciled": true
+  },
+  "cleanup": {
+    "empty": true,
+    "errors": [],
+    "actions": [],
+    "initial_owned_pids": [],
+    "final_owned_pids": [],
+    "ambiguous_unowned_numeric_group_pids": [],
+    "leader_generation_gone": true,
+    "post_exit_samples": [
+      {
+        "memavailable_kib": 2324064,
+        "matching_workload_processes": []
+      },
+      {
+        "delay_seconds": 5,
+        "memavailable_kib": 2320136,
+        "matching_workload_processes": []
+      }
+    ],
+    "post_exit_process_note": "The only pgrep match in each sample was the read-only audit shell containing the search expression itself."
+  },
+  "authorization": {
+    "retained_probe": true,
+    "official_launch": false,
+    "required_next_step": "two independent read-only official-launch reviews"
+  }
+}

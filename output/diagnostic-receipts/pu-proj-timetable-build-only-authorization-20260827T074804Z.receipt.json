@@ -1,0 +1,111 @@
+{
+  "build_time_limit_seconds": 570.0,
+  "claim_path": "output/diagnostic-receipts/.pu-proj-official-build-only-eae925cd87c14cab8eee558288804331.claim.json",
+  "construction_limits": {
+    "max_domain_values": 2500000,
+    "max_required_group_cells": 2000000,
+    "max_required_pair_relations": 2000000,
+    "max_room_pair_evaluations": 2500000,
+    "max_room_pair_evaluations_per_pair": 250000,
+    "max_sparse_room_constraints": 2500000
+  },
+  "expected_admission": {
+    "prepared_relations": 12041,
+    "room_pair_evaluations": 2377059
+  },
+  "handoff_path": "output/diagnostic-receipts/.pu-proj-official-build-only-eae925cd87c14cab8eee558288804331.handoff.json",
+  "input_path": "data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/pu-proj-fal19.xml",
+  "input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+  "memory_preflight": {
+    "minimum_interval_seconds": 5.0,
+    "reading_count": 2
+  },
+  "min_available_physical_memory_bytes": 3221225472,
+  "process_wall_clock_limit_seconds": 600.0,
+  "random_seed": 0,
+  "receipt_path": "output/diagnostic-receipts/pu-proj-official-build-only-eae925cd87c14cab8eee558288804331.receipt.json",
+  "rejected_predecessors": [
+    {
+      "receipt_path": "output/diagnostic-receipts/pu-proj-official-build-only-7ecfd6634c67485482511601ce77fe62.receipt.json",
+      "receipt_sha256": "6ca57f17789d19dd829734854203680bb387cc6f49b1691194e4112d26e1e136",
+      "required_outcome": "ERROR",
+      "required_schema": "planora.itc2019.pu-official-build-only-attempt.v2",
+      "run_id": "7ecfd6634c67485482511601ce77fe62"
+    },
+    {
+      "receipt_path": "output/diagnostic-receipts/pu-proj-official-build-only-272c5f5f26134297a756f9936673e0e9.receipt.json",
+      "receipt_sha256": "7664bd1ad3513d091da6e00eebe5fe86106197e0df1748231116b86854c78ae8",
+      "required_outcome": "ERROR",
+      "required_schema": "planora.itc2019.pu-official-build-only-attempt.v1",
+      "run_id": "272c5f5f26134297a756f9936673e0e9"
+    }
+  ],
+  "review_test": {
+    "path": "tests/test_run_pu_official_build_only_receipt.py",
+    "sha256": "4be8600cf34bfd146302de6126fc88c6b065c286f1e2849fcbe06f1c804df823"
+  },
+  "reviewed_admission_evidence": {
+    "durable_metrics": {
+      "admitted": true,
+      "configured_cap": 2500000,
+      "headroom": 122941,
+      "model_built": false,
+      "safe_prepared_evaluations": 2377059,
+      "safe_prepared_relations": 12041,
+      "solver_run": false
+    },
+    "path": "output/diagnostic-receipts/pu-proj-sameattendees-static-admission-20260827T060819Z.receipt.json",
+    "result_schema": "planora.itc2019.sameattendees-static-admission.v1",
+    "schema": "planora.itc2019.sameattendees-static-admission-receipt.v1",
+    "sha256": "faf895884249bcd2ef8d576600504f6b80cf2cc106a782e920f01ae90cc997b2"
+  },
+  "run_id": "eae925cd87c14cab8eee558288804331",
+  "runner_path": "scripts/run_pu_official_build_only_receipt.py",
+  "runner_sha256": "6b90988a495fddc1e9f623eaa2264a7c666ca39b906a35eaffdfc3c73327761a",
+  "schema": "planora.itc2019.pu-official-build-only-authorization.v4",
+  "scope": {
+    "attempts_authorized": 1,
+    "cp_model_construction_authorized": true,
+    "cp_solver_construction_authorized": false,
+    "official_input_parse_authorized": true,
+    "performance_claim_authorized": false,
+    "quality_claim_authorized": false,
+    "solution_output_authorized": false,
+    "solver_run_authorized": false
+  },
+  "source_sha256": {
+    "benchmarks/itc2019.py": "5577c6227037fa615df741a4b0b351b05ec11c7c4ce4ebe9a4489554122b2c1f",
+    "benchmarks/itc2019_factorized.py": "959be9e028773492538c4a541892955d37c5cdeb02cfaa762d8b9ce3fff48f02",
+    "benchmarks/itc2019_timetable_factorized.py": "6cd00de292d82bab6ac24a841c93290d1fd4feb8acc3053d96c4e6b2b43e9df3"
+  },
+  "status": "AUTHORIZED_FOR_ONE_BUILD_ONLY_ATTEMPT",
+  "watchdog": {
+    "broker_tolerant_handoff": true,
+    "handoff_create_only": true,
+    "handoff_poll_interval_seconds": 0.05,
+    "handoff_wait_limit_seconds": 15.0,
+    "kind": "parent-process-subprocess-timeout",
+    "post_claim_error_fallback_create_only": true,
+    "successful_event_sequence": [
+      "parse-started",
+      "parse-completed",
+      "build-started",
+      "build-completed"
+    ],
+    "worker_evidence_bindings": [
+      "token",
+      "claim_sha256",
+      "claim_evidence",
+      "parent_pid",
+      "parent_identity",
+      "child_pid",
+      "child_identity",
+      "authorization_sha256",
+      "runner_sha256",
+      "handoff_sha256"
+    ],
+    "worker_result_create_only": true,
+    "worker_termination_on_timeout": true
+  },
+  "workers": 1
+}

@@ -1,0 +1,41 @@
+{
+    "lock":  {
+                 "schema":  "planora.shared-heavy-wsl-lock.v2",
+                 "run_id":  "4dc45edcd74446909290afadd5d3ecf0",
+                 "authorization_sha256":  "e60478a0f9bc8bad4a7c49123a5f9da353e608ed472191579232df2732b65d51",
+                 "runner_sha256":  "9af9e31ec1820183cc216f5b67beaea9836e9f547116e43658505af2f5c6543c",
+                 "predecessor_custody_sha256":  "7fad611c4afd891a435b81fc3ed58c0fe857703b9419552729a75209dfd67fba",
+                 "created_at_utc":  "2026-08-28T14:06:43.4390541Z",
+                 "mechanism":  "CreateNew_ReadWrite_FileShareNone_DeleteOnClose_same_handle_seek_read_hash",
+                 "owner_pid":  13740
+             },
+    "lock_sha256":  "2f988f7e3fcd441f77c6caaf2a94c447a87f5b803abc91cdc52baccb80e52f1f",
+    "held_open":  true,
+    "same_handle_verified":  true,
+    "delete_on_close":  true,
+    "predecessor_custody_sha256":  "7fad611c4afd891a435b81fc3ed58c0fe857703b9419552729a75209dfd67fba",
+    "retained_v30_snapshot_custody_sha256":  "f126469dfde456029f5fd3dae0605301a600c17df48597993d54df0c648e6ab9",
+    "retained_v30_snapshot_custody_pin":  {
+                                              "path":  "output/diagnostic-receipts/muni-fspsx-v32-canonical-readonly-tests-4dc45edcd74446909290afadd5d3ecf0.retained-v30-snapshot-custody.json",
+                                              "size":  1425,
+                                              "sha256":  "f126469dfde456029f5fd3dae0605301a600c17df48597993d54df0c648e6ab9",
+                                              "file_id":  "0000000000000000000600000017be89",
+                                              "last_write_utc_ticks":  639235228040638604
+                                          },
+    "retained_v31_snapshot_custody_sha256":  "9148371ac4f2f390ad52eb6c7ea1a3cbd1e5f192f8eca944abdbb99db39ce680",
+    "retained_v31_snapshot_custody_pin":  {
+                                              "path":  "output/diagnostic-receipts/muni-fspsx-v32-canonical-readonly-tests-4dc45edcd74446909290afadd5d3ecf0.retained-v31-snapshot-custody.json",
+                                              "size":  1425,
+                                              "sha256":  "9148371ac4f2f390ad52eb6c7ea1a3cbd1e5f192f8eca944abdbb99db39ce680",
+                                              "file_id":  "0000000000000000000600000017be8a",
+                                              "last_write_utc_ticks":  639235228047437684
+                                          },
+    "stale_archive_pin":  {
+                              "path":  "output/diagnostic-receipts/retained-stale-planora-shared-heavy-wsl-v28-e7cf1df162074402994a9d0ad763c824.lock.json",
+                              "size":  370,
+                              "sha256":  "dcde7ccade35f6d8a3c9072bfd0ff75bade2c05d479277b42c5ffc2e7ea03b98",
+                              "file_id":  "0000000000000000000c000000172456",
+                              "last_write_utc_ticks":  639235031172129106
+                          },
+    "predecessor_evidence_sha256":  "03af9aef297ba477d3aca0080c8e3e210af9e8736260a54ce0faa4815f58b7d3"
+}

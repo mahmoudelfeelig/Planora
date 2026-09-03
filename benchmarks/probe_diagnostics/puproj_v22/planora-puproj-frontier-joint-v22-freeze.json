@@ -1,0 +1,103 @@
+{
+  "schema": "planora.pu-proj.frontier-joint-v22-freeze.v1",
+  "created_utc": "2026-08-27T01:49:33Z",
+  "native_bootstrap_protocol": "planora.native-sealed-python-bootstrap.v1",
+  "verdict": "GO_FOR_STATIC_AND_SEALED_IMPORT_PROBE_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "scope": "PU-PROJ v22 current-RSS finalization under unchanged authoritative outer limits",
+  "parent": {
+    "v21_manifest_sha256": "916faaf7f67158d12cfb43e90bf21a690087a5866fe29afcbc0d8822d0328dc8",
+    "v21_failed_launch_id": "a87839366913408e90ad90b0b0861453",
+    "v21_result_receipt_sha256": "791de2b86bffb47ed6202037218b3717e71b9866287c1826daed8c62f9088b9f",
+    "v21_failure": "runner_ru_maxrss_guard_after_fresh_solve_return"
+  },
+  "solver_input_mode": "OFFICIAL_INPUT_ONLY_FRESH",
+  "fairness": {
+    "official_input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "expected_classes": 8813,
+    "expected_students": 38437,
+    "checkpoint_or_incumbent_path_configured": false,
+    "competitor_schedule_or_result_used": false,
+    "future_matched_resource_cap_kib": 1600000
+  },
+  "control_plane": {
+    "supervisor": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v22/planora-puproj-frontier-joint-v22-supervisor.py",
+      "size": 151239,
+        "sha256": "1a097fdbd3cf6728f243cfb864136a402e7af5a5313f2c35a941b3e302198323"
+    },
+    "launcher": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v22/planora-puproj-frontier-joint-v22-launcher.py",
+      "size": 6513,
+        "sha256": "5a4c0a319e130817bed19fc9ddea411dd45eaaa3c3086b8d51420d83f96a02c9"
+    },
+    "runner": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v22/planora-puproj-frontier-joint-v22-runner.py",
+      "size": 89470,
+        "sha256": "4b18f5de8da5593cb6c9c4201ae11395c4888734ee0dfd6db54213a2b0db2538"
+    },
+    "focused_tests": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v22/planora-puproj-frontier-joint-v22-tests.py",
+      "size": 4366,
+        "sha256": "4540ccb8122d13e53cfa10ee0a168a819d7049864011b8dcc5bfc889be98fcdd"
+    }
+  },
+  "reused_runtime": {
+    "bootstrap": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-bootstrap",
+      "sha256": "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de"
+    },
+    "generic_validator": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v22/planora-puproj-frontier-joint-v19-generic-validator.py",
+      "sha256": "431a6d1260dbc491c540fa3bef85f188a3728fb00a578a4f243473e56a1c8037"
+    },
+    "stdlib_manifest": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v22/planora-puproj-frontier-joint-v19-stdlib.sha256",
+      "sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327"
+    }
+  },
+  "source_closure": {
+    "itc2019_decomposed_sha256": "3f4b92f91867cd1205f1702f36923b3c19cb8ad8d39b43d34a3b15e07f502e05",
+    "itc2019_sparse_joint_sha256": "2f2a40180f86fdcc7b76d9c10730cecbda7114713d504ecfe6b98008f105c2c2",
+    "itc2019_violation_lns_sha256": "9f1e4f66c4fadea2813ec86de451206102928c5c7b1dfdf786d900c8dc137343",
+    "sparse_joint_test_sha256": "1cd6a2fa31885f01ed3ba50de7a282b6dcad530a297a948ef428737113670d0b",
+    "violation_lns_test_sha256": "f1e3da3e1b2727e3f62a58864fc51cf44037f236d2f4d7a894bc212724fae91e"
+  },
+  "finalization_intervention": {
+    "outer_memory_caps_changed": false,
+    "runner_rss_ceiling_kib": 1400000,
+    "runner_guard_metric": "current /proc/self/status VmRSS",
+    "historical_peak_metric": "telemetry_only_inside_runner",
+    "authoritative_peak_guards": [
+      "process_group_rss",
+      "process_group_vmswap",
+      "whole_launch_vmrss_plus_vmswap"
+    ],
+    "post_solve_release": [
+      "gc.collect",
+      "glibc malloc_trim(0)"
+    ],
+    "result_telemetry": "field-wise scalar extraction without recursive placement or sectioning copy",
+    "v21_observed_peak_process_group_rss_kib": 1523728,
+    "v21_observed_peak_whole_launch_kib": 1590004
+  },
+  "resource_contract": {
+    "process_group_rss_limit_kib": 1550000,
+    "process_group_vmswap_limit_kib": 131072,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1600000,
+    "runtime_memavailable_floor_kib": 450000,
+    "address_space_cap_bytes": 2800000000,
+    "child_deadline_seconds": 300.0,
+    "supervisor_wall_seconds": 330.0
+  },
+  "verification": {
+    "focused_live_rss_tests": "PASS",
+    "control_plane_hash_and_size_replay": "PASS",
+    "python_ast_and_json_parse": "PASS",
+    "ruff": "PASS",
+    "powershell_builder_parse": "PASS",
+    "complete_lightweight_itc2019": "450_PASS_2_EXPECTED_SKIP",
+    "sealed_import_probe": "NOT_RUN",
+    "official_solution_published": false,
+    "official_launch_authorized": false
+  }
+}

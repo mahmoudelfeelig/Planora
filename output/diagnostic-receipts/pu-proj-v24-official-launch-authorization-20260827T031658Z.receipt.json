@@ -1,0 +1,81 @@
+{
+  "schema": "planora.itc2019.official-launch-authorization.v1",
+  "created_at_utc": "2026-08-27T03:16:58Z",
+  "instance": "pu-proj-fal19",
+  "candidate": "puproj_v24",
+  "launch_id": "ab73b50e9caf4edb94254ade02712d3a",
+  "decision": "GO_FOR_EXACTLY_ONE_ISOLATED_OFFICIAL_LAUNCH",
+  "automatic_retry_authorized": false,
+  "resource_cap_raise_authorized": false,
+  "independent_review": {
+    "reviewer_count": 2,
+    "verdicts": ["GO", "GO"],
+    "scope": "one measured v24 official launch under unchanged v22 caps",
+    "residual_risk": "The retained probe proves chain integrity but does not establish that full model construction will complete within time and memory caps."
+  },
+  "retained_probe": {
+    "path": "output/diagnostic-receipts/pu-proj-v24-sealed-import-probe-20260827T030123Z.receipt.json",
+    "size": 4781,
+    "sha256": "e1393f93587ee7e6d273f419e418fa7348689bb1810b9b0e066de58f01b06e2e",
+    "status": "PASS",
+    "solve_call_count": 0,
+    "official_instance_opened": false,
+    "official_solution_xml_published": false
+  },
+  "pinned_identity": {
+    "bootstrap_sha256": "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de",
+    "freeze_sha256": "63d6058b6a3ee6022e27bf4a9c54753f50e4ae6af7b69708ead33840b4fe1856",
+    "launcher_sha256": "b4805dfca30522d394039f7409d6bf06e85723280794efc2972d01594d5ae40a",
+    "supervisor_sha256": "cc0e6100d0eaac10cc746ab34fdab1d2d3f6af80fa1ed5c6bcf912a513ee453e",
+    "runner_sha256": "eccb77e74988301eb750a5e9e4bbf495d89aa718bf04d5dff21d1ee0640d7e78",
+    "generic_validator_sha256": "431a6d1260dbc491c540fa3bef85f188a3728fb00a578a4f243473e56a1c8037",
+    "stdlib_manifest_sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+    "shared_core_sha256": "0b6f07a64c139f3cfdcc9d5dd8ce945be1d7278e7f52b6eee2719e1f5560debf",
+    "official_input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "python_binary_sha256": "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273"
+  },
+  "immutable_plan": {
+    "host_output_root": "/tmp/planora-puproj-v24-official-ab73b50e9caf4edb94254ade02712d3a",
+    "durable_evidence_root": "output/official-solves/pu-proj-fal19-v24-ab73b50e9caf4edb94254ade02712d3a",
+    "top_level_argv_count": 49,
+    "top_level_argv_sha256": "0e15c7355a3c8e93d8163065c9930202ef5c295e43ec8669eb0734129d1e23d2",
+    "contained_argv_count": 45,
+    "contained_argv_sha256": "42e1fe513921fd3b3832c3d335e9e17fef7a8c5d1cbf1030aada24b66a6acda9",
+    "canonical_encoding": "utf8_nul_terminated_each_element"
+  },
+  "resource_contract": {
+    "runner_live_rss_limit_kib": 1400000,
+    "process_group_rss_limit_kib": 1550000,
+    "process_group_vmswap_limit_kib": 131072,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1600000,
+    "runtime_memavailable_floor_kib": 450000,
+    "address_space_cap_bytes": 2800000000,
+    "child_deadline_seconds": 300,
+    "supervisor_wall_seconds": 330,
+    "outer_timeout_seconds": 360,
+    "prelaunch_memavailable_floor_kib": 1900000,
+    "prelaunch_sample_count": 2,
+    "prelaunch_sample_interval_seconds": 5
+  },
+  "acceptance": {
+    "outer_exit_code": 0,
+    "supervisor_status": "COMPLETE_VALID",
+    "errors": [],
+    "breach": null,
+    "child_exit_code": 0,
+    "admissible_as_solution": true,
+    "official_solution_xml_published": true,
+    "process_group_cleanup_empty": true,
+    "leader_generation_gone": true,
+    "required_artifacts": ["solution.xml", "runner-report.json"],
+    "local_generic_validation": "PASS",
+    "official_website_validation_required": true
+  },
+  "mandatory_conditions": [
+    "Replay all current control, source, runtime, Python, and official-input pins immediately before execution.",
+    "Require the exact immutable argv digests and a fresh empty private 0700 output root.",
+    "Require two MemAvailable samples at or above 1900000 KiB at least five seconds apart and no competing heavy WSL workload.",
+    "Execute once with no retry and no cap increase.",
+    "Reject any drift, timeout, resource breach, malformed evidence, missing artifact, validation failure, or cleanup uncertainty."
+  ]
+}

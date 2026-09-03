@@ -1,0 +1,19 @@
+{
+  "admissible_as_solution": false,
+  "elapsed_seconds": 268.4825640449999,
+  "official_solution_xml_published": false,
+  "publication": {
+    "runner-report.json": {
+      "device": 2096,
+      "inode": 2020256,
+      "publication_order": 1,
+      "sha256": "d8f64fd52d5e904c41e856c1f243ca367d5d19ea2a2b47a4ef789b4f96e61640",
+      "size": 28391
+    }
+  },
+  "runner_hash_stable": true,
+  "runner_sha256_end": "4b18f5de8da5593cb6c9c4201ae11395c4888734ee0dfd6db54213a2b0db2538",
+  "runner_sha256_start": "4b18f5de8da5593cb6c9c4201ae11395c4888734ee0dfd6db54213a2b0db2538",
+  "schema": "planora.pu-proj.frontier-joint-v19-runner.v1",
+  "status": "CONTROLLED_UNKNOWN_PUBLISHED"
+}

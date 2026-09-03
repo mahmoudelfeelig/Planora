@@ -1,0 +1,12 @@
+{
+    "schema":  "planora.shared-heavy-wsl-lock-release.v3",
+    "run_id":  "ca79220da7db46b6996fe1f05785dde7",
+    "decision":  "REJECTED",
+    "lock_sha256":  "9765d322e818216142ca665133cd7e17699dfabf2cecd02c457243541a0c33b4",
+    "same_handle_verified":  true,
+    "delete_on_close":  true,
+    "acceptance_commitment_sha256":  "",
+    "cleanup_sha256":  "",
+    "released_at_utc":  "2026-08-28T10:11:34.4420058Z",
+    "lock_path_absent":  true
+}

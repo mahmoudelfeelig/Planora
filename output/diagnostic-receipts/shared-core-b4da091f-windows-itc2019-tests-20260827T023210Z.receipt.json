@@ -1,0 +1,38 @@
+{
+  "schema": "planora.itc2019.shared-core-test-receipt.v1",
+  "completed_utc": "2026-08-27T02:32:51Z",
+  "decision": "PASS",
+  "shared_core": {
+    "path": "benchmarks/itc2019_decomposed.py",
+    "size": 135881,
+    "sha256": "b4da091fae2d4d2a2400d700eddf06ce724db269a9e50fb01efd9d63c3cab66d"
+  },
+  "scope": {
+    "selection": "tests/test_itc2019_*.py excluding test_itc2019_resource_controller_docker.py",
+    "platform": "Windows",
+    "python": ".venv/Scripts/python.exe",
+    "tests_run": 458,
+    "passed": 456,
+    "skipped": 2,
+    "failures": 0,
+    "errors": 0,
+    "elapsed_seconds": 36.07
+  },
+  "expected_skips": [
+    "SIGKILL is not available on this platform",
+    "source-derived pinned v35 artifacts are unavailable"
+  ],
+  "logs": {
+    "stdout": {
+      "path": "output/diagnostic-receipts/shared-core-b4da091f-windows-itc2019-tests-20260827T023210Z.stdout.log",
+      "size": 1492,
+      "sha256": "96eadd0d4cea90a984bd5c9bd70709b84afd80cedefd911d7ec9e269e8801af3"
+    },
+    "stderr": {
+      "path": "output/diagnostic-receipts/shared-core-b4da091f-windows-itc2019-tests-20260827T023210Z.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "warning": "Pytest could not write its optional cache directory; test execution and results were unaffected."
+}

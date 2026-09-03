@@ -1,0 +1,133 @@
+{
+  "schema": "planora.itc2019.diagnostic-authorization-receipt.v1",
+  "instance": "pu-proj-fal19",
+  "diagnostic_chain": "puproj_v20",
+  "captured_utc": "2026-08-27T00:08:30Z",
+  "completed_utc": "2026-08-27T00:08:54Z",
+  "decision": "GO_FOR_ONE_OFFICIAL_LAUNCH",
+  "decision_scope": "One isolated v20 --launch attempt using the exact mixed v20-control/v19-solver chain while every pin remains unchanged.",
+  "control_plane": {
+    "supervisor_sha256": "2b9b1c797f26b472eee66fd82a674e85b3951828307fdc653aa5878fe6db6e09",
+    "launcher_sha256": "8a66a2d82fe0e48dd76514142ae2986d5230a57d4e31d16d682a65f7d3b188ea",
+    "freeze_manifest_sha256": "bd00a02015867d7c7ea9339e8a26966babca6e71c5c531a22756c25337dd5be8",
+    "tests_sha256": "c5bab84d7b9506483135898d287a67d4eb47d38ac593903f6138feec644eaf24"
+  },
+  "reused_frozen_v19_closure": {
+    "bootstrap_sha256": "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de",
+    "runner_sha256": "43772c50e4804a56fc995542c1fbe61bef66e9e360eae7d7c24aeda8f0023548",
+    "generic_validator_sha256": "431a6d1260dbc491c540fa3bef85f188a3728fb00a578a4f243473e56a1c8037",
+    "stdlib_manifest_sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+    "itc2019_violation_lns_sha256": "af902e522b980cd511f4633c39d7f76ccddcd417f94b8cdc8785f389a831317b",
+    "itc2019_decomposed_sha256": "a96e5fcd98b30ce69ff0a51e6fb1b65243d84d502f5873854423780de68b4b63",
+    "repository_violation_lns_test_sha256": "a738894d4393d8d5bf8a240f493fa92e2e12e820cd885b40518e13cc0d91efdb"
+  },
+  "verification_before_probe": {
+    "v20_focused_tests": "8_of_8_PASS",
+    "v19_lightweight_suite": "88_of_88_PASS",
+    "ruff": "PASS",
+    "complete_chain_self_test": {
+      "status": "PASS",
+      "stdout_sha256": "775d324e85de4f34550422a817640e3249b468957e6b8127c4044d952147e434",
+      "stderr_bytes": 0
+    },
+    "v19_cleanup_reproduction": "FAILED_AS_EXPECTED_WITH_UNREAPED_KILLED_LEADER",
+    "v20_cleanup_regression": "PASS_REAPED_AND_PROVED_EMPTY"
+  },
+  "launch_isolation": {
+    "outer_timeout_seconds": 240,
+    "bubblewrap_unshare_all": true,
+    "bubblewrap_cap_drop_all": true,
+    "root_read_only": true,
+    "tmpfs_tmp": true,
+    "environment_cleared": true,
+    "mode": "--sealed-import-probe"
+  },
+  "prelaunch_memory_samples_kib": [
+    2279376,
+    2270368
+  ],
+  "prelaunch_memory_floor_kib": 1900000,
+  "process_exit_code": 0,
+  "stdout_evidence": {
+    "path": "output/diagnostic-receipts/pu-proj-v20-sealed-import-probe-20260827T0008Z.stdout.json",
+    "size": 200971,
+    "sha256": "fafa3f10c6e04c0a1e5aeef55218b00aad387ea2b40dbd4de7e0df6f852598f1"
+  },
+  "stderr_evidence": {
+    "path": "output/diagnostic-receipts/pu-proj-v20-sealed-import-probe-20260827T0008Z.stderr.log",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "accepted_envelope": {
+    "schema": "planora.puproj.frontier-joint-v19-sealed-import-probe.v1",
+    "status": "PASS",
+    "errors": [],
+    "child_exit_code": 0,
+    "child_status": "PASS",
+    "child_solve_call_count": 0,
+    "official_instance_opened": false,
+    "checkpoint_or_incumbent_opened": false,
+    "solver_child_process_started": false,
+    "solver_execution_started": false,
+    "official_solution_xml_published": false,
+    "compile_warning_count": 2,
+    "compile_warning_status": "ADMITTED",
+    "peak_process_group_rss_kib": 133724,
+    "peak_process_group_vmswap_kib": 0,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 200284,
+    "probe_process_group_rss_limit_kib": 1200000,
+    "probe_process_group_vmswap_limit_kib": 131072,
+    "probe_whole_launch_vmrss_plus_vmswap_limit_kib": 1300000,
+    "official_process_group_rss_limit_kib": 1550000,
+    "official_whole_launch_vmrss_plus_vmswap_limit_kib": 1600000,
+    "final_stdout_envelope_deadline_bound": true,
+    "publication_deadline_accepted": true,
+    "whole_launch_pid_union_no_double_count": true,
+    "peak_accounting_snapshot_reconciled": true,
+    "process_group_cleanup_empty": true,
+    "cleanup_errors": [],
+    "leader_generation_gone": true,
+    "descriptor_transport": "sealed_memfd_creation_binding_retained_fd_pread",
+    "descriptor_sha256": "be65e86b0c2266aee18c08a67a29d19793fc2ef083c99ccff450eb983f6c8da6",
+    "descriptor_named_publication": false,
+    "runtime_bundle_file_count": 3077,
+    "runtime_bundle_total_bytes": 191956270,
+    "chain_traversed": [
+      "native_bootstrap",
+      "sealed_launcher",
+      "sealed_supervisor",
+      "sealed_runner_import_child"
+    ]
+  },
+  "post_exit": {
+    "memavailable_kib": 2283356,
+    "puproj_processes_found": 0
+  },
+  "independent_review": {
+    "completed_utc": "2026-08-27T00:15:43Z",
+    "verdict": "GO_FOR_EXACTLY_ONE_ISOLATED_OFFICIAL_LAUNCH",
+    "reviewers": 2,
+    "hash_chain_verified": true,
+    "probe_evidence_verified": true,
+    "cleanup_regression_reviewed": true,
+    "resource_headroom_reviewed": true,
+    "fresh_official_memory_gate_required": true,
+    "solution_requires_local_and_official_validation": true
+  },
+  "official_launch_contract": {
+    "initial_memavailable_floor_kib": 1900000,
+    "runtime_memavailable_floor_kib": 450000,
+    "process_group_rss_limit_kib": 1550000,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1600000,
+    "child_deadline_seconds": 300.0,
+    "supervisor_wall_seconds": 330.0,
+    "matched_resource_comparison_cap_kib": 1600000
+  },
+  "revocation_conditions": [
+    "Independent review returns NO_GO.",
+    "Any pinned artifact hash changes.",
+    "Either fresh official-launch memory sample is below 1900000 KiB.",
+    "The official launch does not use a unique host-backed /tmp and the recorded containment flags.",
+    "Any output, cleanup, resource, hash, local-validator, or official-validator acceptance check fails."
+  ]
+}

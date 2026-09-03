@@ -1,0 +1,564 @@
+{
+  "cleanup_contract": {
+    "admission_anchor": "original_leader_pid_session_starttime_before_and_after_each_snapshot",
+    "admitted_member_registry_append_only_until_anchor_loss": true,
+    "cleanup_failure_reporting": "RETURNED_AFTER_ALL_STAGES_FOR_CALLER_FAIL_CLOSED",
+    "emfile_first_member_later_member_regression": "PASS_LATER_MEMBER_SIGNALLED",
+    "empty_group_signal_allowed": false,
+    "empty_then_reused_pgid_and_exited_reused_leader_regression": "PASS_FAIL_CLOSED_WITH_ZERO_SIGNALS",
+    "known_popen_reaped_before_empty_group_interpretation": true,
+    "successful_reaped_leader_zero_memory_proof": "exact_popen_pid_and_leader_identity_prior_identity_bound_sample_poll_zero_final_proc_absence",
+    "successful_reaped_leader_zero_row_count": 1,
+    "member_pid_reuse_regression": "PASS_AGGREGATED_WITHOUT_SIGNAL",
+    "member_signal_transport": "pidfd_send_signal_only",
+    "members_first_seen_after_anchor_loss_signal_allowed": false,
+    "numeric_killpg_allowed": false,
+    "original_pgid_survivors_after_cleanup": 0,
+    "per_member_pidfd_failures_aggregated_without_short_circuit": true,
+    "persistent_wait_eio_term_kill_regression": "PASS_LATER_MEMBER_TERM_AND_KILL_ATTEMPTED_NO_THROW",
+    "pidfd_and_starttime_identity_evidence": true,
+    "provisional_original_pgid_immediately_after_popen": true,
+    "unreaped_zombie_leader_descendant_regression": "PASS_WITHOUT_WAIT_OR_POLL_BEFORE_CLEANUP",
+    "wait_observation_faults_aggregated_without_short_circuit": true
+  },
+  "code_review_certificate_path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-certificate.json",
+  "comparison_boundary": {
+    "cross_solver_equal_memory_claim_allowed": false,
+    "reason": "the 700000 KiB whole-launch cap is solver-specific and has not been independently normalized across solvers"
+  },
+  "constraints": {
+    "expected_fixed_classes": 1471,
+    "expected_open_classes": 152,
+    "host_swap_counters_kill_enabled": false,
+    "launch_memavailable_floor_kib": 1900000,
+    "process_group_memory_cap_kib": 700000,
+    "runner_seconds": 600.0,
+    "runtime_memavailable_floor_kib": 650000,
+    "wall_seconds": 630.0,
+    "whole_launch_memory_cap_kib": 700000
+  },
+  "created_for": "v20-exact-post-seal-runtime-source-cache-release-with-fail-closed-canonical-telemetry-before-one-bounded-diagnostic-sealed-import-probe",
+  "dependency_trees": {
+    "absl-py": {
+      "file_count": 31,
+      "sha256": "bc21dc392f61f7f2f6fd2cb4e68f69fef3d107ac3f2e28d3f5224ed5f0df9f07",
+      "version": "2.4.0"
+    },
+    "immutabledict": {
+      "file_count": 7,
+      "sha256": "26d6e9a8c83fef04af68663514c29766c6996873bd4e496bf65b592d31402de5",
+      "version": "4.3.1"
+    },
+    "numpy": {
+      "file_count": 916,
+      "sha256": "8aa72a16a5db77c0d7d33657e98a3479976de7e92dea354fb359c40c4844eebf",
+      "version": "2.4.2"
+    },
+    "ortools": {
+      "file_count": 339,
+      "sha256": "7255f5bb3a9e44c95b37f18a0d30ff7c1b4cdb952f64454eff54bfa826ac61e3",
+      "version": "9.15.6755"
+    },
+    "pandas": {
+      "file_count": 1521,
+      "sha256": "beab746ce3de57c2c4c0448bb8baa3a0094618150fdbdbe8feeecb6ba1e254cc",
+      "version": "3.0.1"
+    },
+    "protobuf": {
+      "file_count": 60,
+      "sha256": "9c22bccd849dff4959067fa1d497faf19c2cc26552715096740025c5b479ed63",
+      "version": "6.33.5"
+    },
+    "python-dateutil": {
+      "file_count": 26,
+      "sha256": "835aff8982f62add980032be942ed46e85cc18e632795daacc9e0cfd5e8c80f1",
+      "version": "2.9.0.post0"
+    },
+    "six": {
+      "file_count": 7,
+      "sha256": "d17fe658f3e1c77ed1c55ea6d110788fa9982d193d233b8968e6a9357530c0b1",
+      "version": "1.17.0"
+    },
+    "typing-extensions": {
+      "file_count": 6,
+      "sha256": "ef7c7b5121055386a160a05150cb56faafc5474c17e9f8ee3daf2be43b7a470c",
+      "version": "4.15.0"
+    }
+  },
+  "dependency_versions": {
+    "absl-py": "2.4.0",
+    "immutabledict": "4.3.1",
+    "numpy": "2.4.2",
+    "ortools": "9.15.6755",
+    "pandas": "3.0.1",
+    "protobuf": "6.33.5",
+    "python": "3.12",
+    "python-dateutil": "2.9.0.post0",
+    "six": "1.17.0",
+    "typing-extensions": "4.15.0"
+  },
+  "excluded_progress": {
+    "path": "/tmp/planora-muni-fspsx-hall-objective-v35-progress.json",
+    "sha256": "5cf7e3450ff96d79b3a5dbac1baa784a585b777397603d379a91513ada35cedf"
+  },
+  "fairness_provenance": {
+    "component_checkpoint_sha256": "b462c82cddaf78f43002cc4ce1f357a64e06876665f587d072bab6aa78e1aa80",
+    "derivation_audit_path": "/tmp/planora-muni-fspsx-v35-derivation-audit-v1.json",
+    "derivation_audit_sha256": "aa7657d1c3e3c2362312ae0a07013373640fc5b777aa069dca107420393b8dc4",
+    "progress_runtime_access_allowed": false,
+    "progress_sha256": "5cf7e3450ff96d79b3a5dbac1baa784a585b777397603d379a91513ada35cedf",
+    "solver_input_mode": "OFFICIAL_INPUT_ONLY_FRESH",
+    "status": "V35_AND_COMPONENT_CHECKPOINT_NO_GO_UNPROVEN"
+  },
+  "files": [
+    {
+      "label": "bootstrap",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-bootstrap.py",
+      "sha256": "2f30ae8c2cceec635319372792e6a81cda099ea976878b63fe7854af0ce21a5a"
+    },
+    {
+      "label": "inline_trust_payload",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-inline-trust-root.txt",
+      "sha256": "38b57204852abdaee70853df44a4a8d6348157f4bca9fa3c1d852e9dd78121cf"
+    },
+    {
+      "label": "fairness_certificate",
+      "path": "/tmp/planora-muni-fspsx-v35-derivation-audit-v1.json",
+      "sha256": "aa7657d1c3e3c2362312ae0a07013373640fc5b777aa069dca107420393b8dc4"
+    },
+    {
+      "label": "launcher",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-launcher.sh",
+      "sha256": "31fa5e7ca0a45a676dfed2533b2cd7a1a2bc35cf1adc0eb67fc9c8c7059f59e7"
+    },
+    {
+      "label": "supervisor",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-supervisor.py",
+      "sha256": "ce399b471f37b44f28d97dc30b50b63f4651a4be58327c18a96b855a5b2aa3a7"
+    },
+    {
+      "label": "runner",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-runner.py",
+      "sha256": "88a83e978e831d47048034caf931269085253974e74cef15dc94a32d34fbb9eb"
+    },
+    {
+      "label": "v20_adversarial_tests",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-tests.py",
+      "sha256": "974f62b283f1c50b0ae221a47d5411f11a4059cd53c1a496dc4eb45f2dfd81d1"
+    },
+    {
+      "label": "generic_validator",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-generic-validator.py",
+      "sha256": "6eabef6ba3e02297a3eb7723cf549360f1239d8e5fbc0ef48ed2b7d19ff5918a"
+    },
+    {
+      "label": "python_binary",
+      "path": "/usr/bin/python3.12",
+      "sha256": "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273"
+    },
+    {
+      "label": "stdlib_manifest",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-stdlib.sha256",
+      "sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327"
+    },
+    {
+      "label": "minimal_tcb_manifest",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-minimal-tcb.sha256",
+      "sha256": "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea"
+    },
+    {
+      "label": "python_venv_config",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/pyvenv.cfg",
+      "sha256": "df7173544ecb364e4d96f5f63e9298acfa107e10b36069c9ca2bea31cd039adc"
+    },
+    {
+      "label": "benchmarks",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora_muni_v20_benchmarks_stub.py",
+      "sha256": "40488f0af25e5457841ef6577bfdb3fda2a65a7facd5e608e03d5be2084688f2"
+    },
+    {
+      "label": "semantic",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019.py",
+      "sha256": "5577c6227037fa615df741a4b0b351b05ec11c7c4ce4ebe9a4489554122b2c1f"
+    },
+    {
+      "label": "preprocessing",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_preprocessing.py",
+      "sha256": "b98b6d56bcbdedaf491ac91194c9eef8997f624ab81c7f52e3a647c174994644"
+    },
+    {
+      "label": "frontier",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_frontier_joint.py",
+      "sha256": "ade6b42c3baa08a53454db3842b0c4f3cd2e2738c6eb0c54108f419a148d7793"
+    },
+    {
+      "label": "room_oracle",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_room_oracle.py",
+      "sha256": "ff16e0a6045bffa7402748c537213c727918afddd35d92513ba4133972753ca6"
+    },
+    {
+      "label": "itc2019_compact_joint",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_compact_joint.py",
+      "sha256": "427264334276fb48ce5b54c151a42d4a85b75055c0bea96f47a928b1fe28362a"
+    },
+    {
+      "label": "itc2019_corpus",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_corpus.py",
+      "sha256": "1c83f9f26362d0c8c06d1d9bcabc2b015ac4e09216fdd91df1eaa7255933c621"
+    },
+    {
+      "label": "itc2019_decomposed",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_decomposed.py",
+      "sha256": "a96e5fcd98b30ce69ff0a51e6fb1b65243d84d502f5873854423780de68b4b63"
+    },
+    {
+      "label": "itc2019_decomposed_quality",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_decomposed_quality.py",
+      "sha256": "534622d096728ff4e4e9b53fd8d58ec3827ec09540d4c95a3e3dcad271c7f78b"
+    },
+    {
+      "label": "itc2019_factorized",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_factorized.py",
+      "sha256": "a773110756e612e26dfd792ea6f289ca9a36d526fc807f790f674233ec8df1bf"
+    },
+    {
+      "label": "itc2019_generalized_occurrences",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_generalized_occurrences.py",
+      "sha256": "7ed4224c0f338f9f983a358babb5dfdb6b90d5026383283cd0d805aef733d85f"
+    },
+    {
+      "label": "itc2019_global_components",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_global_components.py",
+      "sha256": "c2d158dc9434f8da4f3e9478b1526face365702cf317fd14e693af75769e7f11"
+    },
+    {
+      "label": "itc2019_global_quality",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_global_quality.py",
+      "sha256": "397d308a4fb368aaab96db1789394e1b9f289a8f6b8d87b9ce5b4a569f8ccc7f"
+    },
+    {
+      "label": "itc2019_grouped_calendar",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_grouped_calendar.py",
+      "sha256": "37b82b7f01fb47a655bb76ae0d6734315b00bf58ec7ebf28c66bb701c00a6ee5"
+    },
+    {
+      "label": "itc2019_resource_seed",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_resource_seed.py",
+      "sha256": "8d497bc609ec5b717b0d9e2b77406e89c45c6eaef378148c0bebadd6a429d665"
+    },
+    {
+      "label": "itc2019_sparse_joint",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_sparse_joint.py",
+      "sha256": "393f13042ef84e3040b17caefa407c63be32a50913f7edc456cbad836af9ccfe"
+    },
+    {
+      "label": "itc2019_structural",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_structural.py",
+      "sha256": "db4ac0adbfe38f1b618b2e8f7a5a9e5a613000a62034017819cca2c20640d024"
+    },
+    {
+      "label": "itc2019_violation_lns",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/itc2019_violation_lns.py",
+      "sha256": "af902e522b980cd511f4633c39d7f76ccddcd417f94b8cdc8785f389a831317b"
+    },
+    {
+      "label": "test_preprocessing",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/tests/test_itc2019_preprocessing.py",
+      "sha256": "6ab9d1a37ac3f9aeefb418aab1d67c824ca96b0107f4ece736a85d8c387c4da2"
+    },
+    {
+      "label": "test_frontier",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/tests/test_itc2019_frontier_joint.py",
+      "sha256": "ef125a8c9ea64500074700fe0f6b445f5f686832f0f32bf39bc6f35430615ed0"
+    },
+    {
+      "label": "test_room_oracle",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/tests/test_itc2019_room_oracle.py",
+      "sha256": "3b1a1c303646e2f301b4641379143ea6b3a306e1322e381402050c1422a3a2e0"
+    },
+    {
+      "label": "test_violation_lns",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/tests/test_itc2019_violation_lns.py",
+      "sha256": "a738894d4393d8d5bf8a240f493fa92e2e12e820cd885b40518e13cc0d91efdb"
+    },
+    {
+      "label": "ortools_init",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/ortools/__init__.py",
+      "sha256": "67121c783ab4f9bf749a4e667d49458f885d105cc42c3805a1154faf10d329bf"
+    },
+    {
+      "label": "ortools_cp_model",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/ortools/sat/python/cp_model.py",
+      "sha256": "b5f2a3ae5c418d11af23cb77a766fa10103c8bb71703dafa1ecad74823603f25"
+    },
+    {
+      "label": "ortools_cp_model_helper",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/ortools/sat/python/cp_model_helper.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "5e82da893145e1eecc67bc87ec4120c7af38e1a7e4ed0eadfc39c713bb8ed735"
+    },
+    {
+      "label": "protobuf_init",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/google/protobuf/__init__.py",
+      "sha256": "2325ffa4b80c1a0a02ca72916a0fc1e6555f480a1a712dd6b037622fa26c1643"
+    },
+    {
+      "label": "numpy_init",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/numpy/__init__.py",
+      "sha256": "2e8da3e4385e79c4885b3f7324a8b957e6f01732b239e99e266a12c62a008b8d"
+    },
+    {
+      "label": "pandas_init",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/pandas/__init__.py",
+      "sha256": "742f85c135ee654bff1203efcee7664bf82fc7305ac3912ff304a063f5f7ea3c"
+    },
+    {
+      "label": "absl_init",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/absl/__init__.py",
+      "sha256": "b502519ffe6b6d0e605a85dd906015f9f25218508e187e9f1412353712f1e61a"
+    },
+    {
+      "label": "immutabledict_init",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/immutabledict/__init__.py",
+      "sha256": "7ac43f32fc5a4403600263055dca00f644a41238cf5d50e8040acbd8391d472b"
+    },
+    {
+      "label": "runtime_ortools_record",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/ortools-9.15.6755.dist-info/RECORD",
+      "sha256": "4175009141f97e2dc7e4f453d67cb3fee6034f1f9df269e67a9b2abb3bd70a10"
+    },
+    {
+      "label": "runtime_numpy_record",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/numpy-2.4.2.dist-info/RECORD",
+      "sha256": "6cc44a275ff3c9b440a33271c7038b98622fd58fd68a2cabd931932a1741fb81"
+    },
+    {
+      "label": "runtime_pandas_record",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/pandas-3.0.1.dist-info/RECORD",
+      "sha256": "c65f6019e7d8089476318471d636a54a231254e1a9b009db093b9877fe12f0b6"
+    },
+    {
+      "label": "runtime_dateutil_record",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/python_dateutil-2.9.0.post0.dist-info/RECORD",
+      "sha256": "0c26b4b1542dbd1ebd8d2babdd501aed583d6ada9595517f936f00fe4ff9d254"
+    },
+    {
+      "label": "runtime_six_record",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/six-1.17.0.dist-info/RECORD",
+      "sha256": "d834e846ba51c0e7371968d0b5a0cdebdaa2f9ea2f0447a40b594fa96ca5d89f"
+    },
+    {
+      "label": "runtime_absl_record",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/absl_py-2.4.0.dist-info/RECORD",
+      "sha256": "526b41384f796af7d02a92ec84d1a8e7a2f3fd42880a349e91c96723f780a216"
+    },
+    {
+      "label": "runtime_immutabledict_record",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/immutabledict-4.3.1.dist-info/RECORD",
+      "sha256": "32fa24e0bd6e8481bd654ce6e020dcd9466d0d6b63e71c4588bbd25749257ec6"
+    },
+    {
+      "label": "runtime_protobuf_record",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/protobuf-6.33.5.dist-info/RECORD",
+      "sha256": "6f8088dd0fb04edc0b64983a573b4d91c7374d1b0fc8546035cc6b2635aaec46"
+    },
+    {
+      "label": "runtime_typing_extensions_record",
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/.venv/lib/python3.12/site-packages/typing_extensions-4.15.0.dist-info/RECORD",
+      "sha256": "02f70a4ed6f81c3298a0024ca9dcc6807360938d388360ce3b768243f719cdce"
+    }
+  ],
+  "inline_trust_root": {
+    "argv_schema": [
+      "--inline-trust-v1",
+      "bootstrap_path",
+      "expected_bootstrap_sha256",
+      "expected_inline_payload_sha256",
+      "downstream_args"
+    ],
+    "argv_schema_id": "planora.muni-fspsx.frontier-v20.inline-trust-argv.v1",
+    "bootstrap_sha256": "2f30ae8c2cceec635319372792e6a81cda099ea976878b63fe7854af0ce21a5a",
+    "first_exec": "/usr/bin/python3.12 -I -S -B -c <exact-inline-payload>",
+    "inline_payload_path_for_review_only": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-inline-trust-root.txt",
+    "inline_payload_sha256": "38b57204852abdaee70853df44a4a8d6348157f4bca9fa3c1d852e9dd78121cf",
+    "interpreter_sha256": "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273",
+    "pathname_execution_allowed": false
+  },
+  "official_instance": {
+    "path": "/mnt/d/Stuff/Projects/Sites/Planora/data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019/muni-fspsx-fal17.xml",
+    "sha256": "151664dfc27f377e5048cf0bf8ad48fac350c46a7db6ca7181fed6d1933960b6",
+    "size_bytes": 12088665
+  },
+  "runtime_closure": {
+    "cache_release_advisory": "POSIX_FADV_DONTNEED",
+    "cache_release_advisory_count": 2902,
+    "cache_release_exactly_once_per_source": true,
+    "cache_release_failure_action": "FAIL_CLOSED_BEFORE_CHILD",
+    "cache_release_length": 0,
+    "cache_release_offset": 0,
+    "cache_release_phase": "after_stable_read_hash_size_verification_and_sealed_copy",
+    "cache_release_telemetry_sha256": "426a8b55f35aba4cabef808823cf9e25b3dd546dcb506a75bee6c10c4126105a",
+    "cache_release_telemetry_transport": "canonical_rows_inside_sealed_runtime_manifest_replayed_by_child_and_supervisor",
+    "cache_release_semantics": "advisory_only_no_reclamation_claim",
+    "checkpoint_telemetry": "canonical_per-source_rows_inside_sealed_manifest_plus_final_manifest-seal row in supervisor binding; replayed by child and supervisor",
+    "memavailable_floor_phases": {
+      "initial_pre_admission_kib": 1900000,
+      "runtime_construction_and_post_construction_kib": 650000
+    },
+    "runtime_revalidation": "streamed_sha256_size_and_identity_replay_with_one_mib_maximum_chunk",
+    "sealed_storage_accounting": "page-rounded unique capture, runtime-file, and runtime-manifest memfd bytes plus identity-pinned process RSS and swap",
+    "source_copy": "strict one_mib_maximum_pread_to_memfd_write_without_whole_file_join",
+    "live_source_inotify": true,
+    "native_loader": "exact_memfd",
+    "pre_post_replay": true,
+    "pure_python_loader": "compile_from_sealed_fd",
+    "sealed_per_file": true,
+    "source": "pinned_dist_info_RECORD",
+    "system_runtime_boundary": "observed_and_hashed_not_sealed"
+  },
+  "schema": "planora.muni-fspsx.frontier-v20.freeze.v1",
+  "sealed_import_probe": {
+    "acceptance_requires_final_elapsed_lte_seconds": 180.0,
+    "acceptance_requires_peak_whole_lte_kib": 700000,
+    "accepted_report_publication": "only_after_clean_exit_generation_bound_drain_and_closure_replay",
+    "admission_memavailable_floor_kib": 1900000,
+    "breach_decision_order": "before_poll_exit",
+    "chain": [
+      "inline_trust",
+      "bootstrap",
+      "launcher",
+      "supervisor",
+      "probe_child"
+    ],
+    "child_report_transport": "parent_created_openat_O_EXCL_O_NOFOLLOW_retained_fd",
+    "compile_warning_admission": {
+      "accepted_child_stderr_bytes": 0,
+      "category": "DeprecationWarning",
+      "count": 2,
+      "message": "Bitwise inversion '~' on bool is deprecated. This returns the bitwise inversion of the underlying int object and is usually not what you expect from negating a bool. Use the 'not' operator for boolean negation or ~int(x) if you really want the bitwise inversion of the underlying int.",
+      "reject_unexpected_category_message_source_or_count": true,
+      "source_relative_path": "ortools/sat/python/cp_model.py",
+      "source_sha256": "8ccd32d856725a1641048e879e833eceb2edd7beeb5bc53146d3a03aa80ec136",
+      "transport": "captured_at_sealed_runtime_source_loader_compile_boundary"
+    },
+    "deadline_scope": [
+      "pre_capture",
+      "child",
+      "cleanup",
+      "report_consumption",
+      "capture_runtime_replay",
+      "final_cleanup",
+      "report_last_publication"
+    ],
+    "flag": "--sealed-import-probe",
+    "input_mode": "NONE",
+    "late_monitor_action": "unlink_and_reject",
+    "memory_sampler": "ProcessGroupGeneration_admitted_registry_plus_one_identity_pinned_supervisor_plus_page_rounded_unique_sealed_memfd_storage",
+    "numeric_pgid_rescan_for_memory_allowed": false,
+    "official_progress_checkpoint_open_allowed": false,
+    "process_status_reads_per_selected_pid": 1,
+    "single_absolute_deadline_seconds": 180.0,
+    "solve_invocation_allowed": false,
+    "status_identity_replay_required": true,
+    "wall_seconds": 180.0,
+    "whole_launch_set_union_memory_cap_kib": 700000
+  },
+  "stdlib_trust_boundary": {
+    "admission_phase": "sealed launcher before supervisor compilation, sealed runner loader before runner compilation, and validator bootstrap before validator compilation",
+    "exact_manifest_sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+    "expected_gid": 65534,
+    "expected_uid": 65534,
+    "inline_direct_imports_in_explicit_minimal_tcb": [
+      "ctypes",
+      "fcntl",
+      "hashlib",
+      "os",
+      "stat",
+      "sys"
+    ],
+    "minimal_tcb_file_count": 50,
+    "minimal_tcb_manifest_path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v20/planora-muni-fspsx-frontier-v20-minimal-tcb.sha256",
+    "minimal_tcb_manifest_sha256": "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+    "read_only_root_mount_required": true,
+    "world_or_group_writable_file_or_ancestor_allowed": false
+  },
+  "v12_preservation": {
+    "all_11_frozen_v12_artifact_hashes_replayed": true,
+    "v12_files_modified": false,
+    "v12_freeze_manifest_sha256": "31f8ce0fdc08046c05ed2aaf0d0f7f2ff6715d617fd04255c0b1bb6b5d4c25e1",
+    "v12_review_certificate_sha256": "175a02ea6bc14612d56293637a461430812b826890bcab97829bb841f8d77b2b"
+  },
+  "v13_preservation": {
+    "all_12_frozen_v13_artifact_hashes_replayed": true,
+    "v13_certificate_sha256": "0ba69667fb96c02d2cd2b574e7fec7ea30f32d179058eefee4b9315256775425",
+    "v13_files_modified": false,
+    "v13_freeze_manifest_sha256": "75c55c6afa4ca6a97bbdc4f224d3db4741ec87854d22e00c7ee2a53895b5fbd7"
+  },
+  "v14_preservation": {
+    "all_12_frozen_v14_artifact_hashes_replayed": true,
+    "v14_certificate_sha256": "be8a43faa45e24d11f62ad11e0491ef305be83f47c46d60000df7033a53982a2",
+    "v14_files_modified": false,
+    "v14_freeze_manifest_sha256": "d2a4ada2b647b948299638296fb75b297b7206984ff10201bfddcb0aecee6eaf"
+  },
+  "v17_preservation": {
+    "all_13_frozen_v17_artifact_hashes_replayed": true,
+    "audit_mount_contract": "derivation audit remains staged at the exact /tmp path and hash required by v17",
+    "v17_certificate_sha256": "1e3e415b361ac91307b2f5193a801f90ddf0941bfbc21a3dcfaa730291adda03",
+    "v17_files_modified": false,
+    "v17_freeze_manifest_sha256": "ceb97e6d74ac7e68dcd2f22f4749870d63b384b99a13d1347b818d7d5bffe683"
+  },
+  "v18_preservation": {
+    "all_13_frozen_v18_artifact_hashes_replayed": true,
+    "audit_copy_byte_exact": true,
+    "audit_sha256": "aa7657d1c3e3c2362312ae0a07013373640fc5b777aa069dca107420393b8dc4",
+    "v18_certificate_sha256": "4744f3f49a155a5389892a283f32cd788b73db543244dfd5fad9df73b755f005",
+    "v18_files_modified": false,
+    "v18_freeze_manifest_sha256": "459cb720d8d0b43f51f2f89e11002a678e8ff4c2ead4c516f35e685f24a79461"
+  },
+  "v19_preservation": {
+    "all_13_frozen_v19_artifact_hashes_replayed": true,
+    "audit_copy_byte_exact": true,
+    "audit_sha256": "aa7657d1c3e3c2362312ae0a07013373640fc5b777aa069dca107420393b8dc4",
+    "v19_certificate_sha256": "e8afa7b099fcb7ec7539414e1e1fcb7ae5cb7635bea62ff112ae9213923904c9",
+    "v19_files_modified": false,
+    "v19_freeze_manifest_sha256": "d7ab89f2b424949f3099d96fe38c454a6b0f55bb93f07f8f96f60edcf914b53a"
+  },
+  "validator_report_transport": {
+    "named_identity_replayed_before_unlink": true,
+    "parent_openat_flags": "O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW",
+    "parent_preads_retained_descriptor": true,
+    "parent_retains_descriptor": true,
+    "same_uid_name_swap_regression": "PASS_FAIL_CLOSED",
+    "validator_writes_inherited_descriptor_only": true
+  },
+  "verification": {
+    "bash_syntax": "PASS",
+    "final_elapsed_and_peak_acceptance_regression": "PASS",
+    "freeze_manifest_file_row_mismatches": 0,
+    "freeze_manifest_file_rows_replayed": 51,
+    "heavy_probe_launch_skipped_by_scope": true,
+    "heavy_tests_skipped_by_explicit_lightweight_contract": 1,
+    "identity_drift_or_missing_status_regression": "PASS_REJECTED",
+    "just_exited_cap_deadline_floor_order_regression": "PASS",
+    "late_publication_regression": "PASS_UNLINKED_AND_REJECTED",
+    "late_replay_regression": "PASS_ALL_STAGES_RUN_AND_REJECTED",
+    "lightweight_tests_failed": 0,
+    "lightweight_tests_passed": 94,
+    "lightweight_tests_skipped": 2,
+    "numeric_replacement_memory_regression": "PASS_REJECTED",
+    "official_input_opened": false,
+    "progress_or_checkpoint_opened": false,
+    "python_compile": "PASS",
+    "real_probe_chain_gate_test": "SKIPPED_MEMORY_ABOVE_GATE_TO_AVOID_HEAVY_CHILD_LAUNCH",
+    "required_heavy_probe_minimum_memavailable_kib": 1900000,
+    "sealed_import_probe_child_status": "NOT_RUN_BY_SCOPE",
+    "solver_run": false,
+    "reaped_zero_memory_fail_closed_regressions": "PASS_EXACT_IDENTITY_PRIOR_SAMPLE_POLL_ZERO_PROC_ABSENCE_SINGLE_ROW",
+    "sealed_compile_warning_regressions": "PASS_EXACT_TWO_PINNED_CP_MODEL_WARNINGS_ZERO_STDERR_UNEXPECTED_ROWS_REJECTED",
+    "source_cache_release_failure_regression": "PASS_FAIL_CLOSED",
+    "source_cache_release_telemetry_regressions": "PASS_EXACT_ONCE_TIMING_ORDER_AND_MISMATCH_REJECTION",
+    "streaming_and_resource_accounting_regressions": "PASS_ONE_MIB_BOUND_PHASE_FLOORS_PAGE_ROUNDING_CAP_TELEMETRY_REPLAY_AND_FD_CLEANUP",
+    "test_file_discovered_count": 96,
+    "unique_status_read_and_supervisor_union_regression": "PASS",
+    "unreaped_zombie_identity_pinned_memory_regression": "PASS_ZERO_MEMORY"
+  }
+}

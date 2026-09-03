@@ -1,0 +1,59 @@
+{
+  "schema": "planora.itc2019.retained-probe-authorization.v1",
+  "created_at_utc": "2026-08-27T03:06:10Z",
+  "instance": "agh-fal17",
+  "candidate": "native-v14",
+  "probe_id": "f95129553c8040529e356bef6802da98",
+  "decision": "GO_FOR_EXACTLY_ONE_RETAINED_NO_SOLVER_PROBE",
+  "official_launch_authorized": false,
+  "official_input_authorized": false,
+  "automatic_retry_authorized": false,
+  "independent_review": {
+    "verdict": "GO",
+    "scope": "exactly one retained no-solver probe only",
+    "reviewed_artifacts": 9,
+    "reviewed_source_closure_rows": 16,
+    "reviewed_runtime_record_rows": 10,
+    "fresh_static_tests": {
+      "passed": 39,
+      "skipped_linux_only": 1,
+      "failed": 0
+    },
+    "focused_shared_core_tests_passed": 17,
+    "material_blockers": []
+  },
+  "coordinator_replay": {
+    "artifact_and_source_rows_matched": 25,
+    "mismatches": [],
+    "freeze_manifest_sha256": "6522a072ac957abc95e56951dbc7e677809ae13ab4e835ba6372d072f45ea855",
+    "invocations_sha256": "1a4c76f565563d40d191818931997fc8e5a6c4102ccd967677a9160f6d46d807",
+    "shared_core_sha256": "0b6f07a64c139f3cfdcc9d5dd8ce945be1d7278e7f52b6eee2719e1f5560debf",
+    "focused_regression_sha256": "82eed00c7de130f5c198cbf51b2c0b0ee158fe9003ee373812473cd29b189e6d"
+  },
+  "frozen_probe": {
+    "invocation_path": "benchmarks/probe_diagnostics/agh_v14/agent-aghfal17-native-v14-invocations.json",
+    "top_level_canonical_argv_sha256": "7fb4cb909e149a0fa2124c48b676ecd4dcc6d1f0242dfb37b24d318f4a946543",
+    "contained_canonical_argv_sha256": "dd8f09d693c82ead8a7e62ea257c494e362e48a44e987fc99a376683f013e051",
+    "terminal_mode": "--sealed-import-probe"
+  },
+  "frozen_limits": {
+    "process_generation_vmrss_plus_vmswap_limit_kib": 368640,
+    "whole_launch_process_plus_sealed_plus_report_limit_kib": 614400,
+    "initial_memavailable_floor_kib": 1900000,
+    "initial_sample_count": 2,
+    "initial_sample_interval_seconds": 5,
+    "runtime_memavailable_floor_kib": 900000,
+    "probe_outer_wall_seconds": 240,
+    "probe_inner_wall_seconds": 180,
+    "final_zero_snapshots_required": 2
+  },
+  "mandatory_execution_conditions": [
+    "Replay every current artifact, source, runtime RECORD, Python, Bash, freeze-manifest, and invocation pin immediately before execution.",
+    "Recompute both canonical probe argv digests and require exact equality.",
+    "Use a read-only-root bwrap namespace with a fresh private writable /tmp and only the frozen v14 probe artifacts staged at their exact paths.",
+    "Obtain two MemAvailable samples of at least 1900000 KiB at least five seconds apart and confirm no competing heavy WSL process.",
+    "Execute exactly once, serialized against every other WSL-heavy task, with no automatic retry.",
+    "Reject unless the outer status is PASS, breach is absent, child exit is zero, cleanup is error-free with two stable zero snapshots, and every official-input, solver, checkpoint, and publication flag is false.",
+    "Retain command, environment, stdout, stderr, exit status, hashes, accounting peak, and post-exit cleanup evidence."
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "schema": "planora.itc2019.canonical-test-receipt.v1",
+  "instance": "muni-fspsx-fal17",
+  "diagnostic_chain": "muni_v23",
+  "completed_utc": "2026-08-27T02:19:33Z",
+  "decision": "PASS_FOR_RETAINED_NO_SOLVER_PROBE_ONLY",
+  "official_launch_authorized": false,
+  "process_exit_code": 0,
+  "canonical_environment": {
+    "root_mount": "read_only_bubblewrap_bind",
+    "private_tmp_root": "/tmp/planora-muni-v23-readonly-tests-5bdbfdfdb7aa486cbad6af5063af5a78",
+    "private_tmp_mode": "0700",
+    "private_tmp_owner": "elephant:elephant",
+    "staged_legacy_artifact_count": 48,
+    "staged_legacy_artifacts_all_hash_match": true,
+    "official_inputs_staged": false,
+    "progress_or_checkpoint_staged": false,
+    "canonical_cwd": "/mnt/d/Stuff/Projects/Sites/Planora",
+    "interpreter": "/usr/bin/python3.12 -I -S -B",
+    "clear_environment": true,
+    "capabilities_dropped": "ALL",
+    "heavy_tests_skipped_by_explicit_contract": true
+  },
+  "pretest_gate": {
+    "memavailable_samples_kib": [2339764, 2336172],
+    "sample_interval_seconds": 5.2,
+    "required_floor_kib": 1900000,
+    "competing_heavy_wsl_processes": []
+  },
+  "test_result": {
+    "tests_run": 106,
+    "passed": 104,
+    "skipped": 2,
+    "failures": 0,
+    "errors": 0,
+    "elapsed_seconds": 26.210,
+    "skipped_tests": [
+      "heavy sealed-runtime import probe disabled by test contract",
+      "real sealed chain admission disabled by test contract"
+    ]
+  },
+  "pinned_files": {
+    "builder": {
+      "size": 21040,
+      "sha256": "c52265500d9dd112f0ed73e3e89c45e965c122eb54bc530624f9c6c7e7151d87"
+    },
+    "tests": {
+      "size": 157145,
+      "sha256": "6807f78bd0b5e98fd3926611383e2dbfe5fe15fe0868a55a63497c4ed9c2edaf"
+    },
+    "certificate": {
+      "size": 19514,
+      "sha256": "114dcaf09b3eca05add37cdc7bb26aa35320118d17610f009a09690c2154679f"
+    },
+    "freeze_manifest": {
+      "size": 26380,
+      "sha256": "291643f45c93c31199e4b3294eb1edcc36d867abc760653375e3833dbea9d905"
+    }
+  },
+  "logs": {
+    "stdout": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v23-canonical-readonly-tests-20260827T021800Z.stdout.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stderr": {
+      "path": "output/diagnostic-receipts/muni-fspsx-v23-canonical-readonly-tests-20260827T021800Z.stderr.log",
+      "size": 16469,
+      "sha256": "2a11f4a1126948fa67b4f10cde878c355cd07268fb677dee4b8566ef6cc94a93"
+    }
+  },
+  "argv": [
+    "wsl.exe", "-d", "Ubuntu", "--",
+    "/usr/bin/timeout", "600s",
+    "/usr/bin/bwrap", "--die-with-parent", "--new-session", "--unshare-all",
+    "--ro-bind", "/", "/",
+    "--bind", "/tmp/planora-muni-v23-readonly-tests-5bdbfdfdb7aa486cbad6af5063af5a78", "/tmp",
+    "--dev", "/dev", "--proc", "/proc", "--clearenv",
+    "--setenv", "PATH", "/usr/bin:/bin",
+    "--setenv", "LANG", "C.UTF-8",
+    "--setenv", "LC_ALL", "C.UTF-8",
+    "--setenv", "TZ", "UTC",
+    "--setenv", "PLANORA_MUNI_V23_SKIP_HEAVY", "1",
+    "--cap-drop", "ALL",
+    "--chdir", "/mnt/d/Stuff/Projects/Sites/Planora",
+    "/usr/bin/python3.12", "-I", "-S", "-B",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v23/planora-muni-fspsx-frontier-v23-tests.py"
+  ],
+  "limits_of_evidence": [
+    "This receipt does not authorize an official solve.",
+    "The two explicitly heavy tests remain unexecuted.",
+    "A retained no-solver probe must still pass before launch review."
+  ]
+}

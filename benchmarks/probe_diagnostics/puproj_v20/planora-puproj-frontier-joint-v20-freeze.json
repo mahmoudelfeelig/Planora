@@ -1,0 +1,107 @@
+{
+  "schema": "planora.pu-proj.frontier-joint-v20-freeze.v1",
+  "created_utc": "2026-08-27T00:05:51Z",
+  "native_bootstrap_protocol": "planora.native-sealed-python-bootstrap.v1",
+  "verdict": "GO_FOR_SEALED_IMPORT_PROBE_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "scope": "PU-PROJ v20 control-plane repair over the exact frozen v19 solver/runtime closure",
+  "solver_input_mode": "OFFICIAL_INPUT_ONLY_FRESH",
+  "fairness": {
+    "official_input_sha256": "2fa848bf039f8ef86f65e280b5302afd37c48a03e1bc7e09364cf91bebd86e42",
+    "expected_classes": 8813,
+    "expected_students": 38437,
+    "checkpoint_or_incumbent_path_configured": false,
+    "competitor_schedule_or_result_used": false,
+    "competitor_placement_or_hint_used": false,
+    "future_matched_resource_cap_kib": 1600000
+  },
+  "control_plane": {
+    "supervisor": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v20/planora-puproj-frontier-joint-v20-supervisor.py",
+      "size": 151247,
+      "sha256": "2b9b1c797f26b472eee66fd82a674e85b3951828307fdc653aa5878fe6db6e09"
+    },
+    "launcher": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v20/planora-puproj-frontier-joint-v20-launcher.py",
+      "size": 6518,
+      "sha256": "8a66a2d82fe0e48dd76514142ae2986d5230a57d4e31d16d682a65f7d3b188ea"
+    },
+    "tests": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v20/planora-puproj-frontier-joint-v20-tests.py",
+      "size": 7207,
+      "sha256": "c5bab84d7b9506483135898d287a67d4eb47d38ac593903f6138feec644eaf24"
+    }
+  },
+  "reused_frozen_v19_closure": {
+    "bootstrap": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-bootstrap",
+      "size": 718784,
+      "sha256": "a4230de58dd5cca9e2e5e4c85cab40b669a354c3c960068d6a54ec094d0e64de"
+    },
+    "runner": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-runner.py",
+      "size": 86987,
+      "sha256": "43772c50e4804a56fc995542c1fbe61bef66e9e360eae7d7c24aeda8f0023548"
+    },
+    "generic_validator": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-generic-validator.py",
+      "size": 4364,
+      "sha256": "431a6d1260dbc491c540fa3bef85f188a3728fb00a578a4f243473e56a1c8037"
+    },
+    "stdlib_manifest": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-stdlib.sha256",
+      "size": 67004,
+      "sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327"
+    },
+    "v19_freeze": {
+      "path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/puproj_v19/planora-puproj-frontier-joint-v19-freeze.json",
+      "size": 11097,
+      "sha256": "163fbf0e9cea0ce25e881fb3ea563286c97c6d7291ef93338088acfff24b0ac9"
+    }
+  },
+  "repository_solver_closure": {
+    "itc2019_violation_lns_sha256": "af902e522b980cd511f4633c39d7f76ccddcd417f94b8cdc8785f389a831317b",
+    "itc2019_decomposed_sha256": "a96e5fcd98b30ce69ff0a51e6fb1b65243d84d502f5873854423780de68b4b63",
+    "repository_violation_lns_test_sha256": "a738894d4393d8d5bf8a240f493fa92e2e12e820cd885b40518e13cc0d91efdb"
+  },
+  "v19_official_failure_reproduction": {
+    "result_receipt": "output/official-solves/pu-proj-fal19-v19-784d0d47c24a4bf69bce031bfa7e7648/result-receipt.json",
+    "supervisor_envelope_sha256": "f1e4a1cc8e3a64b5b809668293acba0cd1174b0173246fb55af79720e8fd4b61",
+    "observed_child_elapsed_seconds": 196.92668435299856,
+    "peak_process_group_rss_kib": 1336416,
+    "peak_whole_launch_vmrss_plus_vmswap_kib": 1400740,
+    "old_whole_launch_limit_kib": 1400000,
+    "over_limit_kib": 740,
+    "old_cleanup_final_owned_pid_count": 1,
+    "official_solution_xml_published": false
+  },
+  "v20_resource_contract": {
+    "initial_memavailable_floor_kib": 1900000,
+    "runtime_memavailable_floor_kib": 450000,
+    "process_group_rss_limit_kib": 1550000,
+    "process_group_vmswap_limit_kib": 131072,
+    "whole_launch_vmrss_plus_vmswap_limit_kib": 1600000,
+    "address_space_cap_bytes": 2800000000,
+    "child_acceptance_cooperative_deadline_seconds": 300.0,
+    "supervisor_hard_wall_seconds": 330.0,
+    "observed_v19_peak_headroom_kib": 199260,
+    "probe_limits_relaxed": false
+  },
+  "cleanup_repair": {
+    "root_cause": "After SIGKILL the leader could remain an unreaped zombie; pidfd generation accounting correctly kept it live, but the parent did not reap it before the final empty proof.",
+    "repair": "Keep pidfds open through forced cleanup, reap or observe the leader exit, then repeat the exact generation scan and close pidfds only after the final proof.",
+    "post_kill_reap_timeout_seconds": 5.0,
+    "v19_reproduction": "exit=-1, TimeoutExpired, final_owned_pids nonempty, leader_generation_gone=false",
+    "v20_regression": "exit=-SIGKILL, final_owned_pids empty, leader_generation_gone=true"
+  },
+  "verification": {
+    "v20_focused_tests": "8_of_8_PASS",
+    "v19_lightweight_suite": "88_of_88_PASS",
+    "ruff": "PASS",
+    "supervisor_self_test": "PASS",
+    "sealed_import_probe": "NOT_RUN",
+    "official_input_opened": false,
+    "solver_child_started": false,
+    "official_solution_published": false,
+    "official_launch_authorized": false
+  }
+}

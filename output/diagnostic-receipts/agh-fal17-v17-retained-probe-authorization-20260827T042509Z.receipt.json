@@ -1,0 +1,118 @@
+{
+  "schema": "planora.itc2019.retained-probe-authorization.v3",
+  "created_at_utc": "2026-08-27T04:25:09Z",
+  "instance": "agh-fal17",
+  "candidate": "native-v17",
+  "probe_id": "9769625f105940118da502781078a4f5",
+  "decision": "NO_GO_REQUIRES_SUCCESSOR_CHAIN_CHECKPOINT_EVIDENCE",
+  "retained_probe_authorized": false,
+  "successor_chain_required": true,
+  "official_launch_authorized": false,
+  "official_input_authorized": false,
+  "solver_authorized": false,
+  "checkpoint_authorized": false,
+  "publication_authorized": false,
+  "automatic_retry_authorized": false,
+  "execution_wrapper": {
+    "path": "scripts/run_agh_v17_retained_probe.sh",
+    "wsl_path": "/mnt/d/Stuff/Projects/Sites/Planora/scripts/run_agh_v17_retained_probe.sh",
+    "size_bytes": 54880,
+    "sha256": "e477616eeab910888cf6b4503f68e80de10afadda49113181085083054979673"
+  },
+  "authorization_consumption": {
+    "claim_marker_path": "output/diagnostic-receipts/agh-fal17-v17-retained-probe-9769625f105940118da502781078a4f5.claim",
+    "atomic_primitive": "mkdir",
+    "consume_before_preflight": true,
+    "claim_retained_on_failure": true,
+    "retry_prohibited": true
+  },
+  "producer_checkpoint_evidence": {
+    "required_key": "checkpoint_or_certified_provenance_used",
+    "required_value_type": "builtins.bool",
+    "required_value": false,
+    "outer_payload_schema": "planora.agh-fal17.native-v17-outer-controller.v1",
+    "outer_source_path": "benchmarks/probe_diagnostics/agh_v17/agent-aghfal17-native-v17-outer-controller.py",
+    "outer_source_sha256": "3fe5dba53e9c6293694779c5bec0100e46f9fbcaa19b9ef8f96531db96723a35",
+    "outer_required_key_emitted": false,
+    "inner_payload_schema": "planora.agh-fal17.native-v17-sealed-import-supervisor.v1",
+    "inner_source_path": "benchmarks/probe_diagnostics/agh_v17/agent-aghfal17-native-v17-supervisor.py",
+    "inner_source_sha256": "56a78bc55e2b6e324397d9e7350346382d63e1676cdda06553b40dd280c0cc89",
+    "inner_required_key_emitted": false,
+    "evidence_sufficient_for_execution": false
+  },
+  "heavy_task_gate": {
+    "shared_lock_path": "output/diagnostic-receipts/.planora-wsl-heavy-task.lock",
+    "atomic_primitive": "exclusive_mkdir",
+    "lock_must_be_held_through_any_authorized_execution": true,
+    "lock_evidence_retained": true,
+    "census_policy": "reject_every_non_ancestry_non_minimal_infrastructure_process",
+    "known_workloads_explicitly_classified": [
+      "stress-ng",
+      "pytest",
+      "python",
+      "java",
+      "solver",
+      "build",
+      "docker-client"
+    ],
+    "unknown_user_commands_rejected": true,
+    "inspection_uncertainty_rejected": true
+  },
+  "independent_review": {
+    "verdict": "NO_GO",
+    "scope": "static review only; retained probe execution prohibited",
+    "canonical_tests_run": 65,
+    "canonical_tests_passed": 64,
+    "canonical_tests_skipped_linux_only": 1,
+    "adversarial_checks_passed": 48,
+    "reviewed_artifacts": 9,
+    "reviewed_source_closure_rows": 16,
+    "reviewed_runtime_record_rows": 10,
+    "preserved_v12_v16_files": 63,
+    "material_blockers": [
+      "frozen outer payload omits checkpoint_or_certified_provenance_used",
+      "frozen inner supervisor payload omits checkpoint_or_certified_provenance_used",
+      "successor chain must emit exact built-in false values before a new authorization"
+    ]
+  },
+  "coordinator_replay": {
+    "builder_size": 40757,
+    "builder_sha256": "4a895136bf05d1eb621a4b5a659aac6485229a971791eb98e4e704bfa291f989",
+    "freeze_manifest_size": 43048,
+    "freeze_manifest_sha256": "1919dc785c6d1a6d3f06eb5f087faacde2d2194b890d8a0da70943ac829977c1",
+    "invocations_size": 18685,
+    "invocations_sha256": "5dcb99619c38707a110e85c948c618993068ead87a5345ab105147ac4645dc4b",
+    "shared_core_sha256": "0b6f07a64c139f3cfdcc9d5dd8ce945be1d7278e7f52b6eee2719e1f5560debf",
+    "focused_regression_sha256": "82eed00c7de130f5c198cbf51b2c0b0ee158fe9003ee373812473cd29b189e6d"
+  },
+  "frozen_probe": {
+    "invocation_path": "benchmarks/probe_diagnostics/agh_v17/agent-aghfal17-native-v17-invocations.json",
+    "outer_canonical_argv_sha256": "bcab8bc73f21c72be120fb89e66bd9d614ff4e58d1ed7b1b158bf65f6e4af0cb",
+    "inner_canonical_argv_sha256": "a94419760f9cd5ac58a26cffaebc0ee7dc3ba87e78681620632586665c988fe3",
+    "terminal_mode": "--sealed-import-probe"
+  },
+  "frozen_limits": {
+    "process_generation_vmrss_plus_vmswap_limit_kib": 368640,
+    "whole_launch_process_plus_sealed_plus_report_limit_kib": 614400,
+    "initial_memavailable_floor_kib": 1900000,
+    "initial_sample_count": 2,
+    "initial_sample_interval_seconds": 5,
+    "runtime_memavailable_floor_kib": 900000,
+    "probe_outer_wall_seconds": 240,
+    "probe_inner_wall_seconds": 180,
+    "final_zero_snapshots_required": 2
+  },
+  "mandatory_execution_conditions": [
+    "Do not execute the retained v17 probe; the authorization decision is NO-GO and a successor chain is required.",
+    "Atomically and irreversibly consume the probe ID with the exclusive claim marker before preflight; retain it on every failure and prohibit retry.",
+    "Require checkpoint_or_certified_provenance_used to be present in both outer and inner payloads with type exactly builtins.bool and value false; absence or any other JSON value rejects.",
+    "Acquire the atomic shared WSL heavy-task lock and reject every concurrent process except exact current-runner ancestry and minimal allowlisted WSL infrastructure.",
+    "Keep every current artifact, source, runtime RECORD, Python, Bash, freeze-manifest, invocation, authorization, and execution-wrapper pin fail-closed; no v17 execution may occur.",
+    "Recompute both canonical probe argv digests and require exact equality.",
+    "Any successor authorization must use a read-only-root bwrap namespace with a fresh private writable /tmp and only its frozen probe artifacts staged at exact paths.",
+    "Any successor authorization must obtain two MemAvailable samples of at least 1900000 KiB at least five seconds apart and pass the authoritative shared-lock process census.",
+    "Any successor authorization must execute exactly once, serialized against every other WSL-heavy task, with no automatic retry.",
+    "Any successor result must reject unless the outer status is PASS, breach is absent, child exit is zero, cleanup is error-free with two stable zero snapshots, and every official-input, solver, checkpoint, and publication flag is exact false.",
+    "Any successor result must retain claim ownership, lock and census evidence, exact command and environment, complete preflight, stdout, stderr, exit status, post-run checksums, accounting peak, and post-exit cleanup evidence."
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "schema": "planora.pu-proj.frontier-joint-v12.completion-certificate.v1",
+  "created_utc": "2026-08-26T03:09:29Z",
+  "verdict": "GO_FOR_INDEPENDENT_CODE_REVIEW_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "freeze_manifest": {
+    "path": "/tmp/planora-puproj-frontier-joint-v12-freeze.json",
+    "sha256": "1af3adfcfb8df4294e4113fa60cd23c86b841c91ca0aebb6482a3176d875f26f"
+  },
+  "artifacts": {
+    "bootstrap": "70fcc016e76042b622ddfa6e7d4d98175791ec1d7dae388daabba7d0c9e201f0",
+    "bootstrap_source": "2de8972b5ba8ce0372ed71a18fc56fa56779f6ac0d9b6ea27bc22c0a9d13601e",
+    "launcher": "60d050eaecf678544e49238f2d8a2a4fa4289e36126be16fe15a67f7202f761c",
+    "supervisor": "c1cf1d7ba1cf23b7870d7eaa9005a821dbe9a847f8d2dbd09d4f898e95de89c2",
+    "runner": "f647bf45168f392b9deb3274c498305a0cc892b8638af8535569dc2d0a03a6f2",
+    "generic_validator": "eb9a4360e3f4a33afd84109b5bf32664439604a09601daeaeb0a66a8b36101dc",
+    "tests": "35575480b412f02fbcd84c10a273cc2a99c236f0757929f3b1983c36647ca9a5"
+  },
+  "implemented": {
+    "trusted_named_supervisor_report_eliminated": true,
+    "sealed_memfd_is_sole_internal_authority": true,
+    "retained_descriptor_pread_exact_bytes": true,
+    "publisher_returns_unconsumed_descriptor_capability": true,
+    "post_publisher_return_aliases_non_authoritative": true,
+    "during_pread_aliases_non_authoritative": true,
+    "post_final_descriptor_replay_aliases_purged": true,
+    "all_supervisor_report_pathnames_absent_before_acceptance": true,
+    "single_final_stdout_json_envelope": true,
+    "stdout_deadline_checked_after_envelope_write": true,
+    "non_authoritative_audit_copy_emitted": false,
+    "core_solution_and_runner_report_last_preserved": true,
+    "strict_nested_probe_schema_preserved": true,
+    "complete_stdout_envelope_elapsed_wall_acceptance_preserved": true,
+    "identity_pinned_accounting_preserved": true,
+    "generation_bound_cleanup_preserved": true
+  },
+  "verification": {
+    "python_compile": "PASS",
+    "lightweight_synthetic_and_adversarial_tests": "52_of_52_PASS",
+    "full_lightweight_itc2019_suite": "241_PASS",
+    "post_return_and_during_pread_alias_regressions": "PASS_ORIGINAL_DESCRIPTOR_BYTES_ACCEPTED_ALIASES_ABSENT",
+    "post_final_replay_alias_regression": "PASS_ORIGINAL_DESCRIPTOR_BYTES_ACCEPTED_ALIAS_ABSENT",
+    "retained_fd_only_byte_read_regression": "PASS_NO_NAMED_PUBLICATION",
+    "strict_schema_nan_inf_null_regressions": "PASS_FAIL_CLOSED",
+    "late_descriptor_consumption_regression": "PASS_FAIL_CLOSED_AND_ALIASES_ABSENT",
+    "native_static_elf_rebuild": "PASS_BYTE_IDENTICAL",
+    "native_sealed_self_test": "PASS",
+    "probe_chain_low_memory_gate": "NO_GO_BEFORE_CAPTURE",
+    "probe_chain_low_memory_memavailable_kib": 1299876,
+    "probe_chain_traversed": ["native_bootstrap", "sealed_launcher", "sealed_supervisor"],
+    "probe_chain_official_input_opened": false,
+    "probe_chain_checkpoint_opened": false,
+    "probe_chain_solver_child_started": false,
+    "probe_chain_solution_published": false,
+    "ruff_check": "PASS",
+    "full_sealed_runtime_import_probe": "PENDING_MEMORY_GATE",
+    "full_probe_minimum_memavailable_kib": 1900000,
+    "official_launch_or_solve": "NOT_RUN"
+  },
+  "preservation": {
+    "puproj_v11_all_named_artifact_hashes": "PASS_UNCHANGED",
+    "repository_files_modified_by_this_task": false
+  },
+  "limits": {
+    "probe_initial_memavailable_floor_kib": 1900000,
+    "probe_runtime_memavailable_floor_kib": 600000,
+    "probe_hard_wall_seconds": 180.0,
+    "probe_process_group_rss_limit_kib": 1200000,
+    "probe_process_group_vmswap_limit_kib": 131072,
+    "probe_whole_launch_vmrss_plus_vmswap_limit_kib": 1300000,
+    "independent_code_review_required": true,
+    "official_launch_authorized": false
+  }
+}

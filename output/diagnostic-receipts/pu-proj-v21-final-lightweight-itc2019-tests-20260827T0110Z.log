@@ -1,0 +1,17 @@
+...........s............................................................ [ 15%]
+........................................................................ [ 31%]
+............................s........................................... [ 47%]
+........................................................................ [ 63%]
+........................................................................ [ 79%]
+........................................................................ [ 95%]
+....................                                                     [100%]
+============================== warnings summary ===============================
+.venv\Lib\site-packages\_pytest\cacheprovider.py:475
+  C:\mnt\d\stuff\projects\sites\planora\.venv\Lib\site-packages\_pytest\cacheprovider.py:475: PytestCacheWarning: could not create cache path C:\mnt\d\stuff\projects\sites\planora\.pytest_cache\v\cache\nodeids: [WinError 5] Access is denied: 'C:\\mnt\\d\\stuff\\projects\\sites\\planora\\.pytest_cache\\v\\cache'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_itc2019_competitor_harness.py:199: SIGKILL is not available on this platform
+SKIPPED [1] tests\test_itc2019_frontier_joint.py:574: source-derived pinned v35 artifacts are unavailable
+450 passed, 2 skipped, 1 warning in 28.20s

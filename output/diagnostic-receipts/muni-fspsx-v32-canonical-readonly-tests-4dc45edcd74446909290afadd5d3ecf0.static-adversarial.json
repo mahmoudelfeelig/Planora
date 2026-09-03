@@ -1,0 +1,51 @@
+{
+    "run_id":  "4dc45edcd74446909290afadd5d3ecf0",
+    "runner_sha256":  "9af9e31ec1820183cc216f5b67beaea9836e9f547116e43658505af2f5c6543c",
+    "authorization_sha256":  "e60478a0f9bc8bad4a7c49123a5f9da353e608ed472191579232df2732b65d51",
+    "legacy_rows":  48,
+    "checks":  {
+                   "schema":  "planora.muni-v32.local-static-adversarial.v5",
+                   "safe_atom_roundtrip":  "PASS",
+                   "unsafe_quoting_witnesses":  8,
+                   "hardlink_nlink2":  "REJECTED",
+                   "census_allowed_minimal":  "PASS",
+                   "census_rejection_witnesses":  8,
+                   "legitimate_child_grandchild":  "ADMITTED",
+                   "previously_frozen_reparented_descendant":  "ADMITTED",
+                   "hostile_same_namespace_sibling":  "REJECTED",
+                   "unrelated_workload":  "REJECTED",
+                   "pinned_subprocess_sites":  16,
+                   "staging_events_preserved":  "PASS",
+                   "staging_rename_away":  "REJECTED",
+                   "parent_watch_loss_witnesses_rejected":  2,
+                   "postflight_mutation":  "REJECTED",
+                   "cadence_target_ms":  100,
+                   "cadence_maximum_gap_ms":  750,
+                   "oversized_cadence_gap":  "REJECTED",
+                   "claim_failure_points_rejected":  5,
+                   "pass_publication_mutations_rejected":  12,
+                   "unittest_transcript_mutations_rejected":  6,
+                   "watcher_lifetime_mutations_rejected":  7,
+                   "resource_monitor_mutations_rejected":  6,
+                   "host_deadline_expiry":  "REJECTED",
+                   "identity_mutations_rejected":  6,
+                   "semantic_mutation":  "REJECTED",
+                   "evidence_pin_mutation":  "REJECTED",
+                   "finalization_mutations_rejected":  14,
+                   "live_repo_execution_path":  "MUST_BE_REJECTED"
+               },
+    "lock_regression":  {
+                            "v28_path_reopen_self_sharing_failure":  "REPRODUCED",
+                            "v29_same_handle_seek_read_hash":  "PASS",
+                            "v29_delete_on_close":  "PASS",
+                            "stale_lock_atomic_move_while_held":  "PASS",
+                            "identical_bytes_archive_replacement_rejected":  "PASS"
+                        },
+    "archived_predecessor_model":  {
+                                       "archive_exact_identity":  "PASS",
+                                       "archive_record":  "PASS",
+                                       "shared_lock_absent":  "PASS",
+                                       "archive_mutation_performed":  false
+                                   },
+    "log_protocol":  "create_close_short_lived_identity_checked_append_plus_stable_host_reader"
+}

@@ -1,0 +1,105 @@
+{
+  "canonical_certificate_path": "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-certificate.json",
+  "diagnostic_launch_status": "READY_FOR_ONE_BOUNDED_SEALED_IMPORT_PROBE",
+  "files": {
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-bootstrap.py": "657052a80fe238ee187b70c04968dde0fdcd31cad4e75158dfa71c552310bffe",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-freeze-manifest.json": "459cb720d8d0b43f51f2f89e11002a678e8ff4c2ead4c516f35e685f24a79461",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-generic-validator.py": "6eabef6ba3e02297a3eb7723cf549360f1239d8e5fbc0ef48ed2b7d19ff5918a",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-inline-trust-root.txt": "1c35235c1f805a8e58975dcda10c32c2aa78f733b5ba5dbe64bdb49829c3f0f0",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-launcher.sh": "3aeee864ae029152409164c042b8191fb9e197cf0634c4a056041ca5d6124891",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-minimal-tcb.sha256": "825b4b6656b67d706499095b184e55a0fe132310e7a92c7700634e8f0b26ffea",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-runner.py": "24e98703bc6821a57870f58271a1f62220358a7caace7d174550a86815093fb5",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-stdlib.sha256": "355b5ec890f56f6943bafe4c2794710b9df08a85a6933ef0e6da81db96984327",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-supervisor.py": "10efa114d59f3e8c9b43817acf1532873eae6d2a111146113aa1e85040812e0b",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-frontier-v18-tests.py": "4c9ad4c27ad0cb6a85085f4b68ff8333e3168673ff074552ba591887b915f558",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora-muni-fspsx-v35-derivation-audit-v1.json": "aa7657d1c3e3c2362312ae0a07013373640fc5b777aa069dca107420393b8dc4",
+    "/mnt/d/Stuff/Projects/Sites/Planora/benchmarks/probe_diagnostics/muni_v18/planora_muni_v18_benchmarks_stub.py": "40488f0af25e5457841ef6577bfdb3fda2a65a7facd5e608e03d5be2084688f2"
+  },
+  "finding_fixed": "v17 could lose memory telemetry after a successful child reap and emitted two pinned CP-SAT compile warnings on child stderr",
+  "implementation": {
+    "accepted_child_stderr_bytes": 0,
+    "accepted_child_stdout_bytes": 0,
+    "child_exit_refreshed_after_final_cleanup": true,
+    "compile_warning_admission": {
+      "category": "DeprecationWarning",
+      "count": 2,
+      "exact_message_required": true,
+      "source_relative_path": "ortools/sat/python/cp_model.py",
+      "source_sha256": "8ccd32d856725a1641048e879e833eceb2edd7beeb5bc53146d3a03aa80ec136",
+      "unexpected_category_message_source_or_count_rejected": true
+    },
+    "diagnostic_tail_encoding": "base64",
+    "diagnostic_tail_max_bytes_per_stream": 4096,
+    "rejection_diagnostics_structure": {
+      "report_presence_fields": [
+        "parent_created",
+        "retained_fd_present",
+        "named_entry_present",
+        "named_entry_matches_retained_fd",
+        "size_bytes",
+        "sha256",
+        "payload_consumed",
+        "contract_valid",
+        "inspection_error"
+      ],
+      "stream_fields": [
+        "present",
+        "size_bytes",
+        "sha256",
+        "identity_matches_parent_creation",
+        "inspection_error",
+        "tail_encoding",
+        "tail_base64",
+        "tail_bytes",
+        "tail_limit_bytes",
+        "tail_truncated"
+      ],
+      "top_level_fields": [
+        "schema",
+        "child_started",
+        "child_exit",
+        "report_presence",
+        "stdout",
+        "stderr",
+        "primary_failure_classification",
+        "failure_classifications"
+      ]
+    },
+    "rejection_diagnostics_omitted_on_success": true,
+    "report_descriptor_transport_preserved": true,
+    "reaped_leader_zero_memory_proof": "exact leader PID and identity, prior identity-bound sample, poll returncode zero, final /proc absence",
+    "reaped_leader_zero_row_count": 1,
+    "sealed_import_probe_only": true
+  },
+  "implementation_verification": {
+    "bash_syntax": "PASS",
+    "certificate_json_parse": "PASS",
+    "focused_suite": "StaticContractTests SealedImportProbeTests and two exact compile-warning RuntimeClosureTests",
+    "focused_tests_failed": 0,
+    "focused_tests_passed": 42,
+    "focused_tests_skipped": 1,
+    "focused_tests_total": 43,
+    "freeze_manifest_file_row_mismatches": 0,
+    "freeze_manifest_file_rows_replayed": 51,
+    "manifest_json_parse": "PASS",
+    "official_input_opened": false,
+    "progress_or_checkpoint_opened": false,
+    "sealed_import_probe_child_run": false,
+    "solver_run": false
+  },
+  "official_launch_status": "NO_GO",
+  "resource_gate": {
+    "heavy_probe_status": "NOT_RUN_BY_SCOPE",
+    "required_memavailable_kib": 1900000
+  },
+  "schema": "planora.muni-fspsx.frontier-v18.implementation-certificate.v1",
+  "scope": "immutable v18 diagnostic freeze only; one measured sealed-import probe remains required; no official input, progress, checkpoint, heavy probe, or solver access occurred",
+  "status": "GO_FOR_ONE_BOUNDED_DIAGNOSTIC_SEALED_IMPORT_PROBE_NO_GO_FOR_OFFICIAL_LAUNCH",
+  "v17_preservation": {
+    "all_13_frozen_v17_artifact_hashes_replayed": true,
+    "audit_mount_contract_preserved": true,
+    "v17_certificate_sha256": "1e3e415b361ac91307b2f5193a801f90ddf0941bfbc21a3dcfaa730291adda03",
+    "v17_files_modified": false,
+    "v17_freeze_manifest_sha256": "ceb97e6d74ac7e68dcd2f22f4749870d63b384b99a13d1347b818d7d5bffe683"
+  }
+}

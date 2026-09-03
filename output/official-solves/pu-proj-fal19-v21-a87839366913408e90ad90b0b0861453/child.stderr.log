@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "<string>", line 26, in <module>
+  File "<sealed-puproj-frontier-v19-runner:ef2fdc7d68167f421eab3d3544969795ed18e78b02f2b7fff9b5db9aa4374e05>", line 2111, in <module>
+  File "<sealed-puproj-frontier-v19-runner:ef2fdc7d68167f421eab3d3544969795ed18e78b02f2b7fff9b5db9aa4374e05>", line 2102, in main
+  File "<sealed-puproj-frontier-v19-runner:ef2fdc7d68167f421eab3d3544969795ed18e78b02f2b7fff9b5db9aa4374e05>", line 1873, in run_frontier
+  File "<sealed-puproj-frontier-v19-runner:ef2fdc7d68167f421eab3d3544969795ed18e78b02f2b7fff9b5db9aa4374e05>", line 513, in _resource_guard
+MemoryError: runner RSS ceiling reached during fresh solve return

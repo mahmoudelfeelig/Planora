@@ -1,0 +1,87 @@
+{
+  "schema": "planora.muni-v33.terminal-gate-independent-review.v1",
+  "status": "GO",
+  "reviewed_at_utc": "2026-08-29T23:58:59.1237829Z",
+  "reviewer_tasks": [
+    "/root/v33_gate_static_review",
+    "/root/v33_gate_contract_review"
+  ],
+  "candidate": "muni_v33",
+  "run_id": "2339df35f57e441a8f92bd1f890fa68f",
+  "verdict": "GO_FOR_EXACTLY_ONE_TERMINAL_GATE_INVOCATION_WITH_SUPPLIED_SELF_AND_REVIEW_HASHES",
+  "primary_independent_review_sha256": "cbc777f2ed798fc41d1d54503d48746f859f2b2367fd09b53f433bf42786b45d",
+  "frozen_successor": {
+    "runner_sha256": "1899d5c5e89e886181e951dbaf38b7671c640c9aa01d2d21d6d68863048fb0fb",
+    "authorization_sha256": "683809b26400464fdb2fff4559fd1953854b09c18fdef1f2d198ea280e80e9c5"
+  },
+  "frozen_gate_pair": {
+    "gate": {
+      "path": "scripts/run_muni_v33_terminal_gate_once.ps1",
+      "size": 31684,
+      "sha256": "f24908a03793cd0b6eb3816eefd90369ff10ba87e1c22ca65d728b4799a6f1c4",
+      "file_id": "0000000000000000000200000017c6b8",
+      "last_write_utc_ticks": 639236442066704388
+    },
+    "tests": {
+      "path": "tests/test_run_muni_v33_terminal_gate_once.py",
+      "size": 14401,
+      "sha256": "879ae6b09119d88b4a989a7c0907bf9585e1cdd9d0125092255cc8d3e4ddf751",
+      "file_id": "000000000000000005590000001994a4",
+      "last_write_utc_ticks": 639236442876108264
+    }
+  },
+  "review_scope": {
+    "files_edited_by_reviewers": false,
+    "wsl_execution_performed": false,
+    "default_runner_execution_performed": false,
+    "canonical_execution_performed": false,
+    "heavy_execution_performed": false
+  },
+  "independent_checks": {
+    "tests_passed": 14,
+    "ruff_check_passed": true,
+    "ruff_format_passed": true,
+    "powershell5_parser_errors": 0,
+    "powershell7_parser_errors": 0,
+    "command_ast_nodes_each_engine": 92,
+    "dot_sourced_static_self_test_calls": 1,
+    "argument_free_default_calls": 1,
+    "default_call_is_final_try_operation": true,
+    "complete_predecessor_pins": 89,
+    "ordinary_predecessor_read_guards": 88,
+    "exclusively_replayed_v28_archive_pins": 1,
+    "quartet_and_primary_review_read_guards": 5,
+    "gate_self_and_review_read_guards": 2,
+    "protected_evidence_read_guards": 93,
+    "total_unique_held_read_guards": 95,
+    "resource_monitor_readiness_children": 3,
+    "minimum_first_start_separation_milliseconds": 5000,
+    "expected_hash_parameters_mandatory_and_lowercase_sha256": true,
+    "same_handle_restrictive_read_guards": true,
+    "powershell5_zero_length_byte_array_preserved": true,
+    "powershell7_zero_length_byte_array_preserved": true,
+    "guarded_concurrent_write_rejected_in_both_engines": true,
+    "final_exact_89_pin_array_replay": true,
+    "no_automatic_retry": true,
+    "combined_retained_v30_v31_v32_replay_bound": true
+  },
+  "fresh_state": {
+    "v33_run_artifact_prefix": "muni-fspsx-v33-canonical-readonly-tests-2339df35f57e441a8f92bd1f890fa68f",
+    "v33_run_artifact_count": 0,
+    "shared_lock_path": "output/diagnostic-receipts/planora-shared-heavy-wsl.lock",
+    "shared_lock_present": false
+  },
+  "reviewer_reports": [
+    {
+      "reviewer_task": "/root/v33_gate_static_review",
+      "status": "GO",
+      "checks": "exact live hashes; PowerShell 5.1 and 7 parsers; 93/95 restrictive guard census; zero-byte same-handle read and write-share rejection; three readiness samples; retained replay; final one-shot ordering; pytest and Ruff"
+    },
+    {
+      "reviewer_task": "/root/v33_gate_contract_review",
+      "status": "GO",
+      "checks": "exact live hashes; hash-chain closure; semantic receipt replay; 95 held-stream lifetime and TOCTOU analysis; 88 plus 1 archive partition; PowerShell 5.1 empty-file semantics; child validation; exact 89-pin replay; retry and fail-open analysis"
+    }
+  ],
+  "blockers": []
+}
