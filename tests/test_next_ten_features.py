@@ -232,7 +232,7 @@ def test_drag_drop_helpers_move_activity(qt_app):
         win.update_entities()
         win.update_table()
         win._on_schedule_drag_requested(0, 0)
-        win._on_schedule_drop_requested(0, 1)
+        win._on_schedule_drop_requested(1, 0)
         assert int(win.current_schedule[int(a_id)]["slot"]) == 1
     finally:
         win.close()

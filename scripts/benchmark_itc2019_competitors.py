@@ -1356,6 +1356,11 @@ def _output_artifact_metadata(
     output_path: Path,
 ) -> dict[str, str]:
     resolved_root = matrix_root.resolve(strict=True)
+    lexical_output = output_path.resolve(strict=False)
+    try:
+        lexical_output.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError("Solution artifact escapes the matrix root") from exc
     resolved_output = output_path.resolve(strict=True)
     if not resolved_output.is_file():
         raise ValueError("Solution artifact is not a regular file")

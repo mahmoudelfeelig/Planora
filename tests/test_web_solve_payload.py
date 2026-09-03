@@ -30,9 +30,11 @@ def test_web_solve_payload_moves_hard_constraints_out_of_options():
 
 def test_react_client_preserves_failed_solves_and_handles_complete_jobs():
     app = (ROOT / "web" / "src" / "react" / "App.tsx").read_text(encoding="utf-8")
+    planner_api = (ROOT / "web" / "src" / "react" / "planner_api.ts").read_text(encoding="utf-8")
     assert "The current timetable was preserved" in app
-    assert '["complete", "done", "failed", "cancelled"]' in app
-    assert '["complete", "done"].includes(String(payload.status))' in app
+    assert "const payload = await planner.improve(" in app
+    assert "Improve finished without a valid schedule" in app
+    assert "`/sessions/${sessionId}/improve`" in planner_api
     assert "function jobPercent" not in app
     assert "Number(jobStatus.progress || 0)" not in app
 
@@ -67,13 +69,14 @@ def test_react_hardening_workflows_are_wired():
     projects = (ROOT / "web" / "src" / "react" / "components" / "ProjectsPanel.tsx").read_text(encoding="utf-8")
     board = (ROOT / "web" / "src" / "react" / "components" / "ScheduleBoard.tsx").read_text(encoding="utf-8")
     assert 'await api.post<Dict>("/auth/logout", {})' in app
-    assert "window.setTimeout(poll" in app and "window.setInterval" not in app[app.index("const jobId"):app.index("async function holdSelected")]
+    assert "const payload = await planner.improve(" in app
+    assert "setSchedule(nextSchedule)" in app
     assert "schedule={schedule}" in app
     assert "scheduleActivities" not in app
     assert "instance={instance}" in app and "scenarios={uiContract.scenarios}" in app
     assert "scheduleActivities" not in operations
     assert "Save current workspace" in projects and "Rename" in projects and "Delete" in projects
-    assert "colSpan={span}" in board and 'span > 1 ? "multi-slot"' in board
+    assert "rowSpan={span}" in board and 'span > 1 ? "multi-slot"' in board
 
 
 def test_shared_ui_contract_maps_plain_language_choices_to_backend_owned_modes():

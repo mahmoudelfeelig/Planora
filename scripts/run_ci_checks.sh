@@ -37,6 +37,7 @@ mapfile -t ORDINARY_TEST_FILES < <(
   # pair during deterministic regeneration. Keep that custody lane on its
   # authenticated Windows host instead of weakening the pinned tests.
   find tests -type f -name 'test_*.py' \
+    ! -name 'test_muni_v33_terminal_gate_rejection.py' \
     ! -name 'test_run_muni_v*.py' \
     ! -path "${RELEASE_ARTIFACT_FILE}" \
     -print | sort

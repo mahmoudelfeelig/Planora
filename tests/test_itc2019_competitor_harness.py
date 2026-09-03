@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 import json
 from pathlib import Path
+import tarfile
 
 import pytest
 
@@ -270,10 +271,30 @@ def test_planora_provenance_binds_every_auto_formulation_module() -> None:
     )
 
 
-def test_corrected_middle_instances_are_bound_to_organizer_bytes() -> None:
+def test_corrected_middle_instances_are_bound_to_organizer_bytes(
+    tmp_path: Path,
+) -> None:
     input_root = (
         harness.ROOT / "data/external/itc2019-mpp-c33d15797686/raw/data/input/ITC-2019"
     )
+    if not input_root.is_dir():
+        input_root = tmp_path / "ITC-2019"
+        input_root.mkdir()
+        archive = (
+            harness.ROOT
+            / "benchmarks/competitor_packages/lemos-c33d15797686a27c192eabb90948baa54d3ddef5.tar.gz"
+        )
+        prefix = (
+            "MPPTimetables-c33d15797686a27c192eabb90948baa54d3ddef5/"
+            "data/input/ITC-2019/"
+        )
+        with tarfile.open(archive, "r:gz") as bundle:
+            for case in harness.OFFICIAL_CORRECTED_INPUT_SHA256:
+                member = bundle.getmember(f"{prefix}{case}.xml")
+                assert member.isfile()
+                source = bundle.extractfile(member)
+                assert source is not None
+                (input_root / f"{case}.xml").write_bytes(source.read())
 
     assert (
         harness._corrected_input_hash_errors(
