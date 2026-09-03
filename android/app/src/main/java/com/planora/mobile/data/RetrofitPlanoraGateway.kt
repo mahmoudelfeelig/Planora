@@ -260,10 +260,14 @@ class RetrofitPlanoraGateway(
     )
   }
 
-  override suspend fun importCsv(filename: String, content: String): GatewayResult<ScheduleWorkspace> = authenticatedRequest { client ->
+  override suspend fun importCsv(
+    filename: String,
+    content: String,
+    fieldMap: Map<String, String>,
+  ): GatewayResult<ScheduleWorkspace> = authenticatedRequest { client ->
     require(content.isNotBlank()) { "The selected file is empty." }
     val api = client.api
-    val imported = api.importCsv(ImportCsvRequestDto(filename, content))
+    val imported = api.importCsv(ImportCsvRequestDto(filename, content, fieldMap = fieldMap))
     val session = api.createSession(
       SessionCreateRequest(imported.instance, imported.schedule, mapOf("source" to "android-import")),
     )
@@ -973,9 +977,9 @@ private fun PrincipalDto.toDomain() = Principal(
   displayName = displayName?.takeIf { it.isNotBlank() } ?: userId.substringBefore('@'),
   role = role,
   tenantId = tenantId,
-  permissions = permissions.toSet(),
+  permissions = permissions.orEmpty().toSet(),
   isGlobalAdmin = isGlobalAdmin,
-  groups = groups,
+  groups = groups.orEmpty(),
 )
 
 private fun OrganizationMembershipDto.toDomain() = OrganizationMembership(

@@ -118,18 +118,21 @@ private fun PlanoraContent(viewModel: PlanoraViewModel, state: PlanoraUiState) {
   var exportToWrite by remember { mutableStateOf<ExportedSchedule?>(null) }
   var exportGeneration by remember { mutableStateOf<Long?>(null) }
   var pendingImportGeneration by remember { mutableStateOf<Long?>(null) }
+  var pendingImportFieldMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
   BackHandler(enabled = state.destination == Destination.TUTORIAL) {
     if (state.tutorialPage > 0) viewModel.tutorialPrevious() else viewModel.finishTutorial()
   }
   val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
     val generation = pendingImportGeneration
+    val fieldMap = pendingImportFieldMap
     pendingImportGeneration = null
+    pendingImportFieldMap = emptyMap()
     if (uri != null && generation != null && viewModel.isAuthenticatedGeneration(generation)) {
       scope.launch {
         try {
           val (name, content) = withContext(Dispatchers.IO) { readText(context, uri) }
           currentCoroutineContext().ensureActive()
-          viewModel.importCsv(name, content, generation)
+          viewModel.importCsv(name, content, generation, fieldMap)
         } catch (error: CancellationException) {
           throw error
         } catch (error: Exception) {
@@ -222,10 +225,11 @@ private fun PlanoraContent(viewModel: PlanoraViewModel, state: PlanoraUiState) {
       else -> PlanoraShell(
         state = state,
         viewModel = viewModel,
-        onImport = {
+        onImport = { fieldMap ->
           if (state.principal?.canWriteSchedule == true) {
             viewModel.captureAuthenticatedGeneration()?.let { generation ->
               pendingImportGeneration = generation
+              pendingImportFieldMap = fieldMap
               importLauncher.launch(
                 arrayOf(
                   "text/csv",
@@ -252,7 +256,7 @@ private fun PlanoraContent(viewModel: PlanoraViewModel, state: PlanoraUiState) {
 private fun PlanoraShell(
   state: PlanoraUiState,
   viewModel: PlanoraViewModel,
-  onImport: () -> Unit,
+  onImport: (Map<String, String>) -> Unit,
 ) {
   val snackbar = remember { SnackbarHostState() }
   BackHandler(enabled = state.destination != Destination.HOME && state.destination != Destination.TUTORIAL) {
@@ -318,7 +322,7 @@ private fun PlanoraShell(
           when (state.destination) {
             Destination.HOME -> HomeScreen(
               state = state,
-              onScenario = { item -> if (item.id == "import") onImport() else viewModel.createScenario(item) },
+              onScenario = { item -> if (item.id == "import") onImport(emptyMap()) else viewModel.createScenario(item) },
               onMode = viewModel::chooseMode,
               onOpenProject = viewModel::openProject,
               onOpenTutorial = { viewModel.openTutorial(Destination.HOME) },
@@ -351,7 +355,9 @@ private fun PlanoraShell(
               projects = state.projects,
               loadError = state.projectsLoadError,
               canWrite = state.principal?.canWriteSchedule == true,
+              canSave = state.workspace != null,
               onRetry = viewModel::refreshProjects,
+              onSave = viewModel::saveProject,
               onOpen = viewModel::openProject,
               onRename = viewModel::renameProject,
               onDelete = viewModel::deleteProject,

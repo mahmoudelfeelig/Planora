@@ -1536,7 +1536,9 @@ internal fun ProjectsScreen(
   projects: List<ProjectSummary>,
   loadError: String? = null,
   canWrite: Boolean = false,
+  canSave: Boolean = false,
   onRetry: () -> Unit = {},
+  onSave: (String) -> Unit = {},
   onOpen: (ProjectSummary) -> Unit,
   onRename: (ProjectSummary, String) -> Unit = { _, _ -> },
   onDelete: (ProjectSummary) -> Unit = {},
@@ -1544,6 +1546,7 @@ internal fun ProjectsScreen(
   var editing by remember { mutableStateOf<ProjectSummary?>(null) }
   var deleting by remember { mutableStateOf<ProjectSummary?>(null) }
   var newName by remember { mutableStateOf("") }
+  var saveName by remember { mutableStateOf("") }
   editing?.let { project ->
     AlertDialog(
       onDismissRequest = { editing = null },
@@ -1567,7 +1570,27 @@ internal fun ProjectsScreen(
     contentPadding = PaddingValues(22.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    item { SectionTitle("Projects", "Schedules saved for your current university workspace.") }
+    item { SectionTitle("Projects", "Save the current workspace or reopen a tenant-scoped timetable snapshot.") }
+    if (canWrite) {
+      item {
+        Card(
+          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+          border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+          shape = MaterialTheme.shapes.large,
+        ) {
+          Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Save current workspace", style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(saveName, { saveName = it }, label = { Text("Project name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Button(
+              onClick = { onSave(saveName.trim()); saveName = "" },
+              enabled = canSave && saveName.isNotBlank(),
+              modifier = Modifier.fillMaxWidth(),
+            ) { Text("Save project") }
+            if (!canSave) Text("Load or import timetable data before saving.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+          }
+        }
+      }
+    }
     if (!loadError.isNullOrBlank()) {
       item {
         Surface(
@@ -1590,7 +1613,7 @@ internal fun ProjectsScreen(
       items(projects, key = { "${it.tenantId}:${it.name}" }) { project ->
         ProjectRow(
           project = project,
-          canWrite = canWrite,
+          canWrite = canWrite && project.storage != "legacy",
           onOpen = onOpen,
           onRename = { editing = project; newName = project.name },
           onDelete = { deleting = project },

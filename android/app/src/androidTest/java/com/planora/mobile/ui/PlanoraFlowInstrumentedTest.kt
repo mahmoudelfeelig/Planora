@@ -166,7 +166,7 @@ class PlanoraFlowInstrumentedTest {
     }
 
     composeRule.onNodeWithText("Register").performScrollTo().assertIsDisplayed().performClick()
-    composeRule.onNodeWithText("Create account").assertIsDisplayed()
+    composeRule.onAllNodes(hasText("Create account"))[0].assertIsDisplayed()
     composeRule.onNodeWithText("Display name").assertIsDisplayed()
   }
 
@@ -495,6 +495,7 @@ private open class FakeGateway : PlanoraGateway {
   override suspend fun importCsv(
     filename: String,
     content: String,
+    fieldMap: Map<String, String>,
   ): GatewayResult<ScheduleWorkspace> = GatewayResult.Success(workspace.copy(projectName = filename))
   override suspend fun startSolve(workspace: ScheduleWorkspace, modeId: String, settings: SolverSettings, useAdvancedOverrides: Boolean) = GatewayResult.Success(workspace)
   override suspend fun validate(workspace: ScheduleWorkspace) = GatewayResult.Success(workspace)
@@ -609,6 +610,7 @@ private class CrossAccountGateway : FakeGateway() {
   override suspend fun importCsv(
     filename: String,
     content: String,
+    fieldMap: Map<String, String>,
   ): GatewayResult<ScheduleWorkspace> {
     importCalls.incrementAndGet()
     return GatewayResult.Success(workspace.copy(projectName = filename))

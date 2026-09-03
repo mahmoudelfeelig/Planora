@@ -179,9 +179,16 @@ internal fun ToolsScreen(principal: Principal, onNavigate: (Destination) -> Unit
 internal fun DataScreen(
   state: PlanoraUiState,
   onScenario: (CatalogItem) -> Unit,
-  onImport: () -> Unit,
+  onImport: (Map<String, String>) -> Unit,
   onMode: (String) -> Unit,
 ) {
+  var fieldMapText by remember {
+    mutableStateOf("week=week, day=day, slot=slot, course=course, group=group, room=room, kind=kind, lecturer=lecturer, ta=ta")
+  }
+  val fieldMap = fieldMapText.split(',').mapNotNull { part ->
+    val values = part.split('=', limit = 2).map(String::trim)
+    values.takeIf { it.size == 2 && it.all(String::isNotBlank) }?.let { it[0] to it[1] }
+  }.toMap()
   LazyColumn(
     Modifier.fillMaxSize(),
     contentPadding = PaddingValues(16.dp),
@@ -203,7 +210,7 @@ internal fun DataScreen(
       Card(
         modifier = Modifier.fillMaxWidth().clickable(
           enabled = scenario.id != "import" || state.principal?.canWriteSchedule == true,
-        ) { if (scenario.id == "import") onImport() else onScenario(scenario) },
+        ) { if (scenario.id == "import") onImport(fieldMap) else onScenario(scenario) },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
       ) {
@@ -216,6 +223,23 @@ internal fun DataScreen(
             fontWeight = FontWeight.SemiBold,
           )
         }
+      }
+    }
+    item {
+      FeatureCard("CSV column mapping") {
+        Text("Match Planora fields to your CSV headers. The defaults fit the web app's import format.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(
+          value = fieldMapText,
+          onValueChange = { fieldMapText = it },
+          label = { Text("field=column pairs") },
+          minLines = 3,
+          modifier = Modifier.fillMaxWidth(),
+        )
+        Button(
+          onClick = { onImport(fieldMap) },
+          enabled = state.principal?.canWriteSchedule == true && fieldMap.keys.containsAll(listOf("week", "day", "slot", "course")),
+          modifier = Modifier.fillMaxWidth(),
+        ) { Text("Choose CSV file") }
       }
     }
     item { Text("Default planning approach", style = MaterialTheme.typography.titleLarge) }

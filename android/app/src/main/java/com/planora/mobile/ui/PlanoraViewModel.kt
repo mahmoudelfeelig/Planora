@@ -315,7 +315,12 @@ class PlanoraViewModel(
     }
   }
 
-  fun importCsv(filename: String, content: String, expectedGeneration: Long) {
+  fun importCsv(
+    filename: String,
+    content: String,
+    expectedGeneration: Long,
+    fieldMap: Map<String, String> = emptyMap(),
+  ) {
     if (!isAuthenticatedGeneration(expectedGeneration)) return
     if (_uiState.value.principal?.canWriteSchedule != true) {
       showMessage("Your role can view schedules but cannot import timetable data.", true)
@@ -323,7 +328,7 @@ class PlanoraViewModel(
     }
     launchBusy(expectedGeneration) { generation ->
     if (!canReplaceWorkspace()) return@launchBusy
-    when (val result = gateway.importCsv(filename, content)) {
+    when (val result = gateway.importCsv(filename, content, fieldMap)) {
         is GatewayResult.Success -> if (isCurrent(generation)) openWorkspace(result.value)
         is GatewayResult.Failure -> if (isCurrent(generation)) showFailure(result)
       }

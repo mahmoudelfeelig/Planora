@@ -53,9 +53,9 @@ data class PrincipalDto(
   @SerializedName("display_name") val displayName: String? = null,
   val role: String,
   @SerializedName("tenant_id") val tenantId: String,
-  val permissions: List<String> = emptyList(),
+  val permissions: List<String>? = null,
   @SerializedName("is_global_admin") val isGlobalAdmin: Boolean = false,
-  val groups: List<String> = emptyList(),
+  val groups: List<String>? = null,
 )
 
 data class OrganizationMembershipDto(

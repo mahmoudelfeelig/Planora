@@ -19,7 +19,11 @@ interface PlanoraGateway {
   suspend fun listProjects(): GatewayResult<List<ProjectSummary>>
   suspend fun openProject(name: String, tenantId: String): GatewayResult<ScheduleWorkspace>
   suspend fun createScenario(scenarioId: String): GatewayResult<ScheduleWorkspace>
-  suspend fun importCsv(filename: String, content: String): GatewayResult<ScheduleWorkspace>
+  suspend fun importCsv(
+    filename: String,
+    content: String,
+    fieldMap: Map<String, String> = emptyMap(),
+  ): GatewayResult<ScheduleWorkspace>
   suspend fun startSolve(
     workspace: ScheduleWorkspace,
     modeId: String,
