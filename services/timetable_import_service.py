@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import re
+import fnmatch
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
@@ -179,12 +180,21 @@ def _infer_room_type(room_name: str, *, transform_config: Dict[str, Any] | None 
         room_type = str(rule.get("room_type", "") or "").upper()
         if not pattern or room_type not in {"LECTURE", "TUTORIAL", "COMPUTER_LAB", "SPECIALIZED_LAB"}:
             continue
-        try:
-            if re.search(pattern, room_name, flags=re.IGNORECASE):
-                return room_type
-        except re.error:
-            if pattern.lower() in room_name.lower():
-                return room_type
+        if len(pattern) > 128:
+            raise ValueError("Room type rule patterns are limited to 128 characters.")
+        if any(char in pattern for char in "(){}+|\\^"):
+            raise ValueError(
+                "Room type rules support literal text and shell wildcards only."
+            )
+        candidate = room_name.casefold()
+        safe_pattern = pattern.casefold()
+        matched = (
+            fnmatch.fnmatchcase(candidate, safe_pattern)
+            if any(char in safe_pattern for char in "*?[]")
+            else safe_pattern in candidate
+        )
+        if matched:
+            return room_type
     return None
 
 

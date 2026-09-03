@@ -19,6 +19,10 @@ class Group:
     size: int
     course_ids: List[int]
     preferred_free_days: int = 2
+    # Historical or forecast enrollment scenarios keyed by a stable scenario id.
+    demand_scenarios: Dict[str, int] = field(default_factory=dict)
+    # Maximum upward deviation used by budgeted-uncertainty room sizing.
+    demand_deviation: int = 0
 
 
 @dataclass
@@ -90,6 +94,23 @@ class Activity:
     ta_id: int
     requires_specialization: str | None = None
     resource_ids: List[int] = field(default_factory=list)
+    cluster_key: str | None = None
+
+
+@dataclass
+class DistributionConstraint:
+    """Institution-defined relation between activities.
+
+    ``required`` constraints are hard. Otherwise ``penalty`` is charged using
+    the constraint type's documented violation count.
+    """
+
+    id: str
+    constraint_type: str
+    activity_ids: List[int]
+    required: bool = True
+    penalty: int = 0
+    parameters: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -136,3 +157,17 @@ class Instance:
 
     # Optional: arbitrary named term blocks across the week sequence.
     term_blocks: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Activity-specific forbidden (day, start-slot) pairs, used by external
+    # benchmark formats whose availability cannot be represented per staff.
+    activity_unavailability: Dict[int, Set[Tuple[str, int]]] = field(default_factory=dict)
+
+    # Generic ITC/UniTime-style relations between activities.
+    distribution_constraints: List[DistributionConstraint] = field(default_factory=list)
+
+    # Enrollment uncertainty policy. Supported modes are nominal, worst_case,
+    # quantile, and budgeted. See utils.demand for exact semantics.
+    demand_policy: Dict[str, Any] = field(default_factory=dict)
+
+    # Institution-level policy metadata such as standard starts and prime time.
+    institutional_policy: Dict[str, Any] = field(default_factory=dict)

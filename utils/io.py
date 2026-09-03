@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-import pickle
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from utils.domain import (
     Activity,
     Course,
+    DistributionConstraint,
     GenericResource,
     Group,
     Instance,
@@ -18,6 +18,17 @@ from utils.domain import (
 from utils.generator import instance_to_json
 
 LEGACY_SCENARIO_SCHEMA_VERSION = 2
+
+UNSAFE_LEGACY_PICKLE_MESSAGE = (
+    "Legacy pickle files are not accepted because loading them can execute "
+    "arbitrary code. Use a trusted, offline migration process to convert the "
+    "file to JSON or SQLite before opening it in Planora."
+)
+
+
+def _reject_legacy_pickle(path: Path) -> None:
+    if path.suffix.lower() == ".pkl":
+        raise ValueError(UNSAFE_LEGACY_PICKLE_MESSAGE)
 
 
 def _to_int_list(values: List[Any]) -> List[int]:
@@ -61,6 +72,11 @@ def instance_from_json(data: Dict[str, Any]) -> Instance:
             size=int(g["size"]),
             course_ids=_to_int_list(g.get("course_ids", [])),
             preferred_free_days=int(g.get("preferred_free_days", 2)),
+            demand_scenarios={
+                str(name): int(value)
+                for name, value in (g.get("demand_scenarios", {}) or {}).items()
+            },
+            demand_deviation=int(g.get("demand_deviation", 0) or 0),
         )
         for gid, g in (data.get("groups") or {}).items()
     }
@@ -137,9 +153,26 @@ def instance_from_json(data: Dict[str, Any]) -> Instance:
             ta_id=int(a["ta_id"]),
             requires_specialization=a.get("requires_specialization", None),
             resource_ids=_to_int_list(a.get("resource_ids", [])),
+            cluster_key=(
+                str(a.get("cluster_key"))
+                if a.get("cluster_key") not in (None, "")
+                else None
+            ),
         )
         for aid, a in (data.get("activities") or {}).items()
     }
+    distribution_constraints = [
+        DistributionConstraint(
+            id=str(item.get("id", f"distribution-{index}")),
+            constraint_type=str(item.get("constraint_type", item.get("type", ""))),
+            activity_ids=_to_int_list(item.get("activity_ids", [])),
+            required=bool(item.get("required", True)),
+            penalty=int(item.get("penalty", 0) or 0),
+            parameters=dict(item.get("parameters", {}) or {}),
+        )
+        for index, item in enumerate(data.get("distribution_constraints", []) or [])
+        if isinstance(item, dict)
+    ]
 
     inst = Instance(
         days=[str(d) for d in data.get("days", [])],
@@ -162,6 +195,17 @@ def instance_from_json(data: Dict[str, Any]) -> Instance:
         precedence_rules=data.get("precedence_rules", []) or [],
         sla_targets=data.get("sla_targets", {}) or {},
         term_blocks=data.get("term_blocks", []) or [],
+        activity_unavailability={
+            int(activity_id): {
+                (str(pair[0]), int(pair[1]))
+                for pair in pairs
+                if isinstance(pair, (list, tuple)) and len(pair) == 2
+            }
+            for activity_id, pairs in (data.get("activity_unavailability", {}) or {}).items()
+        },
+        distribution_constraints=distribution_constraints,
+        demand_policy=dict(data.get("demand_policy", {}) or {}),
+        institutional_policy=dict(data.get("institutional_policy", {}) or {}),
     )
 
     # Restore optional time labeling fields when present.
@@ -174,11 +218,10 @@ def instance_from_json(data: Dict[str, Any]) -> Instance:
 
 def read_instance(path: str | Path) -> Instance:
     path = Path(path)
+    _reject_legacy_pickle(path)
     if path.suffix.lower() == ".json":
         data = json.loads(path.read_text(encoding="utf-8"))
         return instance_from_json(data)
-    if path.suffix.lower() == ".pkl":
-        return pickle.loads(path.read_bytes())
     raise ValueError(f"Unsupported instance format: {path.suffix}")
 
 
@@ -313,16 +356,8 @@ def read_schedule_csv_mapped(
 
 def write_scenario(path: str | Path, inst: Instance, schedule: Dict[int, Dict[str, Any]], meta: Dict[str, Any] | None = None) -> None:
     path = Path(path)
+    _reject_legacy_pickle(path)
     meta = meta or {}
-    if path.suffix.lower() == ".pkl":
-        payload = {
-            "schema_version": LEGACY_SCENARIO_SCHEMA_VERSION,
-            "instance": inst,
-            "schedule": schedule,
-            "meta": meta,
-        }
-        path.write_bytes(pickle.dumps(payload))
-        return
     if path.suffix.lower() == ".json":
         data = instance_to_json(inst)
         data["locked_activities"] = getattr(inst, "locked_activities", {}) or {}
@@ -344,11 +379,7 @@ def write_scenario(path: str | Path, inst: Instance, schedule: Dict[int, Dict[st
 
 def read_scenario(path: str | Path) -> Tuple[Instance, Dict[int, Dict[str, Any]], Dict[str, Any]]:
     path = Path(path)
-    if path.suffix.lower() == ".pkl":
-        payload = pickle.loads(path.read_bytes())
-        if isinstance(payload, dict) and "instance" in payload and "schedule" in payload:
-            return payload["instance"], payload["schedule"], payload.get("meta", {})
-        raise ValueError("Unsupported legacy scenario pickle payload")
+    _reject_legacy_pickle(path)
     if path.suffix.lower() == ".json":
         payload = json.loads(path.read_text(encoding="utf-8"))
         if "instance" not in payload:

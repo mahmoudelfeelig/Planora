@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from product.branding import APP_OWNER_NAME
 from product.flags import DEFAULT_FEATURE_FLAGS
 
-PRODUCT_SCHEMA_VERSION = 1
+PRODUCT_SCHEMA_VERSION = 2
 DEFAULT_PRODUCT_DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
 DEFAULT_PRODUCT_WEEKS = list(range(1, 13))
 
@@ -55,6 +55,10 @@ class ProductConstraintConfig:
     precedence_rules: List[Dict[str, Any]] = field(default_factory=list)
     sla_targets: Dict[str, Any] = field(default_factory=dict)
     rule_overrides: Dict[str, Any] = field(default_factory=dict)
+    distribution_constraints: List[Dict[str, Any]] = field(default_factory=list)
+    demand_policy: Dict[str, Any] = field(default_factory=dict)
+    institutional_policy: Dict[str, Any] = field(default_factory=dict)
+    institution_policy_preset: str = ""
 
 
 @dataclass

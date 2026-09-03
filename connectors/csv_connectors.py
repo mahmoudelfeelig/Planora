@@ -4,6 +4,8 @@ import csv
 from pathlib import Path
 from typing import Any, Dict, List
 
+from utils.csv_security import spreadsheet_safe_mapping
+
 
 class SISCsvConnector:
     def export_courses(self, inst, path: str | Path) -> None:
@@ -17,12 +19,12 @@ class SISCsvConnector:
                     if int(course.id) in set(int(c) for c in program.course_ids)
                 ]
                 writer.writerow(
-                    {
+                    spreadsheet_safe_mapping({
                         "course_id": int(course.id),
                         "code": str(course.code),
                         "name": str(course.name),
                         "programs": ";".join(programs),
-                    }
+                    })
                 )
 
 
@@ -33,14 +35,14 @@ class ERPCsvConnector:
             writer.writeheader()
             for staff in inst.staff.values():
                 writer.writerow(
-                    {
+                    spreadsheet_safe_mapping({
                         "staff_id": int(staff.id),
                         "name": str(staff.name),
                         "role": "PROF" if staff.is_prof else "TA",
                         "course_ids": ";".join(
                             str(int(c_id)) for c_id in sorted(staff.can_teach_courses)
                         ),
-                    }
+                    })
                 )
 
 
@@ -55,12 +57,12 @@ class LMSCsvConnector:
             for group in inst.groups.values():
                 program = inst.programs.get(int(group.program_id))
                 writer.writerow(
-                    {
+                    spreadsheet_safe_mapping({
                         "group_id": int(group.id),
                         "group_name": str(group.name),
                         "program": str(program.name) if program is not None else "",
                         "course_ids": ";".join(str(int(c_id)) for c_id in group.course_ids),
-                    }
+                    })
                 )
 
 

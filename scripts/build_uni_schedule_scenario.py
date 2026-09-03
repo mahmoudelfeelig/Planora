@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import pickle
 import re
 import sys
 from pathlib import Path
@@ -43,7 +42,6 @@ def write_outputs(
     quality: dict[str, int],
 ) -> dict[str, str]:
     scenario_json = output_prefix.with_name(output_prefix.name + "-scenario.json")
-    scenario_pkl = output_prefix.with_name(output_prefix.name + "-scenario.pkl")
     instance_json = output_prefix.with_name(output_prefix.name + "-instance.json")
     schedule_csv = output_prefix.with_name(output_prefix.name + "-schedule.csv")
     report_json = output_prefix.with_name(output_prefix.name + "-validation-report.json")
@@ -53,9 +51,6 @@ def write_outputs(
         inst,
         schedule,
         meta={**meta, "validation_errors": validation_errors, "quality": quality},
-    )
-    scenario_pkl.write_bytes(
-        pickle.dumps({"instance": inst, "schedule": schedule, "meta": meta})
     )
     instance_json.write_text(
         json.dumps(instance_to_json(inst), ensure_ascii=False, indent=2) + "\n",
@@ -83,7 +78,6 @@ def write_outputs(
     )
     return {
         "scenario_json": str(scenario_json),
-        "scenario_pkl": str(scenario_pkl),
         "instance_json": str(instance_json),
         "schedule_csv": str(schedule_csv),
         "report_json": str(report_json),

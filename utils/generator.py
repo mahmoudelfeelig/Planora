@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import pickle
 import random
 from collections import defaultdict
 from dataclasses import is_dataclass
@@ -39,7 +38,7 @@ def _distribute_sessions(total_sessions: int, weeks: List[int], rng: random.Rand
     return out
 
 
-def generate_instance(mode: str = "small_demo") -> Instance:
+def generate_instance(mode: str = "small_demo", seed: int | None = None) -> Instance:
     """
     Entry point used by main.py and ui_desktop.py.
 
@@ -55,7 +54,7 @@ def generate_instance(mode: str = "small_demo") -> Instance:
 
     if mode == "small_demo":
         return _generate_university(
-            seed=1,
+            seed=1 if seed is None else int(seed),
             num_programs=2,
             groups_per_program=(1, 2),
             courses_per_program=(4, 5),
@@ -65,7 +64,7 @@ def generate_instance(mode: str = "small_demo") -> Instance:
 
     if mode == "mixed_large":
         return _generate_university(
-            seed=2,
+            seed=2 if seed is None else int(seed),
             num_programs=25,
             groups_per_program=(1, 2),
             courses_per_program=(4, 7),
@@ -73,7 +72,7 @@ def generate_instance(mode: str = "small_demo") -> Instance:
 
     if mode == "block_profs":
         return _generate_university(
-            seed=3,
+            seed=3 if seed is None else int(seed),
             num_programs=20,
             groups_per_program=(1, 2),
             courses_per_program=(4, 7),
@@ -82,15 +81,16 @@ def generate_instance(mode: str = "small_demo") -> Instance:
 
     if mode == "labs_only":
         return _generate_university(
-            seed=4,
+            seed=4 if seed is None else int(seed),
             num_programs=10,
             groups_per_program=(1, 2),
             courses_per_program=(4, 6),
         )
 
     if mode == "random":
-        rand_seed = random.randint(1, 10**9)
-        num_programs = random.randint(10, 25)
+        rng = random.Random(seed)
+        rand_seed = rng.randint(1, 10**9)
+        num_programs = rng.randint(10, 25)
         return _generate_university(
             seed=rand_seed,
             num_programs=num_programs,
@@ -99,11 +99,16 @@ def generate_instance(mode: str = "small_demo") -> Instance:
         )
 
     if mode in {"ss23_uni_like", "uni_like"}:
-        return _generate_ss23_uni_like()
+        return _generate_ss23_uni_like(seed=2023 if seed is None else int(seed))
 
-    if mode == "target_case":
+    if mode in {"target_case", "giu", "giu_target"}:
         from utils.target_profile import generate_target_profile
-        return generate_target_profile(seed=42)
+        instance = generate_target_profile(seed=42 if seed is None else int(seed))
+        if mode in {"giu", "giu_target"}:
+            from services.institution_policy_service import apply_institution_policy
+
+            instance = apply_institution_policy(instance, "giu_target", in_place=True)
+        return instance
 
     raise ValueError(f"Unknown generation mode: {mode}")
 
@@ -185,7 +190,7 @@ def _build_ss23_uni_like_course_patterns(total_courses: int) -> List[Dict[str, A
     return patterns
 
 
-def _generate_ss23_uni_like() -> Instance:
+def _generate_ss23_uni_like(seed: int = 2023) -> Instance:
     """
     Built-in stress preset extrapolated from data/SS23-All-Majors-Schedule.
 
@@ -231,7 +236,7 @@ def _generate_ss23_uni_like() -> Instance:
         calendar_days=["MON", "TUE", "WED", "THU", "FRI", "SAT"],
         calendar_weeks=list(range(1, 13)),
         slots_per_day=5,
-        seed=2023,
+        seed=int(seed),
     )
     inst.objective_profile = "fast_feasible"
     inst.sla_targets = {
@@ -1611,8 +1616,8 @@ def _inject_cross_major_clusters(
 ) -> None:
     """
     Occasionally co-locate tutorials or labs across different programs in the same week.
-    This sets a runtime attribute 'cluster_key' on Activity. JSON export will drop it
-    unless the Activity dataclass is extended to include cluster_key.
+    The typed cluster key survives JSON/project round trips and is compiled by
+    both the time master and exact room subproblem.
     """
 
     # build program id per activity
@@ -1730,6 +1735,16 @@ def instance_to_json(inst: Instance) -> Dict[str, Any]:
         "precedence_rules": _conv(getattr(inst, "precedence_rules", []) or []),
         "sla_targets": _conv(getattr(inst, "sla_targets", {}) or {}),
         "term_blocks": _conv(getattr(inst, "term_blocks", []) or []),
+        "activity_unavailability": _conv(
+            getattr(inst, "activity_unavailability", {}) or {}
+        ),
+        "distribution_constraints": _conv(
+            getattr(inst, "distribution_constraints", []) or []
+        ),
+        "demand_policy": _conv(getattr(inst, "demand_policy", {}) or {}),
+        "institutional_policy": _conv(
+            getattr(inst, "institutional_policy", {}) or {}
+        ),
     }
 
 def write_instance(inst: Instance, out_path: str | Path) -> None:
@@ -1738,9 +1753,6 @@ def write_instance(inst: Instance, out_path: str | Path) -> None:
     if path.suffix.lower() == ".json":
         with path.open("w", encoding="utf-8") as f:
             json.dump(instance_to_json(inst), f, ensure_ascii=False, indent=2)
-    elif path.suffix.lower() == ".pkl":
-        with path.open("wb") as f:
-            pickle.dump(inst, f)
     else:
         raise SystemExit(f"Unsupported output format: {path.suffix}")
 
@@ -1748,18 +1760,13 @@ def _cli_main(argv: List[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description="Generate a timetable instance.")
     parser.add_argument("--mode", default="target_case",
-                        choices=["small_demo","mixed_large","block_profs","labs_only","random","ss23_uni_like","target_case"],
+                        choices=["small_demo","mixed_large","block_profs","labs_only","random","ss23_uni_like","target_case","giu_target"],
                         help="Scenario to generate")
-    parser.add_argument("--seed", type=int, default=None, help="Random seed override for 'random' mode")
-    parser.add_argument("--out", required=True, help="Output path (.json or .pkl)")
+    parser.add_argument("--seed", type=int, default=None, help="Generator seed override for any mode")
+    parser.add_argument("--out", required=True, help="Output path (.json)")
     args = parser.parse_args(argv)
 
-    inst = generate_instance(args.mode)
-
-    if args.mode == "random" and args.seed is not None:
-        import random as _random
-        _random.seed(args.seed)
-        inst = generate_instance(args.mode)
+    inst = generate_instance(args.mode, seed=args.seed)
 
     write_instance(inst, args.out)
     return 0

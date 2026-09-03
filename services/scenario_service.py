@@ -45,6 +45,23 @@ def build_product_scenario_from_instance(
         getattr(inst, "precedence_rules", []) or []
     )
     scenario.constraints.sla_targets = dict(getattr(inst, "sla_targets", {}) or {})
+    scenario.constraints.distribution_constraints = [
+        {
+            "id": str(constraint.id),
+            "constraint_type": str(constraint.constraint_type),
+            "activity_ids": [int(value) for value in constraint.activity_ids],
+            "required": bool(constraint.required),
+            "penalty": int(constraint.penalty),
+            "parameters": dict(constraint.parameters or {}),
+        }
+        for constraint in getattr(inst, "distribution_constraints", []) or []
+    ]
+    scenario.constraints.demand_policy = dict(
+        getattr(inst, "demand_policy", {}) or {}
+    )
+    scenario.constraints.institutional_policy = dict(
+        getattr(inst, "institutional_policy", {}) or {}
+    )
     scenario.calendar.days = [str(day) for day in getattr(inst, "days", [])]
     scenario.calendar.weeks = [int(week) for week in getattr(inst, "weeks", [])]
     scenario.calendar.term_blocks = list(getattr(inst, "term_blocks", []) or [])

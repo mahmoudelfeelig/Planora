@@ -6,6 +6,7 @@ from typing import Dict
 import pytest
 
 from utils import exporter
+from utils.csv_security import spreadsheet_safe_cell
 from utils.domain import Activity, Course, Group, Instance, Room, StaffMember
 
 
@@ -224,7 +225,7 @@ def test_export_summary_reports_writes_csvs(tmp_path):
         days=["MON"],
         slots_per_day=1,
         weeks=[1],
-        groups={1: Group(id=1, name="Group A", program_id=1, size=30, course_ids=[1])},
+        groups={1: Group(id=1, name="+SUM(A1:A2)", program_id=1, size=30, course_ids=[1])},
         courses={
             1: Course(
                 id=1,
@@ -240,7 +241,7 @@ def test_export_summary_reports_writes_csvs(tmp_path):
         },
         staff={1: StaffMember(
             id=1,
-            name="Prof-1",
+            name="=1+1",
             is_prof=True,
             available_days={"MON"},
             max_slots_per_day=None,
@@ -249,7 +250,7 @@ def test_export_summary_reports_writes_csvs(tmp_path):
             prefers_block=False,
             blocks_only=False,
         )},
-        rooms={1: Room(id=1, name="Room 101", capacity=120, room_type="LECTURE", specialization_tags=set())},
+        rooms={1: Room(id=1, name=" @danger", capacity=120, room_type="LECTURE", specialization_tags=set())},
         activities={
             1: Activity(
                 id=1,
@@ -282,6 +283,14 @@ def test_export_summary_reports_writes_csvs(tmp_path):
     assert (tmp_path / "staff_load.csv").exists()
     assert (tmp_path / "group_load.csv").exists()
     assert (tmp_path / "room_util.csv").exists()
+    assert "'=1+1" in (tmp_path / "staff_load.csv").read_text(encoding="utf-8")
+    assert "'+SUM(A1:A2)" in (tmp_path / "group_load.csv").read_text(encoding="utf-8")
+    assert "' @danger" in (tmp_path / "room_util.csv").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("value", ["=1+1", " +cmd", "\t-2", "\r@SUM(A1:A2)"])
+def test_spreadsheet_safe_cell_neutralizes_formula_prefixes(value):
+    assert spreadsheet_safe_cell(value) == "'" + value
 
 
 def test_export_calendar_feeds_writes_manifest(tmp_path):

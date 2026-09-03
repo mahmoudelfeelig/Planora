@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import builtins
+import pickle
 from pathlib import Path
 
+import pytest
+
+from services.project_service import load_legacy_project
 from utils.generator import generate_instance, instance_to_json
 from utils.exporter import export_schedule_to_csv
 from utils.io import (
     instance_from_json,
+    read_instance,
     read_schedule_csv,
     read_schedule_csv_mapped,
     write_scenario,
@@ -81,28 +87,38 @@ def test_scenario_json_roundtrip(tmp_path: Path):
     assert sched2.keys() == schedule.keys()
 
 
-def test_scenario_pickle_roundtrip(tmp_path: Path):
-    inst = generate_instance("small_demo")
-    schedule = {}
-    for a_id, act in inst.activities.items():
-        schedule[a_id] = {
-            "week": act.week,
-            "day": inst.days[0],
-            "slot": 0,
-            "duration": act.duration,
-            "room_id": None,
-            "staff_id": act.prof_id if act.kind == "LEC" else act.ta_id,
-            "course_id": act.course_id,
-            "group_ids": list(act.group_ids),
-            "kind": act.kind,
-        }
-    path = tmp_path / "scenario.pkl"
-    write_scenario(path, inst, schedule, meta={"name": "demo"})
+class _MaliciousPickle:
+    def __init__(self, marker: Path):
+        self.marker = marker
 
-    inst2, sched2, meta = read_scenario(path)
-    assert meta["name"] == "demo"
-    assert len(inst2.activities) == len(inst.activities)
-    assert sched2.keys() == schedule.keys()
+    def __reduce__(self):
+        source = f"open({str(self.marker)!r}, 'w', encoding='utf-8').write('executed')"
+        return builtins.exec, (source,)
+
+
+@pytest.mark.parametrize("reader", [read_instance, read_scenario, load_legacy_project])
+def test_public_pickle_import_is_rejected_without_execution(tmp_path: Path, reader):
+    marker = tmp_path / "pickle-executed"
+    path = tmp_path / "untrusted.pkl"
+    path.write_bytes(pickle.dumps(_MaliciousPickle(marker)))
+
+    with pytest.raises(ValueError, match="can execute arbitrary code"):
+        reader(path)
+
+    assert not marker.exists()
+
+
+def test_public_pickle_export_is_rejected(tmp_path: Path):
+    inst = generate_instance("small_demo")
+    with pytest.raises(ValueError, match="can execute arbitrary code"):
+        write_scenario(tmp_path / "scenario.pkl", inst, {}, meta={"name": "demo"})
+
+
+def test_desktop_file_selectors_do_not_advertise_pickle() -> None:
+    source = (Path(__file__).parents[1] / "ui" / "window_io.py").read_text(
+        encoding="utf-8"
+    )
+    assert ".pkl" not in source
 
 
 def test_schedule_csv_mapped_reads_custom_headers(tmp_path: Path):

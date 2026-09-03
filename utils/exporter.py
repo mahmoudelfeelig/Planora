@@ -15,6 +15,7 @@ except Exception:  # pragma: no cover
     Document = None  # type: ignore
 
 from utils.domain import Instance
+from utils.csv_security import spreadsheet_safe_row
 from product.branding import branding_header_lines
 
 # -------- time labels --------
@@ -236,7 +237,7 @@ def export_schedule_to_csv(inst: Instance, schedule: Dict[int, Dict[str, Any]], 
         for a_id, info in schedule.items():
             gid_list = info.get("group_ids", [])
             gid_str = ";".join(str(x) for x in gid_list) if gid_list else ""
-            w.writerow([
+            w.writerow(spreadsheet_safe_row([
                 a_id,
                 info.get("week"),
                 info.get("day"),
@@ -247,7 +248,7 @@ def export_schedule_to_csv(inst: Instance, schedule: Dict[int, Dict[str, Any]], 
                 info.get("course_id"),
                 gid_str,
                 info.get("kind"),
-            ])
+            ]))
 
 # -------- Minimal PDF export (no external dependencies) --------
 
@@ -414,10 +415,10 @@ def export_summary_reports(
             cw = csv.writer(f)
             if branding:
                 for line in branding_header_lines(branding):
-                    cw.writerow([line])
+                    cw.writerow(spreadsheet_safe_row([line]))
                 cw.writerow([])
             cw.writerow(header)
-            cw.writerows(rows)
+            cw.writerows(spreadsheet_safe_row(row) for row in rows)
 
     _write(
         out_dir / "staff_load.csv",
@@ -465,12 +466,48 @@ def _ical_dt(dt: datetime) -> str:
         return dt.strftime("%Y%m%dT%H%M%S")
     return dt.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
+
+def _ics_text(value: Any) -> str:
+    text = str(value or "")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return (
+        text.replace("\\", "\\\\")
+        .replace("\n", "\\n")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+    )
+
+
+def _ics_fold(line: str, limit: int = 75) -> str:
+    encoded = line.encode("utf-8")
+    if len(encoded) <= limit:
+        return line
+    chunks: list[str] = []
+    remaining = line
+    first = True
+    while remaining:
+        budget = limit if first else limit - 1
+        size = 0
+        take = 0
+        for index, char in enumerate(remaining):
+            width = len(char.encode("utf-8"))
+            if size + width > budget:
+                break
+            size += width
+            take = index + 1
+        if take <= 0:
+            take = 1
+        chunks.append(("" if first else " ") + remaining[:take])
+        remaining = remaining[take:]
+        first = False
+    return "\r\n".join(chunks)
+
 def _ics_header(name: str) -> str:
     return "\n".join([
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//Scheduling//Exporter//EN",
-        f"X-WR-CALNAME:{name}",
+        _ics_fold(f"X-WR-CALNAME:{_ics_text(name)}"),
     ])
 
 def _ics_footer() -> str:
@@ -479,16 +516,16 @@ def _ics_footer() -> str:
 def _ics_event(uid: str, summary: str, start: datetime, end: datetime, location: str | None = None, description: str | None = None) -> str:
     lines = [
         "BEGIN:VEVENT",
-        f"UID:{uid}",
+        _ics_fold(f"UID:{_ics_text(uid)}"),
         f"DTSTAMP:{_ical_dt(datetime.now(timezone.utc))}",
         f"DTSTART:{_ical_dt(start)}",
         f"DTEND:{_ical_dt(end)}",
-        f"SUMMARY:{summary}",
+        _ics_fold(f"SUMMARY:{_ics_text(summary)}"),
     ]
     if location:
-        lines.append(f"LOCATION:{location}")
+        lines.append(_ics_fold(f"LOCATION:{_ics_text(location)}"))
     if description:
-        lines.append(f"DESCRIPTION:{description}")
+        lines.append(_ics_fold(f"DESCRIPTION:{_ics_text(description)}"))
     lines.append("END:VEVENT")
     return "\n".join(lines)
 
@@ -688,14 +725,14 @@ def write_heatmap_reports(out_dir: str | Path, heatmaps: Dict[str, Any]) -> Dict
                     for day_idx, row in enumerate(matrix):
                         for slot_idx, value in enumerate(row):
                             writer.writerow(
-                                [
+                                spreadsheet_safe_row([
                                     int(entity_id),
                                     label,
                                     metric,
                                     int(day_idx),
                                     int(slot_idx),
                                     int(value),
-                                ]
+                                ])
                             )
 
     _write(group_path, dict(heatmaps.get("groups", {}) or {}))

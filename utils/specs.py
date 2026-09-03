@@ -4,6 +4,8 @@ from collections import defaultdict
 from typing import Iterable, Any
 
 from utils.domain import Instance
+from utils.demand import demand_requirement
+from utils.distribution_constraints import evaluate_distribution_constraints
 from utils.schedule_rules import (
     calendar_slot_blocked,
     generic_resource_violations,
@@ -193,6 +195,39 @@ def validate_schedule_against_instance(
                 errors.append(f"A{a_id} duration must be positive, got {dur}")
             if slot < 0 or slot + dur > inst.slots_per_day:
                 errors.append(f"A{a_id} invalid slot range {slot}+{dur}")
+            policy = getattr(inst, "institutional_policy", {}) or {}
+            configured_starts = policy.get("standard_start_slots", [])
+            if isinstance(configured_starts, dict):
+                configured_starts = configured_starts.get(
+                    str(act.kind),
+                    configured_starts.get("default", []),
+                )
+            standard_starts = {int(value) for value in (configured_starts or [])}
+            if (
+                _flag("enforce_standard_start_slots", False)
+                and standard_starts
+                and int(slot) not in standard_starts
+            ):
+                errors.append(f"A{a_id} uses non-standard start slot {int(slot)}")
+            allowed_day_slots = policy.get("allowed_day_slots", {}) or {}
+            configured_day_slots = allowed_day_slots.get(
+                str(day),
+                allowed_day_slots.get("default"),
+            )
+            if configured_day_slots is not None and int(slot) not in {
+                int(value) for value in configured_day_slots
+            }:
+                errors.append(f"A{a_id} starts outside the institutional window on {day}")
+        if day in inst.days and slot is not None:
+            forbidden_starts = {
+                (str(pair[0]), int(pair[1]))
+                for pair in (getattr(inst, "activity_unavailability", {}) or {}).get(
+                    int(a_id), set()
+                )
+                if isinstance(pair, (list, tuple)) and len(pair) == 2
+            }
+            if (str(day), int(slot)) in forbidden_starts:
+                errors.append(f"A{a_id} uses forbidden activity start {day} slot {slot}")
 
         # Identity consistency for immutable activity fields.
         if dur is not None and dur != int(act.duration):
@@ -244,9 +279,13 @@ def validate_schedule_against_instance(
             if act.kind == "LAB" and room.room_type not in ("SPECIALIZED_LAB", "COMPUTER_LAB"):
                 errors.append(f"A{a_id} lab in invalid room {room_id}")
             # Capacity + specialization tags
-            need = sum(inst.groups[g].size for g in act.group_ids if g in inst.groups)
-            if room.capacity < need:
-                errors.append(f"A{a_id} room {room_id} capacity {room.capacity} < {need}")
+            requirement = demand_requirement(inst, act.group_ids)
+            need = int(requirement.required)
+            if _flag("enforce_room_capacity", True) and room.capacity < need:
+                errors.append(
+                    f"A{a_id} room {room_id} capacity {room.capacity} < {need} "
+                    f"under {requirement.mode} demand"
+                )
             tag = getattr(act, "requires_specialization", None)
             if tag:
                 tags = getattr(room, "specialization_tags", []) or []
@@ -342,6 +381,14 @@ def validate_schedule_against_instance(
     errors.extend(precedence_violations(inst, parsed))
     errors.extend(travel_buffer_violations(inst, parsed))
     errors.extend(generic_resource_violations(inst, parsed))
+    errors.extend(
+        violation.message
+        for violation in evaluate_distribution_constraints(
+            inst,
+            parsed,
+            required_only=True,
+        )
+    )
 
     # Overlap checks
     group_occ: dict[tuple[int, int, str, int], int] = {}

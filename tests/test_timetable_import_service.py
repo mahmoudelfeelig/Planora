@@ -120,6 +120,43 @@ def test_import_timetable_csv_transform_config_splits_groups_and_infers_room_typ
     assert meta["source_events"] == 2
 
 
+def test_room_type_rules_reject_regex_backtracking_but_keep_literal_and_glob(
+    tmp_path,
+):
+    path = tmp_path / "events.csv"
+    path.write_text(
+        "week,day,slot,course,room\n1,MON,1,C1,Lab-101\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="literal text and shell wildcards"):
+        load_timetable_events(
+            path,
+            transform_config={
+                "room_type_rules": [
+                    {"pattern": "(a+)+$", "room_type": "COMPUTER_LAB"}
+                ]
+            },
+        )
+    literal = load_timetable_events(
+        path,
+        transform_config={
+            "room_type_rules": [
+                {"pattern": "Lab", "room_type": "COMPUTER_LAB"}
+            ]
+        },
+    )
+    glob = load_timetable_events(
+        path,
+        transform_config={
+            "room_type_rules": [
+                {"pattern": "lab-*", "room_type": "SPECIALIZED_LAB"}
+            ]
+        },
+    )
+    assert literal[0]["room_type"] == "COMPUTER_LAB"
+    assert glob[0]["room_type"] == "SPECIALIZED_LAB"
+
+
 def test_import_timetable_csv_skips_exact_duplicates_and_reuses_synthetic_lecturer(tmp_path):
     path = tmp_path / "duplicates.csv"
     path.write_text(

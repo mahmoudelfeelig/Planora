@@ -4,7 +4,8 @@ from typing import Any, Dict, List
 
 from product.model import ProductScenario
 from product.rules import apply_rule_overrides
-from utils.domain import GenericResource
+from services.institution_policy_service import apply_institution_policy
+from utils.domain import DistributionConstraint, GenericResource
 from utils.generator import generate_custom_instance, generate_instance
 from utils.io import instance_from_json
 from main import normalize_instance_for_spec, stamp_instance_time
@@ -52,6 +53,12 @@ def compile_product_scenario(scenario: ProductScenario):
         else:
             inst = generate_instance(mode=mode)
 
+    if scenario.constraints.institution_policy_preset:
+        inst = apply_institution_policy(
+            inst,
+            scenario.constraints.institution_policy_preset,
+            in_place=True,
+        )
     apply_rule_overrides(
         inst,
         hard_constraints=dict(scenario.constraints.hard_constraints or {}),
@@ -81,6 +88,29 @@ def compile_product_scenario(scenario: ProductScenario):
     inst.term_blocks = [dict(block) for block in (scenario.calendar.term_blocks or [])]
     inst.precedence_rules = list(scenario.constraints.precedence_rules or [])
     inst.sla_targets = dict(scenario.constraints.sla_targets or {})
+    if scenario.constraints.distribution_constraints:
+        inst.distribution_constraints = [
+            DistributionConstraint(
+                id=str(row.get("id", f"distribution-{index}")),
+                constraint_type=str(row.get("constraint_type", row.get("type", ""))),
+                activity_ids=[int(value) for value in row.get("activity_ids", [])],
+                required=bool(row.get("required", True)),
+                penalty=int(row.get("penalty", 0) or 0),
+                parameters=dict(row.get("parameters", {}) or {}),
+            )
+            for index, row in enumerate(
+                scenario.constraints.distribution_constraints,
+                start=1,
+            )
+            if isinstance(row, dict)
+        ]
+    if scenario.constraints.demand_policy:
+        inst.demand_policy = dict(scenario.constraints.demand_policy)
+    if scenario.constraints.institutional_policy:
+        inst.institutional_policy = {
+            **dict(getattr(inst, "institutional_policy", {}) or {}),
+            **dict(scenario.constraints.institutional_policy),
+        }
     inst.generic_resources = {}
     for idx, raw in enumerate(scenario.resources.generic_resources or [], start=1):
         if not isinstance(raw, dict):

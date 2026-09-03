@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from utils.csv_security import spreadsheet_safe_mapping
+
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 SLOTS = [
@@ -281,11 +283,15 @@ def write_outputs(cells: list[dict[str, object]], summary: dict[str, object], ou
     with cells_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(cells)
+        writer.writerows(spreadsheet_safe_mapping(cell) for cell in cells)
     with events_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(cell for cell in cells if cell["status"] == "scheduled")
+        writer.writerows(
+            spreadsheet_safe_mapping(cell)
+            for cell in cells
+            if cell["status"] == "scheduled"
+        )
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return cells_path, events_path, summary_path
 
