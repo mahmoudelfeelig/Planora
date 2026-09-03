@@ -11,6 +11,7 @@ from services.auth_service import (
     permissions_for_role,
     principal_payload,
     principal_from_token,
+    principal_from_headers,
     require_permission,
     require_tenant_access,
     stamp_meta,
@@ -35,6 +36,39 @@ def test_signed_auth_token_roundtrip():
     token = create_auth_token(principal, ttl_seconds=60)
     restored = principal_from_token(token)
     assert restored == principal
+
+
+def test_request_rejects_ambiguous_bearer_and_cookie_credentials():
+    with pytest.raises(PermissionError, match="Multiple authentication credentials"):
+        principal_from_headers(
+            {
+                "Authorization": "Bearer bearer-token",
+                "Cookie": "planora_session=cookie-token",
+            }
+        )
+
+
+def test_development_header_auth_requires_explicit_opt_in(monkeypatch):
+    monkeypatch.delenv("PLANORA_PRODUCTION", raising=False)
+    monkeypatch.delenv("PLANORA_TRUST_DEV_HEADERS", raising=False)
+
+    with pytest.raises(PermissionError, match="Authentication required"):
+        principal_from_headers({})
+
+    monkeypatch.setenv("PLANORA_TRUST_DEV_HEADERS", "1")
+    principal = principal_from_headers(
+        {
+            "X-Planora-User": "local-reviewer",
+            "X-Planora-Role": "professor",
+            "X-Planora-Tenant": "uni-a",
+        }
+    )
+    assert principal == Principal(
+        user_id="local-reviewer",
+        role="professor",
+        tenant_id="uni-a",
+        provider="dev-header",
+    )
 
 
 def test_auth_secret_can_be_loaded_from_secret_file(monkeypatch, tmp_path):
@@ -198,6 +232,31 @@ def test_missing_auth_session_record_is_optional_but_can_be_enforced(tmp_path, m
         store.require_active_session(principal)
 
 
+def test_production_requires_nonempty_persisted_auth_session(tmp_path, monkeypatch):
+    store = PersistenceStore(tmp_path / "required-session.sqlite3")
+    monkeypatch.setenv("PLANORA_PRODUCTION", "1")
+    monkeypatch.setenv("PLANORA_REQUIRE_AUTH_SESSION_RECORD", "0")
+
+    without_session = Principal(
+        user_id="email:user@example.edu",
+        role="student",
+        tenant_id="default",
+        provider="email",
+    )
+    with pytest.raises(PermissionError, match="session is not active"):
+        store.require_active_session(without_session)
+
+    missing_session = Principal(
+        user_id="email:user@example.edu",
+        role="student",
+        tenant_id="default",
+        session_id="missing-session",
+        provider="email",
+    )
+    with pytest.raises(PermissionError, match="session is not active"):
+        store.require_active_session(missing_session)
+
+
 def test_production_does_not_accept_token_for_missing_account(tmp_path, monkeypatch):
     store = PersistenceStore(tmp_path / "missing-account.sqlite3")
     principal = Principal(
@@ -209,7 +268,6 @@ def test_production_does_not_accept_token_for_missing_account(tmp_path, monkeypa
     )
 
     monkeypatch.setenv("PLANORA_PRODUCTION", "1")
-    store.require_active_session(principal)
     with pytest.raises(PermissionError, match="account is no longer active"):
         store.resolve_principal(principal)
 
@@ -228,16 +286,17 @@ def test_auth_session_replacement_revokes_old_after_creating_new(tmp_path):
     store.require_active_session(new)
 
 
-def test_refresh_session_creation_keeps_existing_session_active(tmp_path):
+def test_refresh_session_replacement_invalidates_presented_session(tmp_path):
     store = PersistenceStore(tmp_path / "planora.sqlite3")
     old = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a", session_id="sid-old")
     new = Principal(user_id="admin-a", role="uni_admin", tenant_id="uni-a", session_id="sid-new")
     store.upsert_user(old)
     store.create_auth_session(old, "sid-old", ttl_seconds=60)
-    csrf = store.create_auth_session(old, "sid-new", ttl_seconds=60)
+    csrf = store.replace_auth_session(old, "sid-new", ttl_seconds=60)
 
     assert csrf
-    store.require_active_session(old)
+    with pytest.raises(PermissionError, match="expired or revoked"):
+        store.require_active_session(old)
     store.require_active_session(new)
 
 
@@ -325,7 +384,7 @@ def test_invite_registration_verification_and_password_login(tmp_path):
     principal = registered["principal"]
     assert principal.user_id == "email:student@example.edu"
     assert principal.role == "student"
-    with pytest.raises(PermissionError, match="not verified"):
+    with pytest.raises(PermissionError, match="Email or password is incorrect"):
         store.authenticate_email_user(email="student@example.edu", password="correct horse battery", require_verified=True)
     verified = store.verify_email_token(registered["verification_code"], email="student@example.edu")
     assert verified.user_id == principal.user_id
@@ -355,6 +414,51 @@ def test_password_reset_code_changes_password(tmp_path):
         store.authenticate_email_user(email="reset-user@example.edu", password="correct horse battery")
     logged_in = store.authenticate_email_user(email="reset-user@example.edu", password="new correct horse battery")
     assert logged_in.user_id == principal.user_id
+
+
+def test_short_recovery_codes_require_account_binding_and_lock_after_failures(
+    tmp_path,
+):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    registered = store.register_email_user(
+        email="bound@example.edu",
+        password="correct horse battery",
+    )
+    with pytest.raises(PermissionError, match="Email is required"):
+        store.verify_email_token(registered["verification_code"])
+    for _ in range(5):
+        with pytest.raises(PermissionError):
+            store.verify_email_token("000000", email="bound@example.edu")
+    with pytest.raises(PermissionError):
+        store.verify_email_token(
+            registered["verification_code"], email="bound@example.edu"
+        )
+
+    second = store.register_email_user(
+        email="reset-bound@example.edu",
+        password="correct horse battery",
+    )
+    store.verify_email_token(second["verification_token"])
+    reset = store.create_password_reset("reset-bound@example.edu")
+    assert reset is not None
+    with pytest.raises(PermissionError, match="Email is required"):
+        store.reset_password(
+            token=str(reset["reset_code"]),
+            new_password="new correct horse battery",
+        )
+    for _ in range(5):
+        with pytest.raises(PermissionError):
+            store.reset_password(
+                token="000000",
+                email="reset-bound@example.edu",
+                new_password="new correct horse battery",
+            )
+    with pytest.raises(PermissionError):
+        store.reset_password(
+            token=str(reset["reset_code"]),
+            email="reset-bound@example.edu",
+            new_password="new correct horse battery",
+        )
 
 
 def test_email_account_can_join_group_after_registration(tmp_path):
@@ -418,6 +522,64 @@ def test_email_account_can_join_and_switch_between_organizations(tmp_path):
     assert switched.tenant_id == "uni-a"
     assert switched.role == "student"
     assert uni_a_group in switched.groups
+
+
+def test_existing_session_stays_bound_to_its_original_organization(tmp_path):
+    store = PersistenceStore(tmp_path / "planora.sqlite3")
+    admin_b = Principal(user_id="admin-b", role="uni_admin", tenant_id="uni-b")
+    user_a = Principal(user_id="shared-user", role="student", tenant_id="uni-a", provider="email")
+    store.upsert_user(admin_b)
+    store.upsert_user(user_a)
+
+    group_id = store.apply_access_change(
+        admin_b,
+        {"action": "create_group", "name": "Administrators"},
+    )["groups"][0]["group_id"]
+    store.apply_access_change(
+        admin_b,
+        {
+            "action": "create_invite",
+            "group_id": group_id,
+            "role": "uni_admin",
+            "code": "uni-b-admin-code",
+        },
+    )
+
+    old_session = Principal(
+        user_id=user_a.user_id,
+        role=user_a.role,
+        tenant_id=user_a.tenant_id,
+        session_id="sid-old-uni-a",
+        provider=user_a.provider,
+    )
+    current_session = Principal(
+        user_id=user_a.user_id,
+        role=user_a.role,
+        tenant_id=user_a.tenant_id,
+        session_id="sid-current-uni-a",
+        provider=user_a.provider,
+    )
+    store.create_auth_session(old_session, old_session.session_id, ttl_seconds=60)
+    store.create_auth_session(current_session, current_session.session_id, ttl_seconds=60)
+
+    joined = store.redeem_invite_for_user(current_session, "uni-b-admin-code")
+    store.revoke_auth_session(current_session)
+    store.create_auth_session(joined, "sid-new-uni-b", ttl_seconds=60)
+
+    store.require_active_session(old_session)
+    resolved_old = store.resolve_principal(old_session)
+    assert resolved_old.tenant_id == "uni-a"
+    assert resolved_old.role == "student"
+    assert joined.tenant_id == "uni-b"
+    assert joined.role == "uni_admin"
+
+    with store._connect() as conn:
+        conn.execute(
+            "DELETE FROM account_tenants WHERE user_id=? AND tenant_id=?",
+            (old_session.user_id, old_session.tenant_id),
+        )
+    with pytest.raises(PermissionError, match="session organization"):
+        store.resolve_principal(old_session)
 
 
 def test_global_admin_cannot_switch_to_missing_organization(tmp_path):

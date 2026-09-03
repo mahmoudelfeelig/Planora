@@ -13,7 +13,18 @@ def access_snapshot(store: Any, principal: Principal) -> Dict[str, Any]:
     tenant_filter = "" if principal.is_global_admin else " WHERE tenant_id=?"
     args: tuple[Any, ...] = () if principal.is_global_admin else (principal.tenant_id,)
     with store._connect() as conn:
-        users = [dict(row) for row in conn.execute(f"SELECT * FROM users{tenant_filter} ORDER BY tenant_id, display_name", args).fetchall()]
+        users = [
+            dict(row)
+            for row in conn.execute(
+                f"""
+                SELECT user_id, tenant_id, role, display_name, provider, email,
+                    disabled, staff_id, student_group_id, email_verified_at, updated_at
+                FROM users{tenant_filter}
+                ORDER BY tenant_id, display_name
+                """,
+                args,
+            ).fetchall()
+        ]
         groups = [dict(row) for row in conn.execute(f"SELECT * FROM auth_groups{tenant_filter} ORDER BY tenant_id, name", args).fetchall()]
         memberships = [dict(row) for row in conn.execute(f"SELECT * FROM group_memberships{tenant_filter} ORDER BY tenant_id, group_id, user_id", args).fetchall()]
         account_tenants = [dict(row) for row in conn.execute(f"SELECT * FROM account_tenants{tenant_filter} ORDER BY tenant_id, user_id", args).fetchall()]

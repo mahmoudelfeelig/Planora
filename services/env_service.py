@@ -24,3 +24,18 @@ def env_bool(name: str, default: bool = False) -> bool:
     if raw == "":
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_bool_strict(name: str, default: bool = False) -> bool:
+    """Read a security-sensitive boolean and reject ambiguous values."""
+    raw = env_value(name, "")
+    if raw == "":
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(
+        f"{name} must be an explicit boolean: 1/0, true/false, yes/no, or on/off."
+    )

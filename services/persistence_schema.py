@@ -167,7 +167,10 @@ def init_schema(conn: sqlite3.Connection) -> None:
             tenant_id TEXT NOT NULL,
             expires_at REAL NOT NULL,
             consumed_at REAL,
-            created_at REAL NOT NULL
+            created_at REAL NOT NULL,
+            token_kind TEXT NOT NULL DEFAULT 'link',
+            failed_attempts INTEGER NOT NULL DEFAULT 0,
+            locked_at REAL
         );
         CREATE TABLE IF NOT EXISTS password_reset_tokens (
             token_hash TEXT PRIMARY KEY,
@@ -175,7 +178,10 @@ def init_schema(conn: sqlite3.Connection) -> None:
             tenant_id TEXT NOT NULL,
             expires_at REAL NOT NULL,
             consumed_at REAL,
-            created_at REAL NOT NULL
+            created_at REAL NOT NULL,
+            token_kind TEXT NOT NULL DEFAULT 'link',
+            failed_attempts INTEGER NOT NULL DEFAULT 0,
+            locked_at REAL
         );
         CREATE TABLE IF NOT EXISTS jobs (
             job_id TEXT PRIMARY KEY,
@@ -266,6 +272,15 @@ def migrate(conn: sqlite3.Connection) -> None:
     for column, definition in account_columns.items():
         if not has_column(conn, "account_tenants", column):
             conn.execute(f"ALTER TABLE account_tenants ADD COLUMN {column} {definition}")
+    for table in ("email_verification_tokens", "password_reset_tokens"):
+        token_columns = {
+            "token_kind": "TEXT NOT NULL DEFAULT 'link'",
+            "failed_attempts": "INTEGER NOT NULL DEFAULT 0",
+            "locked_at": "REAL",
+        }
+        for column, definition in token_columns.items():
+            if not has_column(conn, table, column):
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS analytics_events (

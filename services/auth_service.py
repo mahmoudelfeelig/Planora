@@ -9,7 +9,7 @@ from typing import Any, Mapping
 
 import jwt
 
-from services.env_service import env_bool, env_value
+from services.env_service import env_bool, env_bool_strict, env_value
 
 
 ROLES = {"student", "professor", "ta", "uni_admin", "admin"}
@@ -72,20 +72,50 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 
 def production_mode() -> bool:
-    return _env_bool("PLANORA_PRODUCTION", False)
+    return env_bool_strict("PLANORA_PRODUCTION", False)
 
 
 def trusted_dev_headers_enabled() -> bool:
-    return _env_bool("PLANORA_TRUST_DEV_HEADERS", not production_mode())
+    if production_mode():
+        if env_bool_strict("PLANORA_TRUST_DEV_HEADERS", False):
+            raise RuntimeError("PLANORA_TRUST_DEV_HEADERS must be disabled in production.")
+        return False
+    return _env_bool("PLANORA_TRUST_DEV_HEADERS", False)
 
 
 def auth_secret() -> str:
     secret = env_value("PLANORA_AUTH_SECRET", "")
     if secret:
+        if production_mode() and len(secret.encode("utf-8")) < 32:
+            raise RuntimeError(
+                "PLANORA_AUTH_SECRET must contain at least 32 UTF-8 bytes in production."
+            )
         return secret
     if production_mode():
         raise RuntimeError("PLANORA_AUTH_SECRET or PLANORA_AUTH_SECRET_FILE is required in production.")
-    return "planora-local-dev-secret"
+    return "planora-local-development-secret-not-for-production"
+
+
+def validate_auth_configuration() -> None:
+    """Fail before serving when production authentication is misconfigured."""
+    if not production_mode():
+        return
+    trusted_dev_headers_enabled()
+    env_bool_strict("PLANORA_TRUST_PROXY_HEADERS", False)
+    auth_secret()
+    from services.password_auth_service import (
+        secret_pepper,
+        smtp_configured,
+        verification_base_url,
+    )
+
+    secret_pepper()
+    verification_base_url("")
+    if not smtp_configured():
+        raise RuntimeError(
+            "PLANORA_SMTP_HOST is required in production so verification and "
+            "password-reset secrets are never returned to API callers."
+        )
 
 
 def auth_issuer() -> str:
@@ -175,11 +205,18 @@ def _cookie_token(headers: Mapping[str, Any]) -> str:
     return morsel.value if morsel is not None else ""
 
 
+def has_multiple_auth_credentials(headers: Mapping[str, Any]) -> bool:
+    authorization = str(headers.get("Authorization", "") or "")
+    return authorization.lower().startswith("bearer ") and bool(_cookie_token(headers))
+
+
 def principal_from_headers(headers: Mapping[str, Any]) -> Principal:
     authorization = str(headers.get("Authorization", "") or "")
+    cookie_token = _cookie_token(headers)
+    if has_multiple_auth_credentials(headers):
+        raise PermissionError("Multiple authentication credentials are not allowed.")
     if authorization.lower().startswith("bearer "):
         return principal_from_token(authorization.split(" ", 1)[1].strip())
-    cookie_token = _cookie_token(headers)
     if cookie_token:
         return principal_from_token(cookie_token)
     if not trusted_dev_headers_enabled():

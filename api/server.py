@@ -9,6 +9,8 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -46,15 +48,23 @@ from services.application_service import (
     run_workspace_action,
     safe_project_name,
 )
+from services.engine_backend import engine_contract
+from services.ui_contract import (
+    generator_mode_for_scenario,
+    public_preset_ids,
+    ui_contract,
+)
 from services.auth_service import (
     Principal,
     create_auth_token,
+    has_multiple_auth_credentials,
     principal_from_headers,
     principal_payload,
     production_mode,
     require_permission,
     require_tenant_access,
     stamp_meta,
+    validate_auth_configuration,
     validate_csrf,
 )
 from services.password_auth_service import (
@@ -68,6 +78,10 @@ from services.password_auth_service import (
     verification_base_url,
 )
 from services.quality_service import SOFT_WEIGHT_DEFAULTS
+from services.institution_policy_service import (
+    apply_institution_policy,
+    institution_policy_catalog,
+)
 from services.schedule_ops_service import (
     normalize_schedule,
     score_schedule,
@@ -80,6 +94,76 @@ from utils.generator import generate_instance, instance_to_json
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 WEB_PROJECTS_DIR = ROOT_DIR / "data" / "web_projects"
+
+_SYNC_SOLVER_GLOBAL = threading.BoundedSemaphore(
+    max(1, int(os.environ.get("PLANORA_MAX_SYNC_SOLVER_REQUESTS", "2")))
+)
+_SYNC_SOLVER_LOCK = threading.Lock()
+_SYNC_SOLVER_TENANTS: dict[str, int] = {}
+_SSE_GLOBAL = threading.BoundedSemaphore(
+    max(1, int(os.environ.get("PLANORA_MAX_SSE_STREAMS", "32")))
+)
+_SSE_LOCK = threading.Lock()
+_SSE_USERS: dict[str, int] = {}
+_HTTP_CONNECTIONS = threading.BoundedSemaphore(
+    max(4, int(os.environ.get("PLANORA_MAX_HTTP_CONNECTIONS", "64")))
+)
+
+
+@contextmanager
+def _solver_admission(principal: Principal):
+    tenant = str(principal.tenant_id)
+    per_tenant = max(
+        1, int(os.environ.get("PLANORA_MAX_SYNC_SOLVER_REQUESTS_PER_TENANT", "1"))
+    )
+    if not _SYNC_SOLVER_GLOBAL.acquire(blocking=False):
+        raise JobCapacityExceeded("Solver capacity is currently full.")
+    admitted = False
+    try:
+        with _SYNC_SOLVER_LOCK:
+            active = int(_SYNC_SOLVER_TENANTS.get(tenant, 0))
+            if active >= per_tenant:
+                raise JobCapacityExceeded(
+                    "This organization already has an active synchronous solver request."
+                )
+            _SYNC_SOLVER_TENANTS[tenant] = active + 1
+            admitted = True
+        yield
+    finally:
+        if admitted:
+            with _SYNC_SOLVER_LOCK:
+                remaining = int(_SYNC_SOLVER_TENANTS.get(tenant, 1)) - 1
+                if remaining > 0:
+                    _SYNC_SOLVER_TENANTS[tenant] = remaining
+                else:
+                    _SYNC_SOLVER_TENANTS.pop(tenant, None)
+        _SYNC_SOLVER_GLOBAL.release()
+
+
+@contextmanager
+def _sse_admission(principal: Principal):
+    identity = f"{principal.tenant_id}:{principal.user_id}"
+    per_user = max(1, int(os.environ.get("PLANORA_MAX_SSE_STREAMS_PER_USER", "2")))
+    if not _SSE_GLOBAL.acquire(blocking=False):
+        raise JobCapacityExceeded("Event stream capacity is currently full.")
+    admitted = False
+    try:
+        with _SSE_LOCK:
+            active = int(_SSE_USERS.get(identity, 0))
+            if active >= per_user:
+                raise JobCapacityExceeded("Too many active event streams for this user.")
+            _SSE_USERS[identity] = active + 1
+            admitted = True
+        yield
+    finally:
+        if admitted:
+            with _SSE_LOCK:
+                remaining = int(_SSE_USERS.get(identity, 1)) - 1
+                if remaining > 0:
+                    _SSE_USERS[identity] = remaining
+                else:
+                    _SSE_USERS.pop(identity, None)
+        _SSE_GLOBAL.release()
 SESSION_STORE = SessionStore()
 PERSISTENCE = PersistenceStore(default_persistence_path(ROOT_DIR))
 JOB_STORE = JobStore(on_change=PERSISTENCE.save_job)
@@ -296,6 +380,29 @@ def _session_payload_from_request(payload: Dict[str, Any]) -> tuple[Dict[str, An
 class PlanoraApiHandler(BaseHTTPRequestHandler):
     server_version = "PlanoraAPI/1.0"
 
+    def setup(self) -> None:
+        self._connection_admitted = _HTTP_CONNECTIONS.acquire(blocking=False)
+        if not self._connection_admitted:
+            self.request.close()
+            raise ConnectionAbortedError("HTTP connection capacity is full.")
+        try:
+            super().setup()
+        except Exception:
+            _HTTP_CONNECTIONS.release()
+            self._connection_admitted = False
+            raise
+        self.connection.settimeout(
+            max(1.0, float(os.environ.get("PLANORA_HTTP_IO_TIMEOUT_SECONDS", "15")))
+        )
+
+    def finish(self) -> None:
+        try:
+            super().finish()
+        finally:
+            if bool(getattr(self, "_connection_admitted", False)):
+                _HTTP_CONNECTIONS.release()
+                self._connection_admitted = False
+
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
         if not production_mode() and os.environ.get("PLANORA_STRUCTURED_LOGS", "0").lower() not in {"1", "true", "yes", "on"}:
             return
@@ -338,6 +445,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             _json_response(self, 200, {"ok": True})
             return
         if parsed_path == "/ready":
+            validate_auth_configuration()
             schema = PERSISTENCE.schema_info()
             _json_response(self, 200, {"ok": True, "ready": True, "database": schema})
             return
@@ -367,16 +475,14 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 self,
                 200,
                 {
-                    "presets": [
-                        "small_demo",
-                        "mixed_large",
-                        "block_profs",
-                        "labs_only",
-                        "ss23_uni_like",
-                        "target_case",
-                    ]
+                    "presets": public_preset_ids(),
+                    "catalog": ui_contract()["scenarios"],
                 },
             )
+            return
+        if parsed_path == "/institution-policies":
+            _authenticated(self, "schedule:read")
+            _json_response(self, 200, {"policies": institution_policy_catalog()})
             return
         if parsed_path == "/capabilities":
             _authenticated(self, "schedule:read")
@@ -414,7 +520,8 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                         "scoped_schedule_projection",
                     ],
                     "focus_terms": list(SOFT_WEIGHT_DEFAULTS.keys()),
-                    "shared_backend": "python-services",
+                    "shared_backend": engine_contract(),
+                    "ui_contract": ui_contract(),
                 },
             )
             return
@@ -538,24 +645,37 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 _text_response(self, 500, f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n", content_type="text/event-stream")
                 return
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "close")
-            _common_headers(self)
-            self.end_headers()
-            if self.command == "HEAD":
-                self.close_connection = True
-                return
-            terminal = {"complete", "failed", "cancelled"}
             try:
-                while True:
-                    job = _job_record(parts[1], principal).to_dict()
-                    self.wfile.write(f"event: job\ndata: {json.dumps(job)}\n\n".encode("utf-8"))
-                    self.wfile.flush()
-                    if str(job.get("status")) in terminal:
-                        break
-                    time.sleep(0.5)
+                with _sse_admission(principal):
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Cache-Control", "no-cache")
+                    self.send_header("Connection", "close")
+                    _common_headers(self)
+                    self.end_headers()
+                    if self.command == "HEAD":
+                        self.close_connection = True
+                        return
+                    terminal = {"complete", "failed", "cancelled"}
+                    started = time.monotonic()
+                    maximum = max(
+                        1.0,
+                        float(os.environ.get("PLANORA_MAX_SSE_DURATION_SECONDS", "30")),
+                    )
+                    while True:
+                        job = _job_record(parts[1], principal).to_dict()
+                        self.wfile.write(f"event: job\ndata: {json.dumps(job)}\n\n".encode("utf-8"))
+                        self.wfile.flush()
+                        if str(job.get("status")) in terminal:
+                            break
+                        if time.monotonic() - started >= maximum:
+                            self.wfile.write(b"event: close\ndata: {\"reason\":\"stream_lifetime_exhausted\"}\n\n")
+                            self.wfile.flush()
+                            break
+                        time.sleep(0.5)
+            except JobCapacityExceeded as exc:
+                _json_response(self, 429, {"error": str(exc)})
+                return
             except (BrokenPipeError, ConnectionResetError):
                 pass
             self.close_connection = True
@@ -598,15 +718,40 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 _error_response(self, exc)
                 return
-        if self.path.startswith("/preset/"):
+        if parsed_path.startswith("/preset/"):
             _authenticated(self, "schedule:read")
-            mode = self.path.split("/preset/", 1)[1].strip()
+            mode = generator_mode_for_scenario(
+                parsed_path.split("/preset/", 1)[1].strip()
+            )
+            query = parse_qs(urlparse(self.path).query)
+            policy_id = str((query.get("institution_policy") or [""])[0]).strip()
+            demand_mode = str((query.get("demand_mode") or [""])[0]).strip().lower()
             try:
                 instance = generate_instance(mode)
+                if policy_id:
+                    instance = apply_institution_policy(instance, policy_id)
+                if demand_mode:
+                    demand_overrides: Dict[str, Dict[str, Any]] = {
+                        "nominal": {"mode": "nominal"},
+                        "forecast": {"mode": "quantile", "service_level": 0.90},
+                        "conservative": {"mode": "budgeted", "gamma": 2.0},
+                    }
+                    if demand_mode not in demand_overrides:
+                        raise ValueError(f"Unknown demand mode: {demand_mode}")
+                    instance.demand_policy = dict(demand_overrides[demand_mode])
             except Exception as exc:
                 _json_response(self, 400, {"error": str(exc)})
                 return
-            _json_response(self, 200, {"mode": mode, "instance": instance_to_json(instance)})
+            _json_response(
+                self,
+                200,
+                {
+                    "mode": mode,
+                    "institution_policy": policy_id or None,
+                    "demand_mode": demand_mode or None,
+                    "instance": instance_to_json(instance),
+                },
+            )
             return
         _json_response(self, 404, {"error": "Not found"})
 
@@ -654,6 +799,20 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
 
     def _do_POST(self) -> None:
         parts = _segments(self.path)
+        public_paths = {
+            ("analytics", "event"),
+            ("events", "collect"),
+            ("auth", "register"),
+            ("auth", "verify"),
+            ("auth", "forgot-password"),
+            ("auth", "reset-password"),
+            ("auth", "login"),
+            ("auth", "refresh"),
+            ("access", "join-invite"),
+            ("graphql",),
+        }
+        if tuple(parts) not in public_paths:
+            _authenticated(self)
         try:
             payload = _parse_json(self)
         except Exception as exc:
@@ -686,18 +845,31 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                     raise PermissionError("Registration is disabled.")
                 if email_verification_required() and production_mode() and not smtp_configured():
                     raise RuntimeError("SMTP is required in production when email verification is enabled.")
-                result = PERSISTENCE.register_email_user(
-                    email=str(payload.get("email", "")),
-                    password=str(payload.get("password", "")),
-                    display_name=str(payload.get("display_name", "")),
-                    invite_code=str(payload.get("invite_code", "")),
-                )
+                try:
+                    result = PERSISTENCE.register_email_user(
+                        email=str(payload.get("email", "")),
+                        password=str(payload.get("password", "")),
+                        display_name=str(payload.get("display_name", "")),
+                        invite_code=str(payload.get("invite_code", "")),
+                    )
+                except ValueError as exc:
+                    if str(exc) != "An account with this email already exists.":
+                        raise
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "ok": True,
+                            "email_verification_required": email_verification_required(),
+                            "smtp_configured": smtp_configured(),
+                        },
+                    )
+                    return
                 principal = result["principal"]
                 verification_token = str(result["verification_token"])
                 verification_code = str(result["verification_code"])
                 response: Dict[str, Any] = {
                     "ok": True,
-                    "principal": principal_payload(principal),
                     "email_verification_required": email_verification_required(),
                     "smtp_configured": smtp_configured(),
                 }
@@ -762,8 +934,13 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                         str(reset["reset_code"]),
                     )
                     if smtp_configured():
-                        send_email(message)
-                    else:
+                        try:
+                            send_email(message)
+                        except Exception:
+                            # Password-recovery responses stay indistinguishable for
+                            # registered and unknown addresses even during SMTP outages.
+                            traceback.print_exc()
+                    elif not production_mode():
                         response["reset_token"] = reset["reset_token"]
                         response["reset_code"] = reset["reset_code"]
                 _json_response(self, 200, response)
@@ -814,8 +991,10 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 response: Dict[str, Any] = {"ok": True}
                 if smtp_configured():
                     send_email(message)
-                else:
+                elif not production_mode():
                     response.update(verification)
+                else:
+                    raise RuntimeError("SMTP is required in production.")
                 PERSISTENCE.audit(principal, action="auth.resend_verification", resource_type="user", resource_id=principal.user_id)
                 _json_response(self, 200, response)
                 return
@@ -839,17 +1018,27 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 )
                 return
             if parts == ["auth", "logout"]:
+                if has_multiple_auth_credentials(self.headers):
+                    raise PermissionError(
+                        "Multiple authentication credentials are not allowed."
+                    )
                 principal = _optional_authenticated(self)
                 if principal is not None:
+                    validate_csrf(self.headers)
                     PERSISTENCE.revoke_auth_session(principal)
                     PERSISTENCE.audit(principal, action="auth.logout", resource_type="user", resource_id=principal.user_id)
                 _auth_json_response(self, 200, {"ok": True}, clear=True)
                 return
             if parts == ["auth", "refresh"]:
                 principal = _authenticated(self)
+                validate_csrf(self.headers)
                 session_id = secrets.token_urlsafe(24)
                 ttl = int(os.environ.get("PLANORA_SESSION_TTL_SECONDS", "28800"))
-                csrf = PERSISTENCE.create_auth_session(principal, session_id, ttl_seconds=ttl)
+                csrf = PERSISTENCE.replace_auth_session(
+                    principal,
+                    session_id,
+                    ttl_seconds=ttl,
+                )
                 refreshed = Principal(
                     user_id=principal.user_id, role=principal.role, tenant_id=principal.tenant_id,
                     groups=principal.groups, session_id=session_id, provider=principal.provider,
@@ -920,7 +1109,11 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 session = _workspace_session(parts[1], principal)
                 action_name = _canonical_action(parts[2])
                 _require_action_permission(principal, action_name)
-                result = _handle_session_action(parts[1], parts[2], payload)
+                if action_name in {"solve", "portfolio", "improve", "cp_polish"}:
+                    with _solver_admission(principal):
+                        result = _handle_session_action(parts[1], parts[2], payload)
+                else:
+                    result = _handle_session_action(parts[1], parts[2], payload)
                 PERSISTENCE.save_session(SESSION_STORE.get(parts[1]))
                 PERSISTENCE.audit(
                     principal,
@@ -990,13 +1183,15 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 _json_response(self, 200, result)
                 return
             if self.path == "/solve":
-                _authenticated(self, "solver:run")
-                result = _handle_solve(payload)
+                principal = _authenticated(self, "solver:run")
+                with _solver_admission(principal):
+                    result = _handle_solve(payload)
                 _json_response(self, 200, result)
                 return
             if self.path == "/portfolio":
-                _authenticated(self, "solver:run")
-                result = _handle_portfolio(payload)
+                principal = _authenticated(self, "solver:run")
+                with _solver_admission(principal):
+                    result = _handle_portfolio(payload)
                 _json_response(self, 200, result)
                 return
             if self.path == "/score":
@@ -1010,13 +1205,15 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
                 _json_response(self, 200, result)
                 return
             if self.path == "/improve":
-                _authenticated(self, "solver:run")
-                result = _handle_improve(payload)
+                principal = _authenticated(self, "solver:run")
+                with _solver_admission(principal):
+                    result = _handle_improve(payload)
                 _json_response(self, 200, result)
                 return
             if self.path == "/cp-polish":
-                _authenticated(self, "solver:run")
-                result = _handle_cp_polish(payload)
+                principal = _authenticated(self, "solver:run")
+                with _solver_admission(principal):
+                    result = _handle_cp_polish(payload)
                 _json_response(self, 200, result)
                 return
             if self.path == "/import/csv":
@@ -1090,6 +1287,7 @@ def _session_action_payload(
     )
     new_instance = result.get("instance") if isinstance(result.get("instance"), dict) else None
     new_schedule = result.get("schedule") if isinstance(result.get("schedule"), dict) else None
+    action_meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
     canonical_action = _canonical_action(action)
     if canonical_action in {"solve", "cp_polish"} and new_schedule is not None:
         raw_status = int(result.get("raw_status", result.get("status", 0)) or 0)
@@ -1102,13 +1300,18 @@ def _session_action_payload(
             best_result = dict(candidates[best_idx].get("result") or {})
             new_schedule = best_result.get("schedule") if isinstance(best_result.get("schedule"), dict) else None
             if best_result.get("meta"):
-                session.meta = dict(best_result.get("meta") or {})
+                action_meta = dict(best_result.get("meta") or {})
     if new_schedule is not None or new_instance is not None:
+        merged_meta = dict(session.meta)
+        merged_meta.update(action_meta)
+        for security_key in ("tenant_id", "created_by", "created_by_role"):
+            if security_key in session.meta:
+                merged_meta[security_key] = session.meta[security_key]
         SESSION_STORE.update(
             session_id,
             instance_json=new_instance,
             schedule=new_schedule,
-            meta=(result.get("meta") if isinstance(result.get("meta"), dict) else session.meta),
+            meta=merged_meta,
         )
     return {"session": SESSION_STORE.get(session_id).to_dict(include_workspace=False), "result": result}
 
@@ -1142,13 +1345,18 @@ def _handle_job_submit(action: str, payload: Dict[str, Any], principal: Principa
 
         if session_id:
             _workspace_session(session_id, principal)
-            return _session_action_payload(
+            action_result = _session_action_payload(
                 session_id,
                 action_name,
                 payload,
                 progress_hook=(_progress if action_name == "improve" else None),
                 stop_hook=(lambda: bool(job.cancel_requested)),
-            ).get("result", {})
+            )
+            # Publish a terminal job only after its workspace mutation is durable.
+            # Mobile and web clients may immediately reload this session to reconcile
+            # completed or cooperatively-cancelled background work.
+            PERSISTENCE.save_session(SESSION_STORE.get(session_id))
+            return action_result.get("result", {})
         inst_json, schedule, _meta = _session_payload_from_request(payload)
         return run_workspace_action(
             instance_json=inst_json,
@@ -1249,6 +1457,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
     args = parser.parse_args(argv)
+    validate_auth_configuration()
     serve(host=str(args.host), port=int(args.port))
     return 0
 

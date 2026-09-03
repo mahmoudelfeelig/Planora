@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
-from services.auth_service import Principal, ROLE_ORDER, can_access_tenant
+from services.auth_service import Principal, ROLE_ORDER, can_access_tenant, production_mode
 from services.password_auth_service import (
     expires_at,
     hash_password,
@@ -106,15 +106,16 @@ class PersistenceStore:
                 (principal.user_id,),
             ).fetchone()
             if user is None:
-                if (
-                    os.environ.get("PLANORA_PRODUCTION", "0").lower() in {"1", "true", "yes", "on"}
-                    and principal.provider != "dev-header"
-                ):
+                if production_mode() and principal.provider != "dev-header":
                     raise PermissionError("This account is no longer active.")
                 return principal
             if bool(user["disabled"]):
                 raise PermissionError("This account is disabled.")
-            active_tenant_id = str(user["tenant_id"] or principal.tenant_id)
+            active_tenant_id = (
+                str(principal.tenant_id or "default")
+                if principal.session_id
+                else str(user["tenant_id"] or principal.tenant_id)
+            )
             tenant = conn.execute(
                 "SELECT enabled FROM tenants WHERE tenant_id=?",
                 (active_tenant_id,),
@@ -125,6 +126,10 @@ class PersistenceStore:
                 "SELECT role, disabled, staff_id, student_group_id FROM account_tenants WHERE user_id=? AND tenant_id=?",
                 (principal.user_id, active_tenant_id),
             ).fetchone()
+            if principal.session_id and account_row is None and str(user["role"]) != "admin":
+                raise PermissionError(
+                    "This account is no longer active for the session organization."
+                )
             if account_row is not None and bool(account_row["disabled"]):
                 raise PermissionError("This account is disabled for the active organization.")
             groups = [
@@ -193,6 +198,8 @@ class PersistenceStore:
 
     def require_active_session(self, principal: Principal) -> None:
         if not principal.session_id:
+            if production_mode():
+                raise PermissionError("Authentication session is not active.")
             return
         now = time.time()
         with self._connect() as conn:
@@ -201,9 +208,8 @@ class PersistenceStore:
                 (principal.session_id, principal.tenant_id, principal.user_id),
             ).fetchone()
             if row is None:
-                require_record = os.environ.get(
-                    "PLANORA_REQUIRE_AUTH_SESSION_RECORD",
-                    "0",
+                require_record = production_mode() or os.environ.get(
+                    "PLANORA_REQUIRE_AUTH_SESSION_RECORD", "0"
                 ).lower() in {"1", "true", "yes", "on"}
                 if require_record:
                     raise PermissionError("Authentication session is not active.")
@@ -321,13 +327,15 @@ class PersistenceStore:
                 "UPDATE email_verification_tokens SET consumed_at=? WHERE user_id=? AND consumed_at IS NULL",
                 (now, principal.user_id),
             )
-            for plain in (token, code):
+            for plain, token_kind in ((token, "link"), (code, "code")):
                 conn.execute(
                     """
-                    INSERT INTO email_verification_tokens(token_hash, user_id, tenant_id, expires_at, consumed_at, created_at)
-                    VALUES(?, ?, ?, ?, NULL, ?)
+                    INSERT INTO email_verification_tokens(
+                        token_hash, user_id, tenant_id, expires_at, consumed_at,
+                        created_at, token_kind, failed_attempts, locked_at
+                    ) VALUES(?, ?, ?, ?, NULL, ?, ?, 0, NULL)
                     """,
-                    (hash_token(plain), principal.user_id, str(user["tenant_id"]), expires_at(verification_ttl_seconds), now),
+                    (hash_token(plain), principal.user_id, str(user["tenant_id"]), expires_at(verification_ttl_seconds), now, token_kind),
                 )
         return {"email": str(user["email"] or principal.user_id.removeprefix("email:")), "verification_token": token, "verification_code": code}
 
@@ -397,20 +405,19 @@ class PersistenceStore:
                     "UPDATE invite_codes SET used_count=used_count + 1, updated_at=? WHERE invite_id=?",
                     (now, str(invite["invite_id"])),
                 )
-            conn.execute(
-                """
-                INSERT INTO email_verification_tokens(token_hash, user_id, tenant_id, expires_at, consumed_at, created_at)
-                VALUES(?, ?, ?, ?, NULL, ?)
-                """,
-                (hash_token(verification_token), user_id, tenant_id, expires_at(verification_ttl_seconds), now),
-            )
-            conn.execute(
-                """
-                INSERT INTO email_verification_tokens(token_hash, user_id, tenant_id, expires_at, consumed_at, created_at)
-                VALUES(?, ?, ?, ?, NULL, ?)
-                """,
-                (hash_token(verification_code), user_id, tenant_id, expires_at(verification_ttl_seconds), now),
-            )
+            for plain, token_kind in (
+                (verification_token, "link"),
+                (verification_code, "code"),
+            ):
+                conn.execute(
+                    """
+                    INSERT INTO email_verification_tokens(
+                        token_hash, user_id, tenant_id, expires_at, consumed_at,
+                        created_at, token_kind, failed_attempts, locked_at
+                    ) VALUES(?, ?, ?, ?, NULL, ?, ?, 0, NULL)
+                    """,
+                    (hash_token(plain), user_id, tenant_id, expires_at(verification_ttl_seconds), now, token_kind),
+                )
         principal = self.resolve_principal(Principal(user_id=user_id, role=role, tenant_id=tenant_id, provider="email"))
         return {"principal": principal, "verification_token": verification_token, "verification_code": verification_code}
 
@@ -534,18 +541,42 @@ class PersistenceStore:
 
     def verify_email_token(self, token: str, *, email: str = "") -> Principal:
         raw_token = str(token or "").strip()
+        is_short_code = raw_token.isdigit() and len(raw_token) == 6
+        if is_short_code and not str(email or "").strip():
+            raise PermissionError("Email is required when using a verification code.")
         token_hash = hash_token(raw_token)
-        user_id = f"email:{normalize_email(email)}" if email and not raw_token.startswith("verify_") else ""
+        user_id = f"email:{normalize_email(email)}" if is_short_code else ""
         now = time.time()
         with self._connect() as conn:
             if user_id:
                 row = conn.execute(
-                    "SELECT * FROM email_verification_tokens WHERE token_hash=? AND user_id=?",
+                    "SELECT * FROM email_verification_tokens WHERE token_hash=? AND user_id=? AND token_kind='code'",
                     (token_hash, user_id),
                 ).fetchone()
+                if row is None:
+                    conn.execute(
+                        """
+                        UPDATE email_verification_tokens
+                        SET failed_attempts=failed_attempts + 1,
+                            locked_at=CASE WHEN failed_attempts + 1 >= 5 THEN ? ELSE locked_at END
+                        WHERE user_id=? AND token_kind='code' AND consumed_at IS NULL
+                          AND expires_at>?
+                        """,
+                        (now, user_id, now),
+                    )
+                    conn.commit()
             else:
-                row = conn.execute("SELECT * FROM email_verification_tokens WHERE token_hash=?", (token_hash,)).fetchone()
-            if row is None or row["consumed_at"] is not None or float(row["expires_at"]) <= now:
+                row = conn.execute(
+                    "SELECT * FROM email_verification_tokens WHERE token_hash=? AND token_kind='link'",
+                    (token_hash,),
+                ).fetchone()
+            if (
+                row is None
+                or row["consumed_at"] is not None
+                or float(row["expires_at"]) <= now
+                or row["locked_at"] is not None
+                or int(row["failed_attempts"] or 0) >= 5
+            ):
                 raise PermissionError("Verification token is invalid, expired, or already used.")
             conn.execute(
                 "UPDATE email_verification_tokens SET consumed_at=? WHERE user_id=? AND tenant_id=? AND consumed_at IS NULL",
@@ -580,30 +611,56 @@ class PersistenceStore:
                 "UPDATE password_reset_tokens SET consumed_at=? WHERE user_id=? AND consumed_at IS NULL",
                 (now, user_id),
             )
-            for plain in (reset_token, reset_code):
+            for plain, token_kind in ((reset_token, "link"), (reset_code, "code")):
                 conn.execute(
                     """
-                    INSERT INTO password_reset_tokens(token_hash, user_id, tenant_id, expires_at, consumed_at, created_at)
-                    VALUES(?, ?, ?, ?, NULL, ?)
+                    INSERT INTO password_reset_tokens(
+                        token_hash, user_id, tenant_id, expires_at, consumed_at,
+                        created_at, token_kind, failed_attempts, locked_at
+                    ) VALUES(?, ?, ?, ?, NULL, ?, ?, 0, NULL)
                     """,
-                    (hash_token(plain), user_id, str(user["tenant_id"]), expires_at(reset_ttl_seconds), now),
+                    (hash_token(plain), user_id, str(user["tenant_id"]), expires_at(reset_ttl_seconds), now, token_kind),
                 )
         return {"reset_token": reset_token, "reset_code": reset_code}
 
     def reset_password(self, *, token: str, email: str = "", new_password: str) -> Principal:
         raw_token = str(token or "").strip()
+        is_short_code = raw_token.isdigit() and len(raw_token) == 6
+        if is_short_code and not str(email or "").strip():
+            raise PermissionError("Email is required when using a password reset code.")
         token_hash = hash_token(raw_token)
-        user_id = f"email:{normalize_email(email)}" if email and not raw_token.startswith("reset_") else ""
+        user_id = f"email:{normalize_email(email)}" if is_short_code else ""
         now = time.time()
         with self._connect() as conn:
             if user_id:
                 row = conn.execute(
-                    "SELECT * FROM password_reset_tokens WHERE token_hash=? AND user_id=?",
+                    "SELECT * FROM password_reset_tokens WHERE token_hash=? AND user_id=? AND token_kind='code'",
                     (token_hash, user_id),
                 ).fetchone()
+                if row is None:
+                    conn.execute(
+                        """
+                        UPDATE password_reset_tokens
+                        SET failed_attempts=failed_attempts + 1,
+                            locked_at=CASE WHEN failed_attempts + 1 >= 5 THEN ? ELSE locked_at END
+                        WHERE user_id=? AND token_kind='code' AND consumed_at IS NULL
+                          AND expires_at>?
+                        """,
+                        (now, user_id, now),
+                    )
+                    conn.commit()
             else:
-                row = conn.execute("SELECT * FROM password_reset_tokens WHERE token_hash=?", (token_hash,)).fetchone()
-            if row is None or row["consumed_at"] is not None or float(row["expires_at"]) <= now:
+                row = conn.execute(
+                    "SELECT * FROM password_reset_tokens WHERE token_hash=? AND token_kind='link'",
+                    (token_hash,),
+                ).fetchone()
+            if (
+                row is None
+                or row["consumed_at"] is not None
+                or float(row["expires_at"]) <= now
+                or row["locked_at"] is not None
+                or int(row["failed_attempts"] or 0) >= 5
+            ):
                 raise PermissionError("Password reset token is invalid, expired, or already used.")
             password_hash = hash_password(new_password)
             conn.execute(
@@ -633,10 +690,10 @@ class PersistenceStore:
             row = conn.execute("SELECT * FROM users WHERE user_id=? AND provider='email'", (user_id,)).fetchone()
             if row is None or bool(row["disabled"]) or not row["password_hash"]:
                 raise PermissionError("Email or password is incorrect.")
-            if require_verified and row["email_verified_at"] is None:
-                raise PermissionError("Email address is not verified.")
             password_hash = str(row["password_hash"])
             if not verify_password(password_hash, password):
+                raise PermissionError("Email or password is incorrect.")
+            if require_verified and row["email_verified_at"] is None:
                 raise PermissionError("Email or password is incorrect.")
             if should_rehash_password(password_hash):
                 conn.execute(

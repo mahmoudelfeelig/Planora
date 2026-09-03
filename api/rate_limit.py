@@ -4,17 +4,26 @@ import math
 import os
 import time
 from http.server import BaseHTTPRequestHandler
+from ipaddress import ip_address
 from threading import Lock
 from typing import Callable
 from urllib.parse import urlparse
 
 from services.auth_service import Principal
+from services.env_service import env_bool_strict
 
 
 class RateLimitExceeded(PermissionError):
     def __init__(self, retry_after: int) -> None:
         super().__init__("Rate limit exceeded. Please retry shortly.")
         self.retry_after = max(1, int(retry_after))
+
+
+def _normalized_ip(value: str) -> str:
+    try:
+        return str(ip_address(str(value).strip()))
+    except ValueError:
+        return ""
 
 
 def rate_limit_identity(
@@ -25,8 +34,15 @@ def rate_limit_identity(
         principal = principal_from_headers(handler.headers)
         return f"user:{principal.tenant_id}:{principal.user_id}", True
     except Exception:
-        forwarded = str(handler.headers.get("X-Forwarded-For", "") or "").split(",", 1)[0].strip()
-        client = forwarded or str(handler.client_address[0])
+        client = _normalized_ip(str(handler.client_address[0])) or str(handler.client_address[0])
+        if env_bool_strict("PLANORA_TRUST_PROXY_HEADERS", False):
+            forwarded = [
+                part.strip()
+                for part in str(handler.headers.get("X-Forwarded-For", "") or "").split(",")
+                if part.strip()
+            ]
+            if forwarded:
+                client = _normalized_ip(forwarded[-1]) or client
         return f"ip:{client}", False
 
 
@@ -65,11 +81,17 @@ def check_rate_limit(
         return
     now = time.monotonic()
     with lock:
-        if len(buckets) > 4096:
+        max_buckets = max(1, int(os.environ.get("PLANORA_RATE_LIMIT_MAX_BUCKETS", "4096")))
+        bucket_key = f"{identity}:{category}"
+        if bucket_key not in buckets and len(buckets) >= max_buckets:
             stale_keys = [key for key, stamps in buckets.items() if not stamps or now - stamps[-1] >= 60.0]
             for key in stale_keys:
                 buckets.pop(key, None)
-        bucket_key = f"{identity}:{category}"
+        if bucket_key not in buckets and len(buckets) >= max_buckets:
+            bucket_key = f"overflow:{category}"
+            if bucket_key not in buckets:
+                while len(buckets) >= max_buckets:
+                    buckets.pop(next(iter(buckets)))
         recent = [stamp for stamp in buckets.get(bucket_key, []) if now - stamp < 60.0]
         if len(recent) >= limit:
             retry_after = math.ceil(60.0 - (now - recent[0])) if recent else 1

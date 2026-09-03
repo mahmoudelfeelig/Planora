@@ -6,11 +6,28 @@ from typing import Any, Dict
 def openapi_schema() -> Dict[str, Any]:
     return {
         "openapi": "3.0.3",
-        "info": {"title": "Planora Local Scheduler API", "version": "1.0.0"},
+        "info": {"title": "Planora Local Scheduler API", "version": "1.1.0"},
         "paths": {
             "/health": {"get": {"summary": "Health check"}, "head": {"summary": "Health check headers"}},
             "/ready": {"get": {"summary": "Readiness check"}, "head": {"summary": "Readiness check headers"}},
-            "/capabilities": {"get": {"summary": "List UI/API capabilities"}},
+            "/capabilities": {
+                "get": {
+                    "summary": "List the stable cross-client UI and engine contract",
+                    "responses": {
+                        "200": {
+                            "description": "Capabilities and Planora UI contract",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/Capabilities"}
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/presets": {"get": {"summary": "List generated scheduling scenarios"}},
+            "/institution-policies": {"get": {"summary": "List institution policy presets and evidence status"}},
+            "/preset/{mode}": {"get": {"summary": "Generate a scenario with optional institution and demand policies"}},
             "/auth/whoami": {"get": {"summary": "Return current principal and permissions"}},
             "/auth/config": {"get": {"summary": "Read email/password authentication configuration"}},
             "/auth/register": {"post": {"summary": "Register using email, password, and an invite code"}},
@@ -56,5 +73,45 @@ def openapi_schema() -> Dict[str, Any]:
             "/portfolio": {"post": {"summary": "Run portfolio solve without session state"}},
             "/import/csv": {"post": {"summary": "Import timetable CSV content"}},
             "/export/csv": {"post": {"summary": "Export schedule CSV content"}},
+        },
+        "components": {
+            "schemas": {
+                "RunMode": {
+                    "type": "string",
+                    "enum": ["fast", "balanced", "quality"],
+                },
+                "Scenario": {
+                    "type": "object",
+                    "required": ["id", "label", "description", "source"],
+                    "properties": {
+                        "id": {"type": "string"},
+                        "label": {"type": "string"},
+                        "description": {"type": "string"},
+                        "source": {"type": "string", "enum": ["generated", "import"]},
+                    },
+                },
+                "UiContract": {
+                    "type": "object",
+                    "required": ["contract_version", "scenarios", "run_modes", "tutorial"],
+                    "properties": {
+                        "contract_version": {"type": "string", "enum": ["planora.ui.v1"]},
+                        "scenarios": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/Scenario"},
+                        },
+                        "run_modes": {"type": "array", "items": {"type": "object"}},
+                        "tutorial": {"type": "array", "items": {"type": "object"}},
+                    },
+                },
+                "Capabilities": {
+                    "type": "object",
+                    "required": ["actions", "shared_backend", "ui_contract"],
+                    "properties": {
+                        "actions": {"type": "array", "items": {"type": "string"}},
+                        "shared_backend": {"type": "object"},
+                        "ui_contract": {"$ref": "#/components/schemas/UiContract"},
+                    },
+                },
+            }
         },
     }

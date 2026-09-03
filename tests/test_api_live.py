@@ -55,6 +55,7 @@ def test_live_api_server_health_solve_and_portfolio_contract(tmp_path):
     env = dict(os.environ)
     env.setdefault("PYTHONPATH", str(ROOT))
     env["PLANORA_DB_PATH"] = str(tmp_path / "planora-api.sqlite3")
+    env["PLANORA_TRUST_DEV_HEADERS"] = "1"
     proc = subprocess.Popen(
         [sys.executable, "-m", "api.server", "--host", "127.0.0.1", "--port", str(port)],
         stdout=subprocess.PIPE,
@@ -80,6 +81,11 @@ def test_live_api_server_health_solve_and_portfolio_contract(tmp_path):
 
         presets = _http_json("GET", f"http://127.0.0.1:{port}/presets")
         assert "small_demo" in presets["presets"]
+        policies = _http_json("GET", f"http://127.0.0.1:{port}/institution-policies")
+        assert {row["id"] for row in policies["policies"]} >= {
+            "generic_research_university",
+            "giu_target",
+        }
         capabilities = _http_json("GET", f"http://127.0.0.1:{port}/capabilities")
         assert "import_timetable_csv" in capabilities["actions"]
         assert "focused_cp_sat_polish" in capabilities["actions"]
@@ -178,12 +184,23 @@ def test_live_api_server_health_solve_and_portfolio_contract(tmp_path):
         openapi = _http_json("GET", f"http://127.0.0.1:{port}/openapi.json")
         assert openapi["openapi"].startswith("3.")
         assert "/sessions" in openapi["paths"]
+        assert "/institution-policies" in openapi["paths"]
         assert "/auth/config" in openapi["paths"]
         assert "/analytics/event" in openapi["paths"]
         assert "/analytics/summary" in openapi["paths"]
         preset_payload = _http_json("GET", f"http://127.0.0.1:{port}/preset/small_demo")
         assert preset_payload["mode"] == "small_demo"
         assert preset_payload["instance"]["activities"]
+        guided_payload = _http_json(
+            "GET",
+            f"http://127.0.0.1:{port}/preset/small_demo?institution_policy=giu_target&demand_mode=forecast",
+        )
+        assert guided_payload["institution_policy"] == "giu_target"
+        assert guided_payload["instance"]["institutional_policy"]["policy_id"] == "giu_target"
+        assert guided_payload["instance"]["demand_policy"] == {
+            "mode": "quantile",
+            "service_level": 0.9,
+        }
 
         inst = generate_instance("small_demo")
         solve_payload = {

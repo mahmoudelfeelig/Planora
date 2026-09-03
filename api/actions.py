@@ -4,18 +4,25 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
-from services.application_service import solve_options_from_payload
+from services.application_service import (
+    improve_options_from_payload,
+    solve_options_from_payload,
+)
 from services.auth_service import Principal, require_permission
-from services.contracts import ImproveOptions, SolveOptions
+from services.contracts import SolveOptions
 from services.schedule_ops_service import (
     cp_sat_polish_shared,
     export_schedule_csv_text,
-    improve_schedule_shared,
     normalize_schedule,
     score_schedule,
 )
-from services.solver_service import solve_instance, solve_portfolio
+from services.engine_backend import (
+    improve_with_engine,
+    solve_portfolio_with_engine,
+    solve_with_engine,
+)
 from utils.io import instance_from_json
+from services.ui_contract import UI_CONTRACT_VERSION
 
 
 def load_instance_and_options(payload: Dict[str, Any]) -> Tuple[Any, SolveOptions]:
@@ -42,6 +49,7 @@ def load_instance_and_schedule(payload: Dict[str, Any]) -> Tuple[Any, Dict[int, 
 
 def result_payload(result) -> Dict[str, Any]:
     return {
+        "contract_version": UI_CONTRACT_VERSION,
         "status": int(result.status),
         "raw_status": int(result.raw_status),
         "schedule": result.schedule,
@@ -56,6 +64,19 @@ def result_payload(result) -> Dict[str, Any]:
                 "objective_value": attempt.objective_value,
                 "best_objective_bound": attempt.best_objective_bound,
                 "relative_gap": attempt.relative_gap,
+                "status_name": attempt.status_name,
+                "proof_status": attempt.proof_status,
+                "budget_seconds": attempt.budget_seconds,
+                "elapsed_seconds": attempt.elapsed_seconds,
+                "model_build_seconds": attempt.model_build_seconds,
+                "setup_seconds": attempt.setup_seconds,
+                "deadline_safety_margin_seconds": (
+                    attempt.deadline_safety_margin_seconds
+                ),
+                "search_budget_seconds": attempt.search_budget_seconds,
+                "search_seconds": attempt.search_seconds,
+                "deadline_overrun_seconds": attempt.deadline_overrun_seconds,
+                "budget_exhausted": attempt.budget_exhausted,
             }
             for attempt in (result.attempts or [])
         ],
@@ -64,13 +85,13 @@ def result_payload(result) -> Dict[str, Any]:
 
 def handle_solve(payload: Dict[str, Any]) -> Dict[str, Any]:
     inst, options = load_instance_and_options(payload)
-    result = solve_instance(inst, options)
+    result = solve_with_engine(inst, options)
     return result_payload(result)
 
 
 def handle_portfolio(payload: Dict[str, Any]) -> Dict[str, Any]:
     inst, options = load_instance_and_options(payload)
-    result = solve_portfolio(inst, options)
+    result = solve_portfolio_with_engine(inst, options)
     return {
         "best_index": int(result.best_index),
         "candidates": [
@@ -103,10 +124,10 @@ def handle_improve(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(options_raw, dict):
         raise ValueError("Payload options must be an object.")
     focus_term = str(payload.get("focus_term", "") or "")
-    return improve_schedule_shared(
+    return improve_with_engine(
         inst,
         schedule,
-        ImproveOptions(**options_raw),
+        improve_options_from_payload(payload),
         focus_term=focus_term,
     )
 

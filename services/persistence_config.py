@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def default_persistence_path(root: str | Path) -> Path:
