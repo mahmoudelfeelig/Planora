@@ -76,10 +76,11 @@ timeout 25m "${PYTHON_BIN}" -m pytest -q \
 # each UI module so module-scoped fixtures cannot leave native Qt state behind
 # for the next module while still appending to the same coverage data.
 for ui_test_file in "${UI_TEST_FILES[@]}"; do
-  timeout 10m "${PYTHON_BIN}" -m pytest -q \
+  timeout 10m "${PYTHON_BIN}" -m coverage run \
+    --append \
+    --context="ui:${ui_test_file}" \
+    -m pytest -q \
     -m "slow and not timing_sensitive" \
-    --cov-append \
-    "${COVERAGE_ARGS[@]}" \
     "${ui_test_file}"
 done
 
