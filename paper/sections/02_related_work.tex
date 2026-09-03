@@ -6,7 +6,7 @@ Recent surveys emphasize that institution-specific rules and reproducible benchm
 
 \paragraph{Decomposition.}
 Logic-based Benders methods use a master problem and a subordinate inference problem whose failures generate cuts~\cite{hooker2003logic}.
-Lach and L\"ubbecke characterize the partial-transversal structure behind time-first, room-second university timetabling through Hall inequalities~\cite{lach2008partial}; Bagger et al. segment the curriculum-based problem into time scheduling and room allocation and generate Benders feasibility cuts~\cite{bagger2018benders}.
+Lach and L{\"u}bbecke characterize the partial-transversal structure behind time-first, room-second university timetabling through Hall inequalities~\cite{lach2008partial}; Bagger et al.\ segment the curriculum-based problem into time scheduling and room allocation and generate Benders feasibility cuts~\cite{bagger2018benders}.
 Consequently, neither time/room decomposition nor Hall/Benders room cuts are claimed as novel.
 Expanding the left side of the bipartite graph from jobs to admissible job--start options also subsumes the start-dependent contextual formula: for option set $U$, the established partial-transversal inequality is $x(U)\le |\Gamma(U)|$.
 An earlier reviewed draft used the witnessed-room cardinality and could be weaker when $\Gamma(U)$ was a strict subset of that witness; the implementation now uses the stronger standard right-hand side $|\Gamma(U)|$.
@@ -14,7 +14,7 @@ This correction strengthens the separation but does not change the prior-art ver
 
 \paragraph{Hybrid improvement.}
 Feasibility construction followed by tabu search, simulated annealing, variable-neighborhood search, or related neighborhoods is established practice~\cite{lewis2008metaheuristics,muller2009hybrid}.
-Burke et al. explicitly combine decomposition, reformulation, and diving for university course timetabling, while L\"u and Hao construct periods heuristically and solve the induced room assignment as an exact bipartite matching problem~\cite{burke2010diving,lu2008hybrid}.
+Burke et al.\ explicitly combine decomposition, reformulation, and diving for university course timetabling, while L{\"u} and Hao construct periods heuristically and solve the induced room assignment as an exact bipartite matching problem~\cite{burke2010diving,lu2008hybrid}.
 Accordingly, fixing event times and reoptimizing rooms is an established special case rather than a new algorithmic primitive.
 Instance-feature-driven parameter tuning is also established for curriculum-based timetabling~\cite{bellio2016feature}; any future learned or calibrated controller must be evaluated against that line of work rather than presented as a new idea in isolation.
 CP-based exact repair in course-timetabling LNS, failure-derived cuts, adaptive neighborhood size, Benders-cut-guided LNS, Benders-aware LNS subproblems, and explanation-derived neighborhoods also precede this work~\cite{cambazard2012cp,nagata2018random,trick2011benderslns,maher2021benderslns,prudhomme2014explanationlns}.
