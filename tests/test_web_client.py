@@ -66,7 +66,7 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "/system" in app
     assert "whoami.is_global_admin" in app
     assert "/parity" in app
-    assert "/jobs/improve" in app
+    assert "`/sessions/${sessionId}/improve`" in planner_api
     assert "payload.hard_constraints" in planner_api
     assert "force_repeat_weekly_pattern: advanced.forceRepeatWeeklyPattern" in planner_api
     assert "VITE_PLANORA_API_URL" in app
