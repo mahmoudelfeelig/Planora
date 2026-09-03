@@ -458,6 +458,10 @@ class PlanoraViewModel(
 
   fun saveProject(name: String) {
     val workspace = _uiState.value.workspace ?: return
+    if (_uiState.value.principal?.canWriteProjects != true) {
+      showMessage("Your role can open projects but cannot save them.", true)
+      return
+    }
     launchBusy { generation ->
       when (val result = gateway.saveProject(name, workspace)) {
         is GatewayResult.Success -> {
@@ -478,6 +482,10 @@ class PlanoraViewModel(
   }
 
   fun renameProject(project: ProjectSummary, newName: String) = launchBusy { generation ->
+    if (_uiState.value.principal?.canWriteProjects != true) {
+      showMessage("Your role can open projects but cannot rename them.", true)
+      return@launchBusy
+    }
     when (val result = gateway.renameProject(project, newName)) {
       is GatewayResult.Success -> if (isCurrent(generation)) {
         _uiState.update { state ->
@@ -494,6 +502,10 @@ class PlanoraViewModel(
   }
 
   fun deleteProject(project: ProjectSummary) = launchBusy { generation ->
+    if (_uiState.value.principal?.canWriteProjects != true) {
+      showMessage("Your role can open projects but cannot delete them.", true)
+      return@launchBusy
+    }
     when (val result = gateway.deleteProject(project)) {
       is GatewayResult.Success -> if (isCurrent(generation)) {
         _uiState.update { state ->

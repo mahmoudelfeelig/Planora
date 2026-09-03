@@ -699,7 +699,7 @@ private fun ScheduleToolbar(
             DropdownMenuItem(
               text = { Text("Save project") },
               leadingIcon = { Icon(Icons.Rounded.Save, contentDescription = null) },
-              enabled = state.principal?.canWriteSchedule == true,
+              enabled = state.principal?.canWriteProjects == true,
               onClick = {
                 compactActionsExpanded = false
                 onSave()
@@ -782,7 +782,7 @@ private fun ScheduleToolbar(
         }
         OutlinedButton(
           onClick = onSave,
-          enabled = actionsEnabled && state.principal?.canWriteSchedule == true,
+          enabled = actionsEnabled && state.principal?.canWriteProjects == true,
           modifier = Modifier.defaultMinSize(minHeight = 48.dp),
         ) {
           Icon(Icons.Rounded.Save, contentDescription = null)

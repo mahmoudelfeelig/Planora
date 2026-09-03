@@ -354,7 +354,7 @@ private fun PlanoraShell(
             Destination.PROJECTS -> ProjectsScreen(
               projects = state.projects,
               loadError = state.projectsLoadError,
-              canWrite = state.principal?.canWriteSchedule == true,
+              canWrite = state.principal?.canWriteProjects == true,
               canSave = state.workspace != null,
               onRetry = viewModel::refreshProjects,
               onSave = viewModel::saveProject,

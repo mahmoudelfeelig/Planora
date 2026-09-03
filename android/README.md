@@ -6,6 +6,8 @@ Planora's Android client is a single-module Kotlin and Jetpack Compose app. UI c
 
 The client requires `planora.ui.v1` from `GET /capabilities`. The server owns the scenario catalog (`demo`, `spring_2023`, `import`) and solve-mode catalog (`fast`, `balanced`, `quality`). Scenario creation, solving, improving, and saving are routed through session and job APIs rather than duplicating solver logic on-device.
 
+For compatibility with the currently hosted pre-contract response, the client also accepts the legacy string-valued `shared_backend` field and exposes its existing `small_demo` and `ss23_uni_like` presets under the same plain-language labels. The fallback is enabled only when the server advertises the required preset, solve, and improve actions.
+
 Release builds always use the hosted API at `https://planora.elfeel.me/api`. The release endpoint cannot be changed in the app. Users sign in with the same Planora account they use on the web and desktop clients; no server credential or shared secret is packaged in the APK.
 
 ## Web feature parity

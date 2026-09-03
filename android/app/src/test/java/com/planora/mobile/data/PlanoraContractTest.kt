@@ -1,6 +1,7 @@
 package com.planora.mobile.data
 
 import com.google.gson.Gson
+import com.planora.mobile.domain.Principal
 import com.planora.mobile.domain.ProjectSummary
 import com.planora.mobile.domain.ValidationState
 import org.junit.Assert.assertEquals
@@ -11,6 +12,35 @@ import org.junit.Test
 import java.util.Base64
 
 class PlanoraContractTest {
+  @Test
+  fun acceptsTheCurrentlyHostedLegacyCapabilitiesShape() {
+    val payload = """
+      {
+        "actions": ["load_preset", "solve", "improve"],
+        "shared_backend": "python-services"
+      }
+    """.trimIndent()
+
+    val parsed = Gson().fromJson(payload, CapabilitiesDto::class.java)
+
+    assertEquals("python-services", parsed.resolvedBackendId())
+    assertEquals(
+      listOf("small_demo", "ss23_uni_like", "import"),
+      parsed.compatibleUiContract()?.scenarios?.map { it.id },
+    )
+  }
+
+  @Test
+  fun keepsScheduleAndProjectWritePermissionsIndependent() {
+    val scheduleEditor = Principal("scheduler", "Scheduler", "staff", "eastbridge", setOf("schedule:write", "solver:run"))
+    val projectEditor = Principal("librarian", "Librarian", "staff", "eastbridge", setOf("projects:write"))
+
+    assertTrue(scheduleEditor.canWriteSchedule)
+    assertFalse(scheduleEditor.canWriteProjects)
+    assertFalse(projectEditor.canWriteSchedule)
+    assertTrue(projectEditor.canWriteProjects)
+  }
+
   @Test
   fun rejectsInsecureRemoteHttpButAllowsEmulatorHost() {
     assertEquals("https://example.edu/planora", BaseUrlNormalizer.normalize("example.edu/planora", ""))
@@ -45,6 +75,7 @@ class PlanoraContractTest {
 
     val parsed = Gson().fromJson(payload, CapabilitiesDto::class.java)
 
+    assertEquals("planora-solver-service-v1", parsed.resolvedBackendId())
     assertEquals("planora.ui.v1", parsed.uiContract?.version)
     assertEquals(listOf("demo", "spring_2023", "import"), parsed.uiContract?.scenarios?.map { it.id })
     assertEquals(listOf("fast", "balanced", "quality"), parsed.uiContract?.modes?.map { it.id })

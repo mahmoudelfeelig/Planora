@@ -2,6 +2,7 @@ package com.planora.mobile.data
 
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonObject
+import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import com.planora.mobile.BuildConfig
 import com.planora.mobile.domain.AcademicResource
@@ -200,7 +201,7 @@ class RetrofitPlanoraGateway(
 
   override suspend fun loadCatalog(): GatewayResult<UiCatalog> = authenticatedRequest { client ->
     val capabilities = client.api.capabilities()
-    val contract = capabilities.uiContract
+    val contract = capabilities.compatibleUiContract()
       ?: error("This Planora server does not publish the ${BuildConfig.UI_CONTRACT_VERSION} UI contract yet.")
     require(contract.version == BuildConfig.UI_CONTRACT_VERSION) {
       "This app requires ${BuildConfig.UI_CONTRACT_VERSION}; the server reports ${contract.version}."
@@ -220,7 +221,7 @@ class RetrofitPlanoraGateway(
       },
       modes = contract.modes.map { CatalogItem(it.id, it.label, it.description, it.recommended) },
       tutorial = contract.tutorial.map { TutorialStep(it.id, it.title, it.body) },
-      backendId = capabilities.sharedBackend?.backendId.orEmpty(),
+      backendId = capabilities.resolvedBackendId(),
     )
   }
 
@@ -796,6 +797,13 @@ class RetrofitPlanoraGateway(
       currentCoroutineContext().ensureActive()
       GatewayResult.Failure(
         "Planora could not reach the server. Check your connection and server address.",
+        retryable = true,
+        sessionStateUnknown = sessionMayChange,
+      )
+    } catch (_: JsonParseException) {
+      currentCoroutineContext().ensureActive()
+      GatewayResult.Failure(
+        "Planora returned data this app could not read. Update the app or try again.",
         retryable = true,
         sessionStateUnknown = sessionMayChange,
       )

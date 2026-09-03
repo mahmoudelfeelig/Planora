@@ -1,5 +1,6 @@
 package com.planora.mobile.data
 
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.annotations.SerializedName
 
@@ -103,9 +104,41 @@ data class BackendContractDto(
 
 data class CapabilitiesDto(
   val actions: List<String> = emptyList(),
-  @SerializedName("shared_backend") val sharedBackend: BackendContractDto? = null,
+  @SerializedName("shared_backend") val sharedBackend: JsonElement? = null,
   @SerializedName("ui_contract") val uiContract: UiContractDto? = null,
 )
+
+internal fun CapabilitiesDto.resolvedBackendId(): String = when {
+  sharedBackend == null || sharedBackend.isJsonNull -> ""
+  sharedBackend.isJsonPrimitive -> sharedBackend.asString
+  sharedBackend.isJsonObject -> sharedBackend.asJsonObject.get("backend_id")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+  else -> ""
+}
+
+internal fun CapabilitiesDto.compatibleUiContract(): UiContractDto? {
+  uiContract?.let { return it }
+  if (!actions.containsAll(listOf("load_preset", "solve", "improve"))) return null
+  return UiContractDto(
+    version = "planora.ui.v1",
+    scenarios = listOf(
+      CatalogEntryDto("small_demo", "Demo timetable", "A small ready-to-run timetable for learning Planora."),
+      CatalogEntryDto("ss23_uni_like", "Spring 2023 university", "An SS23-calibrated university example for realistic planning and review."),
+      CatalogEntryDto("import", "Import your data", "Start from your university's timetable CSV export."),
+    ),
+    modes = listOf(
+      CatalogEntryDto("fast", "Fast", "Build a usable draft quickly."),
+      CatalogEntryDto("balanced", "Balanced", "A dependable balance of speed and timetable quality.", recommended = true),
+      CatalogEntryDto("quality", "Maximum quality", "Spend more time reducing clashes and quality penalties."),
+    ),
+    tutorial = listOf(
+      TutorialStepDto("bring-in", "Bring in your timetable", "Open the Spring 2023 example or import your university data."),
+      TutorialStepDto("check-essentials", "Check the essentials", "Confirm the term, rooms, people, courses, and student groups."),
+      TutorialStepDto("build-draft", "Build a draft", "Choose Fast, Balanced, or Maximum quality and let Planora place events."),
+      TutorialStepDto("review-repair", "Review and repair", "Open a flagged event, understand the issue, and apply a suggested move."),
+      TutorialStepDto("validate-publish", "Validate and publish", "Confirm there are no hard conflicts, then save or export the timetable."),
+    ),
+  )
+}
 
 data class ProjectsDto(val projects: List<ProjectSummaryDto> = emptyList())
 

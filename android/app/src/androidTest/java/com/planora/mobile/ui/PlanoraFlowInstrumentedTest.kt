@@ -533,7 +533,7 @@ private open class FakeGateway : PlanoraGateway {
   override fun currentBaseUrl() = "http://10.0.2.2:8787"
 
   companion object {
-    val principal = Principal("admin@eastbridge.edu", "A. Elfeel", "uni_admin", "Eastbridge University", setOf("schedule:read", "schedule:write", "solver:run"))
+    val principal = Principal("admin@eastbridge.edu", "A. Elfeel", "uni_admin", "Eastbridge University", setOf("schedule:read", "schedule:write", "solver:run", "projects:write"))
     val catalog = UiCatalog(
       "planora.ui.v1",
       listOf(

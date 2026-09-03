@@ -7,7 +7,7 @@ The Android client passes the local release-readiness gate for code quality, pac
 ## Verified build and quality gates
 
 - Kotlin and Compose production sources compile in debug and release variants.
-- Fourteen JVM tests pass with no failures or skips.
+- Sixteen JVM tests pass with no failures or skips, including the currently hosted legacy-capabilities response.
 - Nineteen device tests pass on a clean Android 16 AVD; one live-login test is intentionally skipped because production credentials were not supplied.
 - Android lint reports zero issues.
 - Debug APK, instrumentation APK, optimized unsigned release APK, and optimized release AAB build successfully offline.
@@ -20,7 +20,7 @@ Measured on the isolated `PlanoraAudit` Android 16 AVD using a locally signed co
 
 - Current release cold-start median: 3,611 ms across five clean launches.
 - Current release cold-start range: 2,696–4,919 ms.
-- Optimized unsigned release APK: 1,735,141 bytes; release AAB: approximately 3.9 MB.
+- Optimized unsigned release APK: 1,735,141 bytes; release AAB: 4,075,901 bytes.
 
 These emulator measurements are a regression snapshot, not a substitute for Play Console Android vitals on representative physical devices. The median remains below Android vitals' 5-second excessive cold-start threshold.
 

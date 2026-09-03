@@ -11,6 +11,7 @@ data class Principal(
 ) {
   val canRunSolver: Boolean get() = "solver:run" in permissions
   val canWriteSchedule: Boolean get() = "schedule:write" in permissions || canRunSolver
+  val canWriteProjects: Boolean get() = "projects:write" in permissions
 }
 
 data class CatalogItem(
