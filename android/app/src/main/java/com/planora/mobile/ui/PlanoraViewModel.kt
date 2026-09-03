@@ -712,6 +712,10 @@ class PlanoraViewModel(
     val generation = sessionGeneration
     val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
       val ownJob = currentCoroutineContext()[Job]
+      val hasSession = gateway.hasSession()
+      if (!hasSession && isCurrent(generation)) {
+        _uiState.update { it.copy(initializing = false) }
+      }
       when (val config = gateway.loadAuthConfig()) {
         is GatewayResult.Success -> if (isCurrent(generation)) {
           _uiState.update { it.copy(authConfig = config.value) }
@@ -720,8 +724,7 @@ class PlanoraViewModel(
           _uiState.update { it.copy(message = config.message, isError = true) }
         }
       }
-      if (!gateway.hasSession()) {
-        if (isCurrent(generation)) _uiState.update { it.copy(initializing = false) }
+      if (!hasSession) {
         return@launch
       }
       if (!isCurrent(generation)) return@launch
