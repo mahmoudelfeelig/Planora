@@ -157,10 +157,15 @@ def test_decomposed_solver_adds_hall_cut_and_returns_valid_schedule() -> None:
 
 @pytest.mark.timing_sensitive
 def test_bounded_decomposed_optimization_reserves_exact_room_time() -> None:
-    inst = generate_instance("small_demo")
+    inst = _two_activity_instance(
+        rooms={
+            1: Room(id=1, name="North", capacity=50, room_type="LECTURE"),
+            2: Room(id=2, name="South", capacity=50, room_type="LECTURE"),
+        }
+    )
     model = TimetableSolver(inst, room_mode="decomposed", use_objective=True)
     solver, status = model.solve(
-        time_limit_seconds=15.0,
+        time_limit_seconds=5.0,
         workers=1,
         random_seed=1,
     )
@@ -176,10 +181,10 @@ def test_bounded_decomposed_optimization_reserves_exact_room_time() -> None:
     report = model.decomposition_report
     assert report["status"] == "FEASIBLE"
     assert report["proof_status"] in {"feasible_incumbent", "optimal"}
-    assert report["budget_seconds"] == 15.0
+    assert report["budget_seconds"] == 5.0
     assert report["objective_value"] is not None
     successful_round = report["rounds"][-1]
-    assert 0.0 < successful_round["master_budget_seconds"] < 15.0
+    assert 0.0 < successful_round["master_budget_seconds"] < 5.0
     room_timing = successful_round["room_subproblem"]["timing"]
     assert room_timing["search_budget_seconds"] > 0.0
 
