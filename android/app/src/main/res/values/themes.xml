@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="Theme.Planora.Base" parent="android:style/Theme.Material.Light.NoActionBar">
+    <item name="android:fontFamily">sans</item>
+    <item name="android:windowActionModeOverlay">true</item>
+    <item name="android:windowLightStatusBar">true</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@color/planora_window_background</item>
+    <item name="android:windowBackground">@color/planora_window_background</item>
+    <item name="android:windowNoTitle">true</item>
+  </style>
+
+  <style name="Theme.Planora" parent="Theme.Planora.Base" />
+</resources>

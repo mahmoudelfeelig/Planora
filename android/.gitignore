@@ -1,0 +1,23 @@
+.gradle/
+.kotlin/
+.idea/
+local.properties
+**/build/
+*.iml
+*.jks
+*.keystore
+*.p12
+*.pfx
+keystore.properties
+signing.properties
+release-signing.properties
+captures/
+artifacts/
+.externalNativeBuild/
+.cxx/
+
+# The repository-wide `Data/` rule is case-insensitive on this checkout.
+!app/src/main/java/com/planora/mobile/data/
+!app/src/main/java/com/planora/mobile/data/**
+!app/src/test/java/com/planora/mobile/data/
+!app/src/test/java/com/planora/mobile/data/**

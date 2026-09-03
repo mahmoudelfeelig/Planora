@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="planora_launcher_background">#061B32</color>
+  <color name="planora_window_background">#09131F</color>
+  <color name="planora_splash_background">#061B32</color>
+  <color name="planora_monochrome">#FFFFFFFF</color>
+</resources>

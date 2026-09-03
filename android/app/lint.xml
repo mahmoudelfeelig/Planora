@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+  <!-- SDK 36 is the latest SDK installed in the reproducible workspace. -->
+  <issue id="OldTargetApi,GradleDependency" severity="ignore" />
+  <!-- Adaptive icons require a v26 resource; the default bitmap preserves manifest linking. -->
+  <issue id="ObsoleteSdkInt" severity="ignore" />
+</lint>
