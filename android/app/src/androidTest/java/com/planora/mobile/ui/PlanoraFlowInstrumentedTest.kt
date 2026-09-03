@@ -23,18 +23,31 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import com.planora.mobile.domain.AcademicResource
+import com.planora.mobile.domain.AccessSnapshot
+import com.planora.mobile.domain.AccountSnapshot
+import com.planora.mobile.domain.AdminSnapshot
+import com.planora.mobile.domain.AuthConfig
+import com.planora.mobile.domain.AuthSession
 import com.planora.mobile.domain.CatalogItem
+import com.planora.mobile.domain.DataRow
 import com.planora.mobile.domain.ExportedSchedule
 import com.planora.mobile.domain.GatewayResult
 import com.planora.mobile.domain.JobStatus
+import com.planora.mobile.domain.MoveTarget
 import com.planora.mobile.domain.PlanoraGateway
 import com.planora.mobile.domain.Principal
 import com.planora.mobile.domain.ProjectSummary
+import com.planora.mobile.domain.RegistrationResult
 import com.planora.mobile.domain.ScheduleEvent
 import com.planora.mobile.domain.ScheduleWorkspace
+import com.planora.mobile.domain.SolverSettings
 import com.planora.mobile.domain.TutorialStep
 import com.planora.mobile.domain.UiCatalog
 import com.planora.mobile.TestActivity
@@ -130,6 +143,65 @@ class PlanoraFlowInstrumentedTest {
     composeRule.onNodeWithText("Sign in").assertIsDisplayed()
     composeRule.onNodeWithText("Open workspace").assertIsDisplayed()
     capture("planora-login.png")
+  }
+
+  @Test
+  fun registrationIsVisibleAndOpensTheNativeAccountFlow() {
+    composeRule.setContent {
+      var stage by remember { mutableStateOf(AuthStage.LOGIN) }
+      PlanoraTheme(themeMode = ThemeMode.LIGHT) {
+        LoginScreen(
+          baseUrl = "https://planora.elfeel.me/api",
+          authConfig = AuthConfig(registrationEnabled = true),
+          authStage = stage,
+          canEditBaseUrl = false,
+          busy = false,
+          message = null,
+          onLogin = { _, _ -> },
+          onAuthStage = { stage = it },
+          onBaseUrlSave = {},
+          onOpenTutorial = {},
+        )
+      }
+    }
+
+    composeRule.onNodeWithText("Register").performScrollTo().assertIsDisplayed().performClick()
+    composeRule.onNodeWithText("Create account").assertIsDisplayed()
+    composeRule.onNodeWithText("Display name").assertIsDisplayed()
+  }
+
+  @Test
+  fun toolsExposeTheWebWorkspaceFeatures() {
+    context.getSharedPreferences("planora_onboarding", Context.MODE_PRIVATE).edit()
+      .putBoolean("seen", true).commit()
+    val viewModel = PlanoraViewModel(FakeGateway(), context)
+    composeRule.setContent { PlanoraTheme(themeMode = ThemeMode.LIGHT) { PlanoraRoot(viewModel) } }
+
+    composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasText("Small demo")).fetchSemanticsNodes().isNotEmpty() }
+    composeRule.onNodeWithTag("nav-tools").performClick()
+    composeRule.onNodeWithText("Data and scenarios").assertIsDisplayed()
+    composeRule.onNodeWithText("Advanced solver").assertIsDisplayed()
+    composeRule.onNodeWithText("Fairness and utilization").assertIsDisplayed()
+    composeRule.onNodeWithText("Account and organizations").assertIsDisplayed()
+    composeRule.onNodeWithText("Platform parity").assertIsDisplayed()
+  }
+
+  @Test
+  fun aClassCanBeMovedThroughServerApprovedTargets() {
+    context.getSharedPreferences("planora_onboarding", Context.MODE_PRIVATE).edit()
+      .putBoolean("seen", true).commit()
+    val viewModel = PlanoraViewModel(FakeGateway(), context)
+    composeRule.setContent { PlanoraTheme(themeMode = ThemeMode.LIGHT) { PlanoraRoot(viewModel) } }
+
+    composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasText("Small demo")).fetchSemanticsNodes().isNotEmpty() }
+    composeRule.onNodeWithText("Small demo").performClick()
+    composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasText("Algorithms")).fetchSemanticsNodes().isNotEmpty() }
+    composeRule.onNodeWithText("Algorithms").performClick()
+    composeRule.onNodeWithText("Find safe moves").performScrollTo().performClick()
+    composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasText("Move Algorithms")).fetchSemanticsNodes().isNotEmpty() }
+    composeRule.onNodeWithText("Move", useUnmergedTree = true).performClick()
+    composeRule.waitUntil(5_000) { viewModel.uiState.value.selectedEvent?.day == "TUE" }
+    assertTrue(viewModel.uiState.value.selectedEvent?.slot == 3)
   }
 
   @Test
@@ -400,10 +472,21 @@ class PlanoraFlowInstrumentedTest {
 
 private open class FakeGateway : PlanoraGateway {
   override suspend fun hasSession() = true
+  override suspend fun loadAuthConfig() = GatewayResult.Success(AuthConfig())
   override suspend fun login(email: String, password: String): GatewayResult<Principal> =
     GatewayResult.Success(principal)
+  override suspend fun register(email: String, password: String, displayName: String) =
+    GatewayResult.Success(RegistrationResult(developmentCode = "123456"))
+  override suspend fun verifyEmail(email: String, code: String) = GatewayResult.Success(principal.copy(userId = email))
+  override suspend fun forgotPassword(email: String) = GatewayResult.Success("123456")
+  override suspend fun resetPassword(email: String, code: String, newPassword: String) = GatewayResult.Success(principal.copy(userId = email))
   override suspend fun restoreSession(): GatewayResult<Principal> = GatewayResult.Success(principal)
   override suspend fun logout() = Unit
+  override suspend fun loadAccount() = GatewayResult.Success(AccountSnapshot(sessions = listOf(AuthSession("current", true, true, 1))))
+  override suspend fun joinInvite(code: String) = GatewayResult.Success(principal)
+  override suspend fun switchOrganization(tenantId: String) = GatewayResult.Success(principal.copy(tenantId = tenantId))
+  override suspend fun changePassword(currentPassword: String, newPassword: String) = GatewayResult.Success(Unit)
+  override suspend fun revokeOtherSessions() = GatewayResult.Success(listOf(AuthSession("current", true, true, 1)))
   override suspend fun loadCatalog() = GatewayResult.Success(catalog)
   override suspend fun listProjects() = GatewayResult.Success(listOf(ProjectSummary("Faculty review", "eastbridge", null)))
   override suspend fun openProject(name: String, tenantId: String) = GatewayResult.Success(workspace.copy(projectName = name))
@@ -413,16 +496,32 @@ private open class FakeGateway : PlanoraGateway {
     filename: String,
     content: String,
   ): GatewayResult<ScheduleWorkspace> = GatewayResult.Success(workspace.copy(projectName = filename))
-  override suspend fun startSolve(workspace: ScheduleWorkspace, modeId: String) = GatewayResult.Success(workspace)
+  override suspend fun startSolve(workspace: ScheduleWorkspace, modeId: String, settings: SolverSettings, useAdvancedOverrides: Boolean) = GatewayResult.Success(workspace)
   override suspend fun validate(workspace: ScheduleWorkspace) = GatewayResult.Success(workspace)
   override suspend fun startImprove(
     workspace: ScheduleWorkspace,
     modeId: String,
+    settings: SolverSettings,
+    useAdvancedOverrides: Boolean,
   ): GatewayResult<JobStatus> = GatewayResult.Success(JobStatus("job-1", "queued", "Waiting", null))
   override suspend fun pollJob(jobId: String, workspace: ScheduleWorkspace) = GatewayResult.Success(JobStatus(jobId, "complete", "Improvement complete", 1f) to workspace)
   override suspend fun cancelJob(jobId: String) = GatewayResult.Success(JobStatus(jobId, "cancelled", "Improvement cancelled", null))
   override suspend fun exportCsv(workspace: ScheduleWorkspace) = GatewayResult.Success(ExportedSchedule("planora-schedule.csv", "activity_id,title\n1,Algorithms\n"))
   override suspend fun saveProject(name: String, workspace: ScheduleWorkspace) = GatewayResult.Success(ProjectSummary(name, "eastbridge", null))
+  override suspend fun renameProject(project: ProjectSummary, newName: String) = GatewayResult.Success(project.copy(name = newName))
+  override suspend fun deleteProject(project: ProjectSummary) = GatewayResult.Success(Unit)
+  override suspend fun loadMoveTargets(workspace: ScheduleWorkspace, event: ScheduleEvent, week: Int) = GatewayResult.Success(
+    listOf(MoveTarget(week, "TUE", 3, 3, 4, true, "No hard conflicts")),
+  )
+  override suspend fun moveEvent(workspace: ScheduleWorkspace, event: ScheduleEvent, target: MoveTarget) = GatewayResult.Success(
+    workspace.copy(events = workspace.events.map { if (it.activityId == event.activityId && it.week == event.week) it.copy(week = target.week, day = target.day, slot = target.slot) else it }),
+  )
+  override suspend fun loadParity() = GatewayResult.Success(DataRow(mapOf("android" to "supported")))
+  override suspend fun loadAccess() = GatewayResult.Success(AccessSnapshot())
+  override suspend fun applyAccessChange(change: Map<String, Any?>) = GatewayResult.Success(AccessSnapshot())
+  override suspend fun loadAdmin(filters: Map<String, String>) = GatewayResult.Success(AdminSnapshot())
+  override suspend fun sendTestEmail(email: String) = GatewayResult.Success(Unit)
+  override suspend fun exportAdminCsv(kind: String, filters: Map<String, String>) = GatewayResult.Success(ExportedSchedule("$kind.csv", ""))
   override suspend fun updateBaseUrl(value: String) = GatewayResult.Success(value)
   override fun canEditBaseUrl() = true
   override fun currentBaseUrl() = "http://10.0.2.2:8787"
@@ -538,6 +637,8 @@ private class DelayedImproveGateway : FakeGateway() {
   override suspend fun startImprove(
     workspace: ScheduleWorkspace,
     modeId: String,
+    settings: SolverSettings,
+    useAdvancedOverrides: Boolean,
   ): GatewayResult<JobStatus> {
     improveCalls.incrementAndGet()
     delay(300)

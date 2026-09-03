@@ -119,19 +119,19 @@ import com.planora.mobile.ui.theme.planoraColors
 @Composable
 internal fun LoginScreen(
   baseUrl: String,
-  authConfig: com.planora.mobile.domain.AuthConfig,
-  authStage: AuthStage,
+  authConfig: com.planora.mobile.domain.AuthConfig = com.planora.mobile.domain.AuthConfig(),
+  authStage: AuthStage = AuthStage.LOGIN,
   busy: Boolean,
   message: String?,
   messageIsError: Boolean = false,
   canEditBaseUrl: Boolean = true,
   canRetrySession: Boolean = false,
   onLogin: (String, String) -> Unit,
-  onRegister: (String, String, String) -> Unit,
-  onVerify: (String, String) -> Unit,
-  onForgotPassword: (String) -> Unit,
-  onResetPassword: (String, String, String) -> Unit,
-  onAuthStage: (AuthStage) -> Unit,
+  onRegister: (String, String, String) -> Unit = { _, _, _ -> },
+  onVerify: (String, String) -> Unit = { _, _ -> },
+  onForgotPassword: (String) -> Unit = {},
+  onResetPassword: (String, String, String) -> Unit = { _, _, _ -> },
+  onAuthStage: (AuthStage) -> Unit = {},
   onRetrySession: () -> Unit = {},
   onBaseUrlSave: (String) -> Unit,
   onOpenTutorial: () -> Unit,
@@ -529,7 +529,7 @@ internal fun ScheduleScreen(
   onOpenReview: () -> Unit,
   onSave: (String) -> Unit,
   onExport: () -> Unit,
-  onPreviewMoves: (ScheduleEvent) -> Unit,
+  onPreviewMoves: (ScheduleEvent) -> Unit = {},
 ) {
   val workspace = state.workspace
   if (workspace == null) {
