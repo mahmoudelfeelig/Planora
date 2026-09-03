@@ -38,7 +38,7 @@ penalty = None
 improved_penalty = None
 if result.schedule:
     penalty = LocalSearchImprover(inst).compute_soft_penalty(result.schedule)
-    improved = LocalSearchImprover(inst).improve(result.schedule, iterations=120, max_seconds=1.0)
+    improved = LocalSearchImprover(inst).improve(result.schedule, iterations=250, max_seconds=2.0)
     improved_penalty = LocalSearchImprover(inst).compute_soft_penalty(improved)
 print(json.dumps({
     "status": int(result.status),

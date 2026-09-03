@@ -2649,8 +2649,10 @@ class MainWindow(
             if str(activity.kind).upper() == "LEC"
             else int(activity.ta_id)
         )
-        staff = self.inst.staff.get(int(placement.get("staff_id", default_staff_id)))
-        room = self.inst.rooms.get(int(placement.get("room_id", -1)))
+        staff_id = placement.get("staff_id", default_staff_id)
+        staff = self.inst.staff.get(int(staff_id)) if staff_id is not None else None
+        room_id = placement.get("room_id")
+        room = self.inst.rooms.get(int(room_id)) if room_id is not None else None
         title = str(getattr(course, "name", "") or f"Activity {activity_id}")
         self.blueprint_inspector_title.setText(title)
         self.blueprint_inspector_copy.setText(

@@ -398,7 +398,11 @@ def test_production_api_rejects_anonymous_forged_and_local_admin(tmp_path, monke
     )
     process = subprocess.Popen(
         [sys.executable, "-m", "api.server", "--host", "127.0.0.1", "--port", str(port)],
-        cwd=str(ROOT), env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        cwd=str(ROOT),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
     )
     try:
         deadline = time.time() + 10

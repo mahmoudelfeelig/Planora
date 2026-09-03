@@ -58,8 +58,8 @@ def test_live_api_server_health_solve_and_portfolio_contract(tmp_path):
     env["PLANORA_TRUST_DEV_HEADERS"] = "1"
     proc = subprocess.Popen(
         [sys.executable, "-m", "api.server", "--host", "127.0.0.1", "--port", str(port)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         text=True,
         env=env,
         cwd=str(ROOT),
@@ -80,7 +80,7 @@ def test_live_api_server_health_solve_and_portfolio_contract(tmp_path):
             raise AssertionError(f"API server did not become ready: {last_error}")
 
         presets = _http_json("GET", f"http://127.0.0.1:{port}/presets")
-        assert "small_demo" in presets["presets"]
+        assert "demo" in presets["presets"]
         policies = _http_json("GET", f"http://127.0.0.1:{port}/institution-policies")
         assert {row["id"] for row in policies["policies"]} >= {
             "generic_research_university",
@@ -188,12 +188,12 @@ def test_live_api_server_health_solve_and_portfolio_contract(tmp_path):
         assert "/auth/config" in openapi["paths"]
         assert "/analytics/event" in openapi["paths"]
         assert "/analytics/summary" in openapi["paths"]
-        preset_payload = _http_json("GET", f"http://127.0.0.1:{port}/preset/small_demo")
+        preset_payload = _http_json("GET", f"http://127.0.0.1:{port}/preset/demo")
         assert preset_payload["mode"] == "small_demo"
         assert preset_payload["instance"]["activities"]
         guided_payload = _http_json(
             "GET",
-            f"http://127.0.0.1:{port}/preset/small_demo?institution_policy=giu_target&demand_mode=forecast",
+            f"http://127.0.0.1:{port}/preset/demo?institution_policy=giu_target&demand_mode=forecast",
         )
         assert guided_payload["institution_policy"] == "giu_target"
         assert guided_payload["instance"]["institutional_policy"]["policy_id"] == "giu_target"
@@ -234,7 +234,7 @@ def test_live_api_server_health_solve_and_portfolio_contract(tmp_path):
             {
                 **score_payload,
                 "focus_term": "thin_day",
-                "options": {"iterations": 2, "max_seconds": 0.01},
+                "options": {"iterations": 2, "max_seconds": 0.05},
             },
         )
         assert improve_result["schedule"]

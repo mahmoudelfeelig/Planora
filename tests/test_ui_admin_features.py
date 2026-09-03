@@ -331,7 +331,7 @@ def test_bulk_edit_selected_applies_note_and_locks(monkeypatch, qt_app):
                 }
 
         monkeypatch.setattr(ui_window, "BulkEditDialog", _FakeBulkDialog)
-        win.table.setRangeSelected(QTableWidgetSelectionRange(0, 0, 0, 1), True)
+        win.table.setRangeSelected(QTableWidgetSelectionRange(0, 0, 1, 0), True)
         win.on_quick_bulk_edit_selected()
 
         for a_id in act_ids:

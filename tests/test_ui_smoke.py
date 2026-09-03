@@ -10,6 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 from PyQt6.QtCore import QPoint, QPointF, Qt  # noqa: E402
 from PyQt6.QtGui import QWheelEvent  # noqa: E402
+from PyQt6.QtTest import QSignalSpy  # noqa: E402
 
 from ui.app import MainWindow  # noqa: E402
 
@@ -167,10 +168,9 @@ def test_status_toast_is_stateful_and_closeable(qt_app):
         qt_app.processEvents()
         assert win.status_toast.property("level") == "success"
         assert not win.status_toast.progress.isVisible()
+        dismissed = QSignalSpy(win.status_toast.dismissed)
         win.status_toast.close_button.click()
-        deadline = time.perf_counter() + 0.5
-        while win.status_toast.isVisible() and time.perf_counter() < deadline:
-            qt_app.processEvents()
+        assert dismissed.wait(1000)
         assert not win.status_toast.isVisible()
 
         win.set_status("Solve error: unavailable")

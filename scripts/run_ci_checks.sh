@@ -46,6 +46,12 @@ if [[ ${#ORDINARY_TEST_FILES[@]} -eq 0 ]]; then
   echo "No ordinary test files found" >&2
   exit 1
 fi
+mapfile -t NON_UI_TEST_FILES < <(
+  printf '%s\n' "${ORDINARY_TEST_FILES[@]}" | grep -v '^tests/test_ui_'
+)
+mapfile -t UI_TEST_FILES < <(
+  printf '%s\n' "${ORDINARY_TEST_FILES[@]}" | grep '^tests/test_ui_'
+)
 
 mkdir -p cover
 "${PYTHON_BIN}" -m coverage erase
@@ -64,7 +70,18 @@ timeout 25m "${PYTHON_BIN}" -m pytest -q \
   -m "slow and not timing_sensitive" \
   --cov-append \
   "${COVERAGE_ARGS[@]}" \
-  "${ORDINARY_TEST_FILES[@]}"
+  "${NON_UI_TEST_FILES[@]}"
+
+# Qt only supports one QApplication lifecycle reliably per process. Isolate
+# each UI module so module-scoped fixtures cannot leave native Qt state behind
+# for the next module while still appending to the same coverage data.
+for ui_test_file in "${UI_TEST_FILES[@]}"; do
+  timeout 10m "${PYTHON_BIN}" -m pytest -q \
+    -m "slow and not timing_sensitive" \
+    --cov-append \
+    "${COVERAGE_ARGS[@]}" \
+    "${ui_test_file}"
+done
 
 "${PYTHON_BIN}" -m coverage report
 "${PYTHON_BIN}" -m coverage json -o cover/critical-coverage.json
