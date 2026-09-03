@@ -8,6 +8,22 @@ The client requires `planora.ui.v1` from `GET /capabilities`. The server owns th
 
 Release builds always use the hosted API at `https://planora.elfeel.me/api`. The release endpoint cannot be changed in the app. Users sign in with the same Planora account they use on the web and desktop clients; no server credential or shared secret is packaged in the APK.
 
+## Web feature parity
+
+The Android navigation keeps the everyday timetable flow in the bottom bar and places the wider web workspace under **Tools**. The native client includes:
+
+- email/password sign-in, registration, email-code confirmation, forgotten-password recovery, and password reset;
+- organization switching, invite redemption, password changes, and active-session revocation;
+- server presets, CSV file import with custom column mapping, and Fast, Balanced, or Quality planning modes;
+- hosted solve, validate, cancellable improve jobs, CSV export, and server-approved manual class moves;
+- project list, save, open, rename, and delete operations with tenant and legacy-project safeguards;
+- advanced solver overrides, fairness/utilization insights, and the shared platform-parity manifest;
+- permission-gated user, group, membership, scoped-role, schedule-identity, and invite administration;
+- global-admin system status, audit/analytics filtering and CSV export, and SMTP test delivery;
+- light, dark, and system themes, the walkthrough, elephant branding, and direct Privacy/FAQ access.
+
+Optional web analytics are not emitted by the Android client, so the web-only analytics-consent cookie has no native equivalent. Solver execution remains on the hosted service; the APK contains no local solver or backend secret.
+
 Debug builds default to the same hosted API and allow an endpoint override for local development:
 
 ```shell
@@ -37,7 +53,7 @@ With an emulator or device running:
 ./gradlew --offline :app:connectedDebugAndroidTest
 ```
 
-Device-flow screenshots are written to `/sdcard/Download` by the instrumentation suite. The latest checked visual evidence lives in `artifacts/audit-2026-09-03`; the full verification snapshot is recorded in `release-readiness-2026-09-03.md`.
+Device-flow screenshots are written to `/sdcard/Download` by the instrumentation suite. The latest generated captures are also available under `app/build/reports/visual-audit`; the full verification snapshot is recorded in `release-readiness-2026-09-03.md`.
 
 The Android CI workflow runs unit tests, lint, builds the debug and instrumentation APKs, and produces an unsigned release bundle for packaging verification.
 

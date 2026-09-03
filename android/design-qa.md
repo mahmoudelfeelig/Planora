@@ -12,6 +12,7 @@
 - The first device capture was rejected because Android system UI from an emulator dialog contaminated the screenshot. The Compose root was recaptured directly.
 - The first dark comparison exposed bottom-navigation icons with insufficient contrast. Icon tint now resolves through the active Material content color and the dark state was recaptured.
 - The compact landscape comparison exposed an overcrowded action row with trailing actions clipped beyond the viewport. Save, export, and rebuild now live in a visible overflow menu in compact layouts; validate, improve, and solve-mode selection remain directly available.
+- Registration, Tools, CSV mapping, project management, and manual-move states were added to the current device capture set. Settings cards were normalized to full width after the first expanded feature capture exposed inconsistent card sizing.
 - The final pass placed each web reference and its Android implementation captures together in the same visual comparison input.
 
 ## Final review
