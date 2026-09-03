@@ -94,7 +94,34 @@
         "node_id": "tests/test_api_security_live.py::test_production_api_rejects_anonymous_forged_and_local_admin",
         "reason": "Live socket binding is unavailable in the measurement sandbox."
       }
-    ]
+    ],
+    "recalibration": {
+      "date": "2026-09-03",
+      "disposition": "Replace the three extended-boundary floors that were copied from a dirty local report but were not present in the referenced CI-portable report. All other ratchets remain unchanged.",
+      "evidence": {
+        "github_actions_run_id": 33762096930,
+        "github_actions_run_url": "https://github.com/mahmoudelfeelig/Planora/actions/runs/33762096930",
+        "source_git_commit": "040ac4362926100fa2381937e88caddb90623e73",
+        "python": "3.12.14",
+        "tests": {
+          "ordinary": {"passed": 2286, "skipped": 14, "deselected": 75},
+          "slow_non_ui": {"passed": 10, "skipped": 13, "deselected": 2302},
+          "slow_ui": {"passed": 50}
+        },
+        "extended_critical_boundaries": {
+          "covered_lines": 2149,
+          "statements": 2612,
+          "covered_branches": 867,
+          "branches": 1224
+        },
+        "services/teaching_load_import_service.py": {
+          "covered_lines": 313,
+          "statements": 409,
+          "covered_branches": 104,
+          "branches": 182
+        }
+      }
+    }
   },
   "categories": {
     "solver": {
@@ -194,7 +221,7 @@
         "utils/io.py"
       ],
       "minimum_line_percent": 81.72,
-      "minimum_branch_percent": 71.68,
+      "minimum_branch_percent": 70.83,
       "full_local": {
         "covered_lines": 2133,
         "statements": 2610,
@@ -202,10 +229,10 @@
         "branches": 1222
       },
       "ci_portable": {
-        "covered_lines": 2133,
-        "statements": 2610,
-        "covered_branches": 876,
-        "branches": 1222
+        "covered_lines": 2149,
+        "statements": 2612,
+        "covered_branches": 867,
+        "branches": 1224
       },
       "limitation": "The conservative floor is calibrated from the consolidated non-slow run; the final full gate must meet or exceed it."
     }
@@ -303,10 +330,10 @@
       "ci_portable": {"covered_lines": 294, "statements": 358, "covered_branches": 66, "branches": 110}
     },
     "services/teaching_load_import_service.py": {
-      "minimum_line_percent": 86.30,
-      "minimum_branch_percent": 74.17,
+      "minimum_line_percent": 76.52,
+      "minimum_branch_percent": 57.14,
       "full_local": {"covered_lines": 353, "statements": 409, "covered_branches": 135, "branches": 182},
-      "ci_portable": {"covered_lines": 353, "statements": 409, "covered_branches": 135, "branches": 182}
+      "ci_portable": {"covered_lines": 313, "statements": 409, "covered_branches": 104, "branches": 182}
     },
     "utils/feasibility.py": {
       "minimum_line_percent": 61.27,
