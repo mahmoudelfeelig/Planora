@@ -57,7 +57,7 @@ async function requestJson<T>(
   try {
     response = await fetch(target, {
       ...init,
-      credentials: "include",
+      credentials: token ? "omit" : "include",
       headers: {
         "Content-Type": "application/json",
         ...authHeaders(principal, token, options.devHeaders !== false),
@@ -107,7 +107,7 @@ export function createApiClient(
     delete: (path) => requestJson(baseUrl, principal, token, path, { method: "DELETE" }, options),
     download: async (path, fallbackFilename) => {
       const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
-        credentials: "include",
+        credentials: token ? "omit" : "include",
         headers: authHeaders(principal, token, options.devHeaders !== false),
       });
       if (!response.ok) {

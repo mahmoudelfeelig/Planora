@@ -26,8 +26,31 @@ test.beforeEach(async ({ page }) => {
 test("public pages are navigable and responsive", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Planora home" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /explainable scheduling/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /timetabling built for academia/i })).toBeVisible();
   await expect(page.getByRole("banner").getByRole("button", { name: /sign in/i })).toBeVisible();
+  await page.getByRole("dialog", { name: "Cookie notice" }).getByRole("button", { name: "Essential only" }).click();
+
+  const previewButton = page.getByRole("button", { name: "Improve preview" });
+  await expect(previewButton).toBeVisible();
+  await page.screenshot({ path: "artifacts/screenshots/web-public-light.png", fullPage: false });
+  await previewButton.click();
+  await expect(page.getByText("Conflict repaired", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reset preview" })).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "Switch to dark mode" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: "artifacts/screenshots/web-public-dark.png", fullPage: false });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("heading", { name: /timetabling built for academia/i })).toBeVisible();
+  const mobileWidth = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    document: document.documentElement.scrollWidth,
+  }));
+  expect(mobileWidth.document).toBeLessThanOrEqual(mobileWidth.viewport);
+  await page.screenshot({ path: "artifacts/screenshots/web-public-mobile-dark.png", fullPage: false });
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   await page.getByRole("contentinfo").getByRole("button", { name: /faq/i }).click();
   await expect(page).toHaveURL(/\/faq$/);

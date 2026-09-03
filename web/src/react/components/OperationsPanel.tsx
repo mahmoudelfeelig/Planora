@@ -1,75 +1,40 @@
-import type { ChangeEvent } from "react";
 import { useMemo, useState } from "react";
 import type { Dict, Instance } from "../types";
-
-type SolverSettings = {
-  roomMode: string;
-  profile: string;
-  timeLimitSeconds: number;
-  workers: number;
-  useObjective: boolean;
-  forceRepeatWeeklyPattern: boolean;
-  improveIterations: number;
-  improveSeconds: number;
-  progressEvery: number;
-};
+import type { UiRunMode, UiScenario } from "../planner_api";
 
 type Props = {
   instance: Instance | null;
-  presets: string[];
+  scenarios: UiScenario[];
+  modes: UiRunMode[];
+  runMode: string;
   busy: boolean;
-  settings: SolverSettings;
-  onLoadPreset(mode: string): void;
-  onSolve(): void;
-  onImprove(): void;
-  onScore(): void;
-  onStartImproveJob(): void;
+  onRunModeChange(mode: string): void;
+  onLoadScenario(scenario: UiScenario): void;
   onImportCsv(filename: string, content: string, fieldMap: Dict<string>): Promise<void>;
-  jobStatus: Dict | null;
-  scheduleActivities: number;
 };
 
-function statValue(instance: Instance | null, key: keyof Instance): number {
+function count(instance: Instance | null, key: keyof Instance): number {
   if (!instance) return 0;
   const value = instance[key];
   if (Array.isArray(value)) return value.length;
-  if (typeof value === "object" && value) return Object.keys(value).length;
+  if (value && typeof value === "object") return Object.keys(value).length;
   return 0;
-}
-
-function jobPercent(job: Dict): number {
-  const progress = (job.progress && typeof job.progress === "object" ? job.progress : {}) as Dict;
-  const direct = Number(progress.percent ?? progress.percentage);
-  if (Number.isFinite(direct)) return Math.max(0, Math.min(100, direct));
-  const current = Number(progress.iteration ?? progress.current ?? 0);
-  const total = Number(progress.iterations ?? progress.total ?? 0);
-  if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
-    return Math.max(0, Math.min(100, (current / total) * 100));
-  }
-  return ["complete", "done"].includes(String(job.status || "")) ? 100 : 0;
 }
 
 export function OperationsPanel({
   instance,
-  presets,
+  scenarios,
+  modes,
+  runMode,
   busy,
-  settings,
-  onLoadPreset,
-  onSolve,
-  onImprove,
-  onScore,
-  onStartImproveJob,
+  onRunModeChange,
+  onLoadScenario,
   onImportCsv,
-  jobStatus,
-  scheduleActivities,
 }: Props) {
+  const [showImport, setShowImport] = useState(false);
   const [csvFilename, setCsvFilename] = useState("schedule.csv");
   const [csvContent, setCsvContent] = useState("");
   const [fieldMapText, setFieldMapText] = useState("week=week, day=day, slot=slot, course=course, group=group, room=room, kind=kind, lecturer=lecturer, ta=ta");
-  const loaded = Boolean(instance);
-  const loadPreset = (event: ChangeEvent<HTMLSelectElement>) => {
-    if (event.target.value) onLoadPreset(event.target.value);
-  };
   const fieldMap = useMemo(() => {
     const out: Dict<string> = {};
     fieldMapText.split(",").forEach((part) => {
@@ -80,161 +45,82 @@ export function OperationsPanel({
   }, [fieldMapText]);
 
   return (
-    <section className="panel operations-panel">
-      <div className="panel-heading">
+    <div className="data-page stack">
+      <section className="panel data-hero">
         <div>
-          <h2>Run Planner</h2>
-          <p className="section-copy">
-            Load or import a scenario, build a feasible timetable, then repair or improve it. The actions below are grouped by intent so the flow is explicit.
-          </p>
+          <span className="eyebrow">Data workspace</span>
+          <h1>Build from familiar university data</h1>
+          <p>Start with a guided example or bring the timetable you already maintain. Technical generators remain available in Advanced.</p>
         </div>
-      </div>
+        {instance ? (
+          <div className="data-summary" aria-label="Loaded timetable summary">
+            <span><strong>{count(instance, "activities")}</strong> activities</span>
+            <span><strong>{count(instance, "courses")}</strong> courses</span>
+            <span><strong>{count(instance, "rooms")}</strong> rooms</span>
+            <span><strong>{count(instance, "staff")}</strong> staff</span>
+          </div>
+        ) : null}
+      </section>
 
-      <div className="operation-sections">
-        <div className="action-card" id="load">
-          <div className="action-card-head">
-            <strong>1. Load scenario</strong>
-            <span className="muted">Preset or imported timetable</span>
-          </div>
-          <label>
-            Preset
-            <select disabled={busy} onChange={loadPreset} defaultValue="">
-              <option value="">Choose scenario</option>
-              {presets.map((preset) => (
-                <option key={preset} value={preset}>
-                  {preset.replaceAll("_", " ")}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="stat-strip">
-            <span>Weeks: {statValue(instance, "weeks")}</span>
-            <span>Activities: {statValue(instance, "activities")}</span>
-            <span>Rooms: {statValue(instance, "rooms")}</span>
-            <span>Staff: {statValue(instance, "staff")}</span>
-          </div>
-          <details className="import-wizard">
-            <summary>Import CSV with mapping</summary>
-            <p className="action-copy">
-              Paste any timetable CSV and map its headers to Planora fields. Required fields are week, day, slot, and course.
-            </p>
-            <label>
-              Filename
-              <input value={csvFilename} onChange={(event) => setCsvFilename(event.target.value)} />
+      <section className="panel">
+        <div className="panel-heading">
+          <div><h2>Choose timetable data</h2><p className="section-copy">The Spring 2023 option is the university-scale working scenario.</p></div>
+        </div>
+        <div className="scenario-card-grid">
+          {scenarios.map((scenario) => (
+            <article className="scenario-card" key={scenario.id}>
+              <span className="scenario-badge">{scenario.badge || "Scenario"}</span>
+              <h3>{scenario.label}</h3>
+              <p>{scenario.description}</p>
+              {scenario.id === "import"
+                ? <button type="button" className="secondary-button" onClick={() => setShowImport((open) => !open)}>{showImport ? "Close import" : "Import timetable"}</button>
+                : <button type="button" disabled={busy} onClick={() => onLoadScenario(scenario)}>Open scenario</button>}
+            </article>
+          ))}
+        </div>
+
+        {showImport ? (
+          <form className="import-sheet" onSubmit={(event) => {
+            event.preventDefault();
+            void onImportCsv(csvFilename, csvContent, fieldMap);
+          }}>
+            <div className="import-sheet-heading"><strong>Import a timetable CSV</strong><span>Required: week, day, slot, and course.</span></div>
+            <label>File name<input value={csvFilename} onChange={(event) => setCsvFilename(event.target.value)} /></label>
+            <label>Column mapping<input value={fieldMapText} onChange={(event) => setFieldMapText(event.target.value)} /></label>
+            <label className="import-content">CSV content<textarea rows={9} value={csvContent} onChange={(event) => setCsvContent(event.target.value)} placeholder="week,day,slot,course,group,room&#10;1,MON,1,Algorithms,P1-G1,R101" /></label>
+            <button type="submit" disabled={busy || !csvContent.trim()}>Import and review</button>
+          </form>
+        ) : null}
+      </section>
+
+      <section className="panel run-mode-section">
+        <div className="panel-heading">
+          <div><h2>Default planning approach</h2><p className="section-copy">Choose the result you want. Planora selects the underlying engine settings.</p></div>
+        </div>
+        <div className="run-mode-grid">
+          {modes.map((mode) => (
+            <label className={`run-mode-card ${runMode === mode.id ? "selected" : ""}`} key={mode.id}>
+              <input type="radio" name="run-mode" value={mode.id} checked={runMode === mode.id} onChange={() => onRunModeChange(mode.id)} />
+              <span>{mode.recommended ? "Recommended" : "Planning mode"}</span>
+              <strong>{mode.label}</strong>
+              <small>{mode.description}</small>
             </label>
-            <label>
-              Header mapping
-              <input value={fieldMapText} onChange={(event) => setFieldMapText(event.target.value)} />
-            </label>
-            <label>
-              CSV content
-              <textarea rows={8} value={csvContent} onChange={(event) => setCsvContent(event.target.value)} placeholder="week,day,slot,course,group,room&#10;1,MON,1,Algorithms,P1-G1,R101" />
-            </label>
-            <button type="button" disabled={busy || !csvContent.trim()} onClick={() => void onImportCsv(csvFilename, csvContent, fieldMap)}>
-              Import CSV
-            </button>
-          </details>
+          ))}
         </div>
-
-        <div className="action-card" id="solve">
-          <div className="action-card-head">
-            <strong>2. Build feasible schedule</strong>
-            <span className="muted">
-              {settings.roomMode} · {settings.profile} · {settings.timeLimitSeconds}s · {settings.workers} workers
-            </span>
-          </div>
-          <p className="action-copy">
-            <strong>Solve</strong> runs the full scheduler and tries to produce a hard-conflict-free timetable using the current settings.
-          </p>
-          <button type="button" disabled={!loaded || busy} onClick={onSolve}>
-            Solve schedule
-          </button>
-        </div>
-
-        <div className="action-card" id="improve">
-          <div className="action-card-head">
-            <strong>3. Improve quality</strong>
-            <span className="muted">
-              {settings.improveIterations} LS iterations · {settings.improveSeconds}s
-            </span>
-          </div>
-          <p className="action-copy">
-            <strong>Improve now</strong> runs local search immediately in this session and replaces the current timetable when it finishes.
-          </p>
-          <p className="action-copy">
-            <strong>Improve as background job</strong> starts the same search on the server and lets you keep navigating while it runs.
-          </p>
-          <div className="button-pair">
-            <button type="button" disabled={!loaded || !scheduleActivities || busy} onClick={onImprove}>
-              Improve now
-            </button>
-            <button type="button" disabled={!loaded || !scheduleActivities || busy} onClick={onStartImproveJob}>
-              Improve as background job
-            </button>
-          </div>
-          {jobStatus ? (
-            <div className="job-progress" aria-live="polite">
-              <div>
-                <strong>{String(jobStatus.status || "queued")}</strong>
-                <span>{String(jobStatus.job_id || "")}</span>
-              </div>
-              <progress value={jobPercent(jobStatus)} max={100} />
-              <p>{String(((jobStatus.progress || {}) as Dict).message || jobStatus.message || jobStatus.error || "Waiting for scheduler updates.")}</p>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="action-card" id="score">
-          <div className="action-card-head">
-            <strong>4. Analyze current result</strong>
-            <span className="muted">No placements change</span>
-          </div>
-          <p className="action-copy">
-            <strong>Recalculate score</strong> recomputes soft penalty, hard conflicts, CP bound, and gap for the timetable currently in memory.
-          </p>
-          <button type="button" disabled={!loaded || busy} onClick={onScore}>
-            Recalculate score
-          </button>
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
 export function RunSummary({ score, conflicts }: { score: Dict; conflicts: string[] }) {
-  const bestBound = score.best_bound ?? "n/a";
-  const gap = score.gap ?? "n/a";
-
   return (
     <section className="panel metric-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Run Summary</h2>
-          <p className="section-copy">
-            This is the current evaluated state of the loaded timetable. Lower soft penalty is better; hard conflicts should stay at zero.
-          </p>
-        </div>
-      </div>
+      <div className="panel-heading"><div><h2>Current draft</h2><p className="section-copy">Lower penalty is better; hard conflicts must reach zero before publishing.</p></div></div>
       <div className="metric-grid">
-        <div>
-          <span>Soft penalty</span>
-          <strong>{String(score.soft_penalty ?? 0)}</strong>
-        </div>
-        <div>
-          <span>Hard conflicts</span>
-          <strong>{String(score.hard_conflict_count ?? conflicts.length)}</strong>
-        </div>
-        <div>
-          <span>Best bound</span>
-          <strong>{String(bestBound)}</strong>
-        </div>
-        <div>
-          <span>Gap</span>
-          <strong>{String(gap)}</strong>
-        </div>
-      </div>
-      <div className="inline-note">
-        Best bound and gap are only available when the CP-SAT run produced bound information. Heuristic-only runs will show <strong>n/a</strong>.
+        <div><span>Soft penalty</span><strong>{String(score.soft_penalty ?? 0)}</strong></div>
+        <div><span>Hard conflicts</span><strong>{String(score.hard_conflict_count ?? conflicts.length)}</strong></div>
+        <div><span>Best bound</span><strong>{String(score.best_bound ?? "n/a")}</strong></div>
+        <div><span>Gap</span><strong>{String(score.gap ?? "n/a")}</strong></div>
       </div>
     </section>
   );

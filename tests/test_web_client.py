@@ -15,6 +15,7 @@ def test_web_client_assets_and_typescript_contract_exist():
     board = (ROOT / "web" / "src" / "react" / "components" / "ScheduleBoard.tsx").read_text(encoding="utf-8")
     login = (ROOT / "web" / "src" / "react" / "components" / "LoginPanel.tsx").read_text(encoding="utf-8")
     parity = (ROOT / "web" / "src" / "react" / "components" / "ParityPanel.tsx").read_text(encoding="utf-8")
+    planner_api = (ROOT / "web" / "src" / "react" / "planner_api.ts").read_text(encoding="utf-8")
     react_styles = (ROOT / "web" / "src" / "react" / "styles.css").read_text(encoding="utf-8")
     typescript = (ROOT / "web" / "src" / "main.ts").read_text(encoding="utf-8")
     javascript = (ROOT / "web" / "src" / "main.js").read_text(encoding="utf-8")
@@ -28,11 +29,12 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "AppShell" in app
     assert "AUTH_VIEW_GROUPS" not in shell
     assert 'label: "Plan"' not in shell
-    assert 'label: "Review"' not in shell
     assert 'label: "Account"' not in shell
+    for label in ("Schedule", "Data", "Review", "Projects", "Advanced"):
+        assert f'label: "{label}"' in shell
     assert "workspace-sidebar" in shell
     assert "mobile-nav-toggle" in shell
-    assert 'label: "Solver settings"' in shell
+    assert 'label: "Solver settings"' not in shell
     assert "ScheduleBoard" in app
     assert "ReviewPanel" in app
     assert "ProjectsPanel" in app
@@ -65,8 +67,8 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "whoami.is_global_admin" in app
     assert "/parity" in app
     assert "/jobs/improve" in app
-    assert "hard_constraints:" in app
-    assert "force_repeat_weekly_pattern: settings.forceRepeatWeeklyPattern" in app
+    assert "payload.hard_constraints" in planner_api
+    assert "force_repeat_weekly_pattern: advanced.forceRepeatWeeklyPattern" in planner_api
     assert "VITE_PLANORA_API_URL" in app
     assert 'fetchJson("/sessions"' in typescript
     assert 'fetchJson("/jobs/solve"' in typescript
@@ -89,8 +91,8 @@ def test_web_client_assets_and_typescript_contract_exist():
     assert "renderPenaltyDrivers" in result_module
     assert "renderReadableDiagnostics" in result_module
     assert "WORKSPACE_VIEWS" in view_module
-    assert "Recalculate score" in (ROOT / "web" / "src" / "react" / "components" / "OperationsPanel.tsx").read_text(encoding="utf-8")
-    assert "Import CSV with mapping" in (ROOT / "web" / "src" / "react" / "components" / "OperationsPanel.tsx").read_text(encoding="utf-8")
+    assert "View run details" in board
+    assert "Import timetable" in (ROOT / "web" / "src" / "react" / "components" / "OperationsPanel.tsx").read_text(encoding="utf-8")
     assert "Repair Workflow" in (ROOT / "web" / "src" / "react" / "components" / "ReviewPanel.tsx").read_text(encoding="utf-8")
     assert "Role permission summary" in (ROOT / "web" / "src" / "react" / "components" / "AccessPanel.tsx").read_text(encoding="utf-8")
     assert ".workspace > * { min-height: 0; }" in styles
@@ -179,6 +181,8 @@ def test_deployment_scaffold_exists():
     assert "PLANORA_TOKEN_PEPPER" in env_example
     assert "PLANORA_SMTP_PASSWORD" in env_example
     assert "PLANORA_AUTH_SECRET_FILE" not in prod_compose
+    assert "PLANORA_AUTH_SECRET:?PLANORA_AUTH_SECRET is required" in prod_compose
+    assert "PLANORA_TOKEN_PEPPER:?PLANORA_TOKEN_PEPPER is required" in prod_compose
     assert "method='HEAD'" in prod_compose
     assert "HetznerReleaseGateway/.github/workflows/release.yml@f6319b2dbaf4c1f10230c6425967f34553acd61d" in deploy_workflow
     assert "id-token: write" in deploy_workflow
@@ -202,3 +206,8 @@ def test_registration_flow_handles_immediate_auth_payload():
     assert 'return false;' in app
     assert "onRegister(): boolean | Promise<boolean>" in login
     assert "if (await onRegister())" in login
+
+
+def test_bearer_client_omits_cookie_credentials():
+    api_source = (ROOT / "web" / "src" / "react" / "api.ts").read_text(encoding="utf-8")
+    assert api_source.count('credentials: token ? "omit" : "include"') == 2

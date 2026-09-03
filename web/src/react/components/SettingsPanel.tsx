@@ -1,18 +1,11 @@
-type SolverSettings = {
-  roomMode: string;
-  profile: string;
-  timeLimitSeconds: number;
-  workers: number;
-  useObjective: boolean;
-  forceRepeatWeeklyPattern: boolean;
-  improveIterations: number;
-  improveSeconds: number;
-  progressEvery: number;
-};
+import type { ChangeEvent } from "react";
+import type { SolverSettings } from "../solver_settings";
 
 type Props = {
   settings: SolverSettings;
+  overridesEnabled: boolean;
   onChange(next: SolverSettings): void;
+  onUseModeDefaults(): void;
 };
 
 function patchSettings(
@@ -23,7 +16,7 @@ function patchSettings(
   onChange({ ...settings, ...patch });
 }
 
-export function SettingsPanel({ settings, onChange }: Props) {
+export function SettingsPanel({ settings, overridesEnabled, onChange, onUseModeDefaults }: Props) {
   const onSelect =
     (key: "roomMode" | "profile") =>
     (event: ChangeEvent<HTMLSelectElement>) =>
@@ -38,22 +31,37 @@ export function SettingsPanel({ settings, onChange }: Props) {
       patchSettings(settings, onChange, { [key]: event.target.checked } as Partial<SolverSettings>);
 
   return (
-    <section className="panel settings-panel">
+    <section className="panel settings-panel advanced-panel">
       <div className="panel-heading">
         <div>
-          <h2>Solver Settings</h2>
+          <span className="eyebrow">Specialist workspace</span>
+          <h1>Advanced</h1>
           <p className="section-copy">
-            These settings drive both Solve and Improve actions. Keep workers moderate unless you have measured that more parallel search actually helps on your instances.
+            Everyday scheduling uses Fast, Balanced, or Maximum quality. Only change these controls for research, verification, or a measured institutional need.
           </p>
         </div>
       </div>
-
-      <div className="settings-grid">
+      <div className="settings-notes advanced-notes">
+        <div className="info-card">
+          <strong>{overridesEnabled ? "Specialist overrides active" : "Mode defaults active"}</strong>
+          <p>
+            {overridesEnabled
+              ? "These values override the server-owned mode for the next solve or improvement."
+              : "Fast, Balanced, or Maximum quality is currently controlled by the shared backend."}
+          </p>
+          {overridesEnabled ? <button type="button" onClick={onUseModeDefaults}>Use mode defaults</button> : null}
+        </div>
+      </div>
+      <details className="advanced-section">
+        <summary>Engine and room strategy</summary>
+        <div className="settings-grid">
         <label>
           Room mode
           <select value={settings.roomMode} onChange={onSelect("roomMode")}>
             <option value="greedy">Fast greedy</option>
+            <option value="partitioned">Adaptive week partitions</option>
             <option value="cp_rooms">CP rooms</option>
+            <option value="decomposed">Certificate decomposition</option>
           </select>
         </label>
         <label>
@@ -62,6 +70,8 @@ export function SettingsPanel({ settings, onChange }: Props) {
             <option value="university_fast">University fast</option>
             <option value="balanced">Balanced</option>
             <option value="quality_first">Quality first</option>
+            <option value="fairness_first">Fairness first</option>
+            <option value="research_adaptive">Proof-guided adaptive LNS</option>
           </select>
         </label>
         <label>
@@ -84,36 +94,6 @@ export function SettingsPanel({ settings, onChange }: Props) {
             onChange={onNumber("workers")}
           />
         </label>
-        <label>
-          Improve iterations
-          <input
-            type="number"
-            min={1}
-            max={200000}
-            value={settings.improveIterations}
-            onChange={onNumber("improveIterations")}
-          />
-        </label>
-        <label>
-          Improve max seconds
-          <input
-            type="number"
-            min={1}
-            max={3600}
-            value={settings.improveSeconds}
-            onChange={onNumber("improveSeconds")}
-          />
-        </label>
-        <label>
-          Progress cadence
-          <input
-            type="number"
-            min={1}
-            max={10000}
-            value={settings.progressEvery}
-            onChange={onNumber("progressEvery")}
-          />
-        </label>
         <label className="toggle-field">
           <span>Use CP objective</span>
           <input
@@ -130,9 +110,17 @@ export function SettingsPanel({ settings, onChange }: Props) {
             onChange={onToggle("forceRepeatWeeklyPattern")}
           />
         </label>
-      </div>
-
-      <div className="settings-notes">
+        </div>
+      </details>
+      <details className="advanced-section">
+        <summary>Improvement budget and progress</summary>
+        <div className="settings-grid">
+          <label>Improve iterations<input type="number" min={1} max={200000} value={settings.improveIterations} onChange={onNumber("improveIterations")} /></label>
+          <label>Improve max seconds<input type="number" min={1} max={3600} value={settings.improveSeconds} onChange={onNumber("improveSeconds")} /></label>
+          <label>Progress cadence<input type="number" min={1} max={10000} value={settings.progressEvery} onChange={onNumber("progressEvery")} /></label>
+        </div>
+      </details>
+      <div className="settings-notes advanced-notes">
         <div className="info-card">
           <strong>Workers</strong>
           <p>
@@ -149,4 +137,3 @@ export function SettingsPanel({ settings, onChange }: Props) {
     </section>
   );
 }
-import type { ChangeEvent } from "react";

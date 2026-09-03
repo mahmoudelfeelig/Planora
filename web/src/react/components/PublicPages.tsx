@@ -1,143 +1,98 @@
+import { useState } from "react";
+import {
+  ArrowRight,
+  CheckCircle,
+  FileArrowUp,
+  MagicWand,
+  ShieldCheck,
+  UsersThree,
+  WarningDiamond,
+} from "@phosphor-icons/react";
+
 export function HomeContent() {
+  const [previewImproved, setPreviewImproved] = useState(false);
+  const previewClasses = [
+    { id: "algorithms", label: "Algorithms", detail: "R201 · Dr. Smith", tone: 0, column: 1, initialRow: 1, improvedRow: 1 },
+    { id: "data", label: "Data Structures", detail: "R301 · Dr. Lee", tone: 5, column: 2, initialRow: 1, improvedRow: 1 },
+    { id: "databases", label: "Databases", detail: "R101 · Dr. Patel", tone: 1, column: 3, initialRow: 1, improvedRow: 1 },
+    { id: "math", label: "Discrete Math", detail: "R102 · Dr. Kim", tone: 3, column: 3, initialRow: 2, improvedRow: 2 },
+    { id: "systems", label: "Operating Systems", detail: "R202 · Dr. Noor", tone: 4, column: 2, initialRow: 2, improvedRow: 3 },
+    { id: "networks", label: "Networks", detail: "R103 · Dr. Johnson", tone: 2, column: 1, initialRow: 3, improvedRow: 3 },
+  ];
+
   return (
     <div className="public-home">
       <section className="home-hero">
         <div className="welcome-copy">
-          <h1>Explainable scheduling for real university constraints.</h1>
+          <span className="landing-eyebrow">Academic scheduling, structured</span>
+          <h1>Timetabling built for academia.</h1>
           <p>
-            Planora imports timetable data, detects hard conflicts, scores schedule quality, and shows repair choices clearly for students, lecturers, TAs, and administrators.
+            From complex rules to a clear, publishable timetable. Planora helps university teams import data, understand constraints, build drafts, and repair conflicts in one focused workspace.
           </p>
-          <div className="hero-stats" aria-label="Planora summary metrics">
-            <span><strong>16</strong> conflict types surfaced</span>
-            <span><strong>10x</strong> penalty reductions on tuned runs</span>
-            <span><strong>Roles</strong> filtered by organization</span>
+          <div className="landing-actions">
+            <a className="landing-primary" href="/login">Explore the workspace <ArrowRight aria-hidden="true" weight="bold" /></a>
+            <a className="landing-secondary" href="#process">See the process</a>
           </div>
         </div>
-        <div
-          className="schedule-demo"
-          role="img"
-          aria-label="Animated one-week repair simulation showing a high-penalty schedule with conflicts becoming a cleaner schedule after two improvement runs."
-        >
-          <div className="demo-head">
-            <span>One-week repair simulation</span>
-            <div className="demo-score">
-              <strong>14552</strong>
-              <i />
-              <strong>1508</strong>
+        <div className={`landing-blueprint ${previewImproved ? "improved" : ""}`} aria-label="Interactive academic timetable preview">
+          <header>
+            <span><strong>Faculty of Engineering</strong><small>Winter planning · Draft 8</small></span>
+            <button type="button" className="secondary-button" aria-pressed={previewImproved} onClick={() => setPreviewImproved((current) => !current)}>
+              <MagicWand aria-hidden="true" weight="bold" />{previewImproved ? "Reset preview" : "Improve preview"}
+            </button>
+          </header>
+          <div className="landing-preview-status" aria-live="polite">
+            {previewImproved ? <CheckCircle aria-hidden="true" weight="fill" /> : <WarningDiamond aria-hidden="true" weight="fill" />}
+            <span><strong>{previewImproved ? "Conflict repaired" : "One room conflict"}</strong><small>{previewImproved ? "Score 1,508 · ready for review" : "Score 2,360 · suggestion available"}</small></span>
+          </div>
+          <div className="landing-calendar">
+            <div className="landing-days"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span></div>
+            <div className="landing-class-grid">
+              {previewClasses.map((item) => (
+                <article
+                  key={item.id}
+                  className={`landing-class tone-${item.tone} ${item.id === "systems" && !previewImproved ? "conflicted" : ""}`}
+                  style={{ gridColumn: item.column, gridRow: previewImproved ? item.improvedRow : item.initialRow }}
+                >
+                  <strong>{item.label}</strong><small>{item.detail}</small>
+                </article>
+              ))}
             </div>
-          </div>
-          <div className="demo-stage">
-            <div className="demo-grid-lines" />
-            {[
-              {
-                label: "Run 0",
-                penalty: "14552",
-                note: "16 conflicts",
-                status: "conflict",
-                blocks: [
-                  ["lec wide", "MON", "09:00", "A45 Lecture", 1, 1, 2],
-                  ["clash conflict", "TUE", "11:00", "A50/A51 room clash", 2, 2, 2],
-                  ["lec", "THU", "13:00", "A82 Lecture", 4, 3, 2],
-                ],
-              },
-              {
-                label: "Run 1",
-                penalty: "8820",
-                note: "9 conflicts",
-                status: "repairing",
-                blocks: [
-                  ["lec wide", "MON", "09:00", "A45 Lecture", 1, 1, 2],
-                  ["clash conflict", "TUE", "11:00", "A51 clash", 2, 2, 1],
-                  ["lab moved", "WED", "11:00", "A50 Lab", 3, 2, 1],
-                  ["lec", "THU", "13:00", "A82 Lecture", 4, 3, 2],
-                ],
-              },
-              {
-                label: "Run 2",
-                penalty: "4210",
-                note: "3 conflicts",
-                status: "repairing",
-                blocks: [
-                  ["lec wide", "MON", "09:00", "A45 Lecture", 1, 1, 2],
-                  ["lab moved", "WED", "11:00", "A50 Lab", 3, 2, 1],
-                  ["tut", "TUE", "13:00", "A51 Tutorial", 2, 3, 1],
-                  ["lec", "THU", "13:00", "A82 Lecture", 4, 3, 2],
-                ],
-              },
-              {
-                label: "Run 3",
-                penalty: "2360",
-                note: "1 conflict",
-                status: "repairing",
-                blocks: [
-                  ["lec wide", "MON", "09:00", "A45 Lecture", 1, 1, 2],
-                  ["lab moved", "WED", "11:00", "A50 Lab", 3, 2, 1],
-                  ["tut shifted", "FRI", "11:00", "A51 Tutorial", 5, 2, 1],
-                  ["lec same", "THU", "13:00", "A82 Lecture", 4, 3, 2],
-                ],
-              },
-              {
-                label: "Run 4",
-                penalty: "1508",
-                note: "clean",
-                status: "clean",
-                blocks: [
-                  ["lec wide", "MON", "09:00", "A45 Lecture", 1, 1, 2],
-                  ["lab moved", "WED", "11:00", "A50 Lab", 3, 2, 1],
-                  ["tut shifted", "FRI", "11:00", "A51 Tutorial", 4, 1, 2],
-                  ["lec same", "THU", "13:00", "A82 Lecture", 4, 3, 2],
-                ],
-              },
-            ].map((run, runIndex) => (
-              <div key={run.label} className={`demo-run run-${runIndex}`}>
-                <div className="run-label">
-                  <strong>{run.label}</strong>
-                  <span>{run.note}</span>
-                </div>
-                <div className={`run-status ${run.status}`}>{run.penalty}</div>
-                {run.blocks.map(([kind, day, time, label, column, row, span]) => (
-                  <span
-                    key={`${run.label}-${label}`}
-                    className={`demo-block ${kind}`}
-                    style={{
-                      gridColumn: `${column} / span ${span}`,
-                      gridRow: `${Number(row) + 1}`,
-                    }}
-                  >
-                    <b>{label}</b>
-                    <small>{day} {time}</small>
-                  </span>
-                ))}
-              </div>
-            ))}
-          </div>
-          <div className="demo-days">
-            {["MON", "TUE", "WED", "THU", "FRI"].map((day) => <span key={day}>{day}</span>)}
           </div>
         </div>
       </section>
 
-      <section className="public-section">
+      <section className="landing-process" id="process" aria-label="Planora workflow">
+        {[
+          [FileArrowUp, "Import", "Bring in courses, rooms, staff, and availability."],
+          [ShieldCheck, "Validate", "Check hard rules before building a draft."],
+          [MagicWand, "Build", "Generate and improve an explainable timetable."],
+          [WarningDiamond, "Review", "Resolve conflicts with concrete suggestions."],
+          [UsersThree, "Publish", "Share the approved schedule by role and group."],
+        ].map(([Icon, title, copy]) => (
+          <article key={String(title)}><Icon aria-hidden="true" /><span><strong>{String(title)}</strong><small>{String(copy)}</small></span></article>
+        ))}
+      </section>
+
+      <section className="public-section landing-capabilities">
         <div className="section-title">
-          <h2>See conflicts, quality, and repair options clearly</h2>
-          <p>Planora turns raw timetable data into explainable dashboards: conflict lists, penalty drivers, local-search improvements, and role-filtered schedule views.</p>
+          <span className="landing-eyebrow">Built around academic decisions</span>
+          <h2>See conflicts, quality, and repair options clearly.</h2>
+          <p>Every stage stays inspectable, from imported resources to the final role-filtered timetable.</p>
         </div>
-        <div className="visual-grid" aria-label="Planora capabilities">
-          <article>
+        <div className="landing-feature-grid" aria-label="Planora capabilities">
+          <article><span className="feature-icon"><WarningDiamond aria-hidden="true" weight="duotone" /></span><div>
             <strong>Hard conflict visibility</strong>
-            <div className="bar-chart"><span style={{ height: "70%" }} /><span style={{ height: "38%" }} /><span style={{ height: "12%" }} /></div>
             <p>Room, staff, and group overlaps are surfaced before admins publish changes.</p>
-          </article>
-          <article>
-            <strong>Penalty driver breakdown</strong>
-            <div className="donut-chart" />
+          </div></article>
+          <article><span className="feature-icon"><ShieldCheck aria-hidden="true" weight="duotone" /></span><div>
+            <strong>Quality drivers explained</strong>
             <p>Quality terms explain why a timetable score is high and where to focus improvement.</p>
-          </article>
-          <article>
-            <strong>Move previews</strong>
-            <div className="target-grid"><span /><span className="ok" /><span /><span className="warn" /><span className="ok" /><span /></div>
+          </div></article>
+          <article><span className="feature-icon"><MagicWand aria-hidden="true" weight="duotone" /></span><div>
+            <strong>Repair choices in context</strong>
             <p>Admins can hold an activity and see viable target cells with score deltas.</p>
-          </article>
+          </div></article>
         </div>
       </section>
     </div>

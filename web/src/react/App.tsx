@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { ArrowRight, CheckCircle, Info, Warning, X } from "@phosphor-icons/react";
 import { ApiError, createApiClient, createUnauthenticatedApiClient, DEFAULT_PRINCIPAL } from "./api";
 import { AccountPanel } from "./components/AccountPanel";
 import { AdminPanel } from "./components/AdminPanel";
 import { AccessPanel } from "./components/AccessPanel";
 import { AppShell } from "./components/AppShell";
 import { LoginPanel } from "./components/LoginPanel";
-import { OperationsPanel, RunSummary } from "./components/OperationsPanel";
+import { OperationsPanel } from "./components/OperationsPanel";
 import { ParityPanel } from "./components/ParityPanel";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { FaqContent, HomeContent, PrivacyContent } from "./components/PublicPages";
@@ -14,6 +15,7 @@ import { ReviewPanel } from "./components/ReviewPanel";
 import { ScheduleBoard } from "./components/ScheduleBoard";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { InsightsPanel } from "./components/InsightsPanel";
+import { Tutorial } from "./components/Tutorial";
 import {
   analyticsClientId,
   clearCookie,
@@ -25,37 +27,25 @@ import {
 } from "./browser_state";
 import { VIEW_PATHS, viewFromLocation } from "./navigation";
 import type { Dict, Instance, OrganizationMembership, Principal, Schedule, ViewKey } from "./types";
+import { DEFAULT_SETTINGS, type SolverSettings } from "./solver_settings";
+import {
+  DEFAULT_UI_CONTRACT,
+  loadUiContract,
+  PlannerApi,
+  type UiContract,
+  type UiScenario,
+} from "./planner_api";
 
 const API_DEFAULT = import.meta.env.VITE_PLANORA_API_URL || "http://127.0.0.1:8787";
-
-type SolverSettings = {
-  roomMode: string;
-  profile: string;
-  timeLimitSeconds: number;
-  workers: number;
-  useObjective: boolean;
-  forceRepeatWeeklyPattern: boolean;
-  improveIterations: number;
-  improveSeconds: number;
-  progressEvery: number;
-};
-
-const DEFAULT_SETTINGS: SolverSettings = {
-  roomMode: "greedy",
-  profile: "university_fast",
-  timeLimitSeconds: 60,
-  workers: 4,
-  useObjective: false,
-  forceRepeatWeeklyPattern: false,
-  improveIterations: 1000,
-  improveSeconds: 10,
-  progressEvery: 10,
-};
 
 type Toast = {
   id: number;
   kind: "success" | "error" | "info";
   message: string;
+  action?: {
+    label: string;
+    onClick(): void;
+  };
 };
 
 type LoginInitialMode = "login" | "register" | "verify" | "forgot" | "reset";
@@ -68,7 +58,6 @@ export function App() {
   const [principal, setPrincipal] = useState<Principal>(DEFAULT_PRINCIPAL);
   const [authenticated, setAuthenticated] = useState(false);
   const [view, setView] = useState<ViewKey>(viewFromLocation);
-  const [presets, setPresets] = useState<string[]>([]);
   const [authConfig, setAuthConfig] = useState<Dict>({});
   const [credentials, setCredentials] = useState({
     email: "",
@@ -94,12 +83,15 @@ export function App() {
   const [system, setSystem] = useState<Dict>({});
   const [systemStatus, setSystemStatus] = useState<Dict>({});
   const [analyticsSummary, setAnalyticsSummary] = useState<Dict>({});
-  const [jobStatus, setJobStatus] = useState<Dict | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState("");
   const [heldActivityId, setHeldActivityId] = useState("");
   const [moveTargets, setMoveTargets] = useState<Dict[]>([]);
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [settings, setSettings] = useState<SolverSettings>(DEFAULT_SETTINGS);
+  const [advancedOverridesEnabled, setAdvancedOverridesEnabled] = useState(false);
+  const [uiContract, setUiContract] = useState<UiContract>(DEFAULT_UI_CONTRACT);
+  const [runMode, setRunMode] = useState("balanced");
+  const [tutorialOpen, setTutorialOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [theme, setTheme] = useState<ThemeMode>(readStoredTheme);
@@ -113,6 +105,7 @@ export function App() {
     () => createApiClient(API_DEFAULT, principal, ""),
     [principal],
   );
+  const planner = useMemo(() => new PlannerApi(api), [api]);
 
   const trackAnalytics = useCallback((eventName: string, details: Dict = {}) => {
     if (analyticsConsent !== "granted") return;
@@ -165,12 +158,16 @@ export function App() {
     trackAnalytics("page_view");
   }, [view, trackAnalytics]);
 
-  function notify(message: string, kind: Toast["kind"] = "info") {
+  function notify(message: string, kind: Toast["kind"] = "info", action?: Toast["action"]) {
     const id = Date.now() + Math.floor(Math.random() * 1000);
-    setToasts((current) => [...current.slice(-3), { id, kind, message }]);
+    setToasts((current) => [...current.slice(-3), { id, kind, message, action }]);
     window.setTimeout(() => {
       setToasts((current) => current.filter((toast) => toast.id !== id));
     }, 5200);
+  }
+
+  function dismissToast(id: number) {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
   }
 
   function errorMessage(error: unknown): string {
@@ -183,7 +180,6 @@ export function App() {
     setAccessSnapshot({});
     setOrganizations([]);
     setAuthSessions([]);
-    setPresets([]);
     setProjects([]);
     setParity({});
     setAuditEvents([]);
@@ -196,10 +192,10 @@ export function App() {
     const authPayload = await client.get<Dict>("/auth/config");
     setAuthConfig(authPayload);
     const whoami = await client.get<Principal>("/auth/whoami");
-    const [presetPayload, projectPayload, parityPayload] = await Promise.all([
-      client.get<{ presets: string[] }>("/presets"),
+    const [projectPayload, parityPayload, uiContractPayload] = await Promise.all([
       client.get<{ projects: Dict[] }>("/projects"),
       client.get<Dict>("/parity"),
+      loadUiContract(client),
     ]);
     const [organizationPayload, sessionPayload] = await Promise.all([
       client.get<{ organizations: OrganizationMembership[] }>("/access/my-organizations"),
@@ -207,9 +203,9 @@ export function App() {
     ]);
     setPrincipal(whoami);
     setAuthenticated(true);
-    setPresets(presetPayload.presets || []);
     setProjects(projectPayload.projects || []);
     setParity(parityPayload);
+    setUiContract(uiContractPayload);
     setOrganizations(organizationPayload.organizations || []);
     setAuthSessions(sessionPayload.sessions || []);
     if (whoami.permissions.includes("audit:read")) {
@@ -240,6 +236,11 @@ export function App() {
       setAccessSnapshot({});
     }
   }, [api]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    if (localStorage.getItem("planora_tutorial_seen_v1") !== "1") setTutorialOpen(true);
+  }, [authenticated]);
 
   useEffect(() => {
     if (bootstrapStarted.current) return;
@@ -370,10 +371,14 @@ export function App() {
     return String(payload.session_id || "");
   }
 
-  async function loadPreset(mode: string) {
+  async function loadScenario(scenario: UiScenario) {
+    if (scenario.id === "import") {
+      navigate("operations");
+      return;
+    }
     setBusy(true);
     try {
-      const payload = await api.get<{ instance: Instance }>(`/preset/${encodeURIComponent(mode)}`);
+      const payload = await planner.loadScenario(scenario);
       setInstance(payload.instance);
       setSchedule({});
       setScore({});
@@ -383,8 +388,12 @@ export function App() {
       setHeldActivityId("");
       setMoveTargets([]);
       setSelectedWeek(Number(payload.instance.weeks?.[0] || 1));
-      trackAnalytics("preset_loaded", { mode });
-      notify(`Loaded ${mode}. Run Solve to create the schedule.`, "success");
+      trackAnalytics("scenario_loaded", { scenario: scenario.id });
+      notify(`Loaded ${scenario.label}. Build a schedule when you are ready.`, "success", {
+        label: "Open schedule",
+        onClick: () => navigate("workspace"),
+      });
+      navigate("workspace");
     } catch (error) {
       notify(String(error), "error");
     } finally {
@@ -615,19 +624,12 @@ export function App() {
     setBusy(true);
     try {
       const sid = await ensureSession(instance, schedule);
-      const payload = await api.post<Dict>(`/sessions/${sid}/solve`, {
-        hard_constraints: {
-          force_repeat_weekly_pattern: settings.forceRepeatWeeklyPattern,
-        },
-        options: {
-          room_mode: settings.roomMode,
-          use_objective: settings.useObjective,
-          retry_without_objective: true,
-          objective_profile: settings.profile,
-          time_limit_seconds: settings.timeLimitSeconds,
-          workers: settings.workers,
-        },
-      });
+      const payload = await planner.solve(
+        sid,
+        runMode,
+        settings,
+        advancedOverridesEnabled,
+      );
       const result = payload.result as Dict;
       const hardConflicts = Array.isArray(result.hard_conflicts) ? result.hard_conflicts : [];
       setConflicts(hardConflicts as string[]);
@@ -651,7 +653,7 @@ export function App() {
     setBusy(true);
     try {
       const sid = await ensureSession(instance, schedule);
-      const payload = await api.post<Dict>(`/sessions/${sid}/score`, {});
+      const payload = await planner.validate(sid);
       const result = payload.result as Dict;
       setScore(result);
       const hardConflicts = Array.isArray(result.hard_conflicts) ? result.hard_conflicts : [];
@@ -669,13 +671,12 @@ export function App() {
     setBusy(true);
     try {
       const sid = await ensureSession(instance, schedule);
-      const payload = await api.post<Dict>(`/sessions/${sid}/improve`, {
-        options: {
-          iterations: settings.improveIterations,
-          max_seconds: settings.improveSeconds,
-          progress_every: settings.progressEvery,
-        },
-      });
+      const payload = await planner.improve(
+        sid,
+        runMode,
+        settings,
+        advancedOverridesEnabled,
+      );
       const result = payload.result as Dict;
       const nextSchedule = result.schedule as Schedule | undefined;
       if (!nextSchedule || !Object.keys(nextSchedule).length) {
@@ -691,58 +692,6 @@ export function App() {
       setBusy(false);
     }
   }
-
-  async function startImproveJob() {
-    const sid = await ensureSession(instance, schedule);
-    const payload = await api.post<Dict>("/jobs/improve", {
-      session_id: sid,
-      options: {
-        iterations: settings.improveIterations,
-        max_seconds: settings.improveSeconds,
-        progress_every: settings.progressEvery,
-      },
-    });
-    setJobStatus(payload);
-    trackAnalytics("improve_job_started", { job_id: payload.job_id, iterations: settings.improveIterations });
-    notify(`Background improve job ${String(payload.job_id || "")} started`, "success");
-  }
-
-  useEffect(() => {
-    const jobId = String(jobStatus?.job_id || "");
-    const status = String(jobStatus?.status || "");
-    if (!jobId || ["complete", "done", "failed", "cancelled"].includes(status)) return undefined;
-    let cancelled = false;
-    let timeout = 0;
-    const poll = async () => {
-      try {
-        const payload = await api.get<Dict>(`/jobs/${encodeURIComponent(jobId)}`);
-        if (cancelled) return;
-        setJobStatus(payload);
-        if (["complete", "done"].includes(String(payload.status))) {
-          const result = (payload.result || {}) as Dict;
-          if (result.schedule) setSchedule(result.schedule as Schedule);
-          if (result.global_after || result.after) setScore((result.global_after || result.after) as Dict);
-          notify("Background improve job finished", "success");
-        }
-        if (payload.status === "failed") {
-          notify(String(payload.error || "Background job failed"), "error");
-        }
-        if (!["complete", "done", "failed", "cancelled"].includes(String(payload.status))) {
-          timeout = window.setTimeout(poll, 1000);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          notify(String(error), "error");
-          timeout = window.setTimeout(poll, 2000);
-        }
-      }
-    };
-    timeout = window.setTimeout(poll, 250);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeout);
-    };
-  }, [api, jobStatus?.job_id, jobStatus?.status]);
 
   async function holdSelected(activityId?: string) {
     const id = activityId || selectedActivityId;
@@ -806,36 +755,7 @@ export function App() {
   );
 
   const workspaceContent = (
-    <div className="stack">
-      <section className="panel workspace-hero">
-        <div className="panel-heading">
-          <div>
-            <h2>Workspace</h2>
-            <p className="section-copy">
-              This page is the operational surface for schedulers and university admins: authenticate, load data, solve, improve, and repair directly on the board.
-            </p>
-          </div>
-        </div>
-        <div className="hero-metrics">
-          <div className="hero-chip">
-            <span>Tenant</span>
-            <strong>{principal.tenant_id}</strong>
-          </div>
-          <div className="hero-chip">
-            <span>Role</span>
-            <strong>{principal.role}</strong>
-          </div>
-          <div className="hero-chip">
-            <span>Activities</span>
-            <strong>{instance ? Object.keys(instance.activities || {}).length : 0}</strong>
-          </div>
-          <div className="hero-chip">
-            <span>Displayed week</span>
-            <strong>{selectedWeek}</strong>
-          </div>
-        </div>
-      </section>
-
+    <div className="workspace-page">
       <ScheduleBoard
         instance={instance}
         schedule={schedule}
@@ -843,6 +763,10 @@ export function App() {
         targets={moveTargets}
         heldActivityId={heldActivityId}
         selectedActivityId={selectedActivityId}
+        conflicts={conflicts}
+        score={score}
+        runModeLabel={uiContract.modes.find((mode) => mode.id === runMode)?.label || "Balanced"}
+        busy={busy}
         canEdit={principal.permissions.includes("schedule:write") || principal.permissions.includes("solver:run")}
         onWeekChange={setSelectedWeek}
         onSelectActivity={setSelectedActivityId}
@@ -853,6 +777,22 @@ export function App() {
           notify("Hold released", "info");
         }}
         onMoveTarget={(day, slot) => moveTarget(day, slot).catch((error: unknown) => notify(String(error), "error"))}
+        onOpenData={() => navigate("operations")}
+        onSolve={solve}
+        onImprove={improve}
+        onValidate={scoreCurrent}
+        onPublish={() => {
+          if (conflicts.length) {
+            notify("Resolve hard conflicts before publishing.", "error");
+            navigate("review");
+            return;
+          }
+          notify("Draft is ready to save or publish from Projects.", "success", {
+            label: "Open projects",
+            onClick: () => navigate("projects"),
+          });
+          navigate("projects");
+        }}
       />
     </div>
   );
@@ -876,35 +816,31 @@ export function App() {
     workspace: workspaceContent,
     review: <ReviewPanel conflicts={conflicts} score={score} />,
     operations: (
-      <div className="solve-page">
-        <aside className="solve-sidebar">
-          <strong>Solve workflow</strong>
-          <a href="#load">1. Load scenario</a>
-          <a href="#solve">2. Build schedule</a>
-          <a href="#improve">3. Improve quality</a>
-          <a href="#score">4. Analyze result</a>
-          <button type="button" onClick={() => navigate("settings")}>Solver settings</button>
-        </aside>
-        <div className="stack">
-          <OperationsPanel
-            instance={instance}
-            presets={presets}
-            busy={busy}
-            settings={settings}
-            onLoadPreset={loadPreset}
-            onSolve={solve}
-            onImprove={improve}
-            onScore={scoreCurrent}
-            onStartImproveJob={() => startImproveJob().catch((error: unknown) => notify(String(error), "error"))}
-            onImportCsv={importCsv}
-            jobStatus={jobStatus}
-            scheduleActivities={Object.keys(schedule).length}
-          />
-          <RunSummary score={score} conflicts={conflicts} />
-        </div>
-      </div>
+      <OperationsPanel
+        instance={instance}
+        scenarios={uiContract.scenarios}
+        modes={uiContract.modes}
+        runMode={runMode}
+        busy={busy}
+        onRunModeChange={(mode) => {
+          setRunMode(mode);
+          setAdvancedOverridesEnabled(false);
+        }}
+        onLoadScenario={(scenario) => void loadScenario(scenario)}
+        onImportCsv={importCsv}
+      />
     ),
-    settings: <SettingsPanel settings={settings} onChange={setSettings} />,
+    settings: (
+      <SettingsPanel
+        settings={settings}
+        overridesEnabled={advancedOverridesEnabled}
+        onChange={(next) => {
+          setSettings(next);
+          setAdvancedOverridesEnabled(true);
+        }}
+        onUseModeDefaults={() => setAdvancedOverridesEnabled(false)}
+      />
+    ),
     fairness: <InsightsPanel instance={instance} schedule={schedule} />,
     projects: (
       <ProjectsPanel
@@ -944,13 +880,51 @@ export function App() {
       onViewChange={navigate}
       onSignOut={signOut}
       onThemeToggle={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+      onTutorialOpen={() => setTutorialOpen(true)}
       onAnalyticsConsentChange={setAnalyticsConsent}
     >
       {content[view]}
-      <div className="toast-stack" aria-live="polite">
+      <Tutorial
+        open={tutorialOpen}
+        steps={uiContract.tutorial}
+        onClose={() => {
+          localStorage.setItem("planora_tutorial_seen_v1", "1");
+          setTutorialOpen(false);
+        }}
+        onOpenData={() => navigate("operations")}
+        onOpenSchedule={() => navigate("workspace")}
+      />
+      <div className="toast-stack" aria-live="polite" aria-relevant="additions removals">
         {toasts.map((toast) => (
-          <div key={toast.id} className={`toast ${toast.kind}`}>
-            {toast.message}
+          <div
+            key={toast.id}
+            className={`toast ${toast.kind}`}
+            role={toast.kind === "error" ? "alert" : "status"}
+          >
+            <span className="toast-icon" aria-hidden="true">
+              {toast.kind === "error" ? <Warning weight="fill" /> : toast.kind === "success" ? <CheckCircle weight="fill" /> : <Info weight="fill" />}
+            </span>
+            <span className="toast-copy">
+              <strong>{toast.kind === "error" ? "Action needed" : toast.kind === "success" ? "Done" : "Update"}</strong>
+              <span>{toast.message}</span>
+              {toast.action ? (
+                <button type="button" className="toast-action" onClick={() => {
+                  toast.action?.onClick();
+                  dismissToast(toast.id);
+                }}>
+                  {toast.action.label}<ArrowRight aria-hidden="true" weight="bold" />
+                </button>
+              ) : null}
+            </span>
+            <button
+              type="button"
+              className="toast-dismiss"
+              aria-label="Dismiss notification"
+              onClick={() => dismissToast(toast.id)}
+            >
+              <X aria-hidden="true" weight="bold" />
+            </button>
+            <span className="toast-progress" aria-hidden="true" />
           </div>
         ))}
       </div>

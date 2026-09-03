@@ -30,6 +30,11 @@ export type Instance = {
   staff: Dict<Dict>;
   rooms: Dict<Dict>;
   groups: Dict<Dict>;
+  programs?: Dict<Dict>;
+  hard_constraints?: Dict;
+  demand_policy?: Dict;
+  institutional_policy?: Dict;
+  objective_profile?: string;
 };
 
 export type Schedule = Dict<Dict>;

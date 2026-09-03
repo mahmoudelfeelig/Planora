@@ -30,12 +30,11 @@ def test_web_solve_payload_moves_hard_constraints_out_of_options():
 
 def test_react_client_preserves_failed_solves_and_handles_complete_jobs():
     app = (ROOT / "web" / "src" / "react" / "App.tsx").read_text(encoding="utf-8")
-    operations = (ROOT / "web" / "src" / "react" / "components" / "OperationsPanel.tsx").read_text(encoding="utf-8")
     assert "The current timetable was preserved" in app
     assert '["complete", "done", "failed", "cancelled"]' in app
     assert '["complete", "done"].includes(String(payload.status))' in app
-    assert "function jobPercent" in operations
-    assert "Number(jobStatus.progress || 0)" not in operations
+    assert "function jobPercent" not in app
+    assert "Number(jobStatus.progress || 0)" not in app
 
 
 def test_react_admin_downloads_are_authenticated_and_insights_are_implemented():
@@ -69,10 +68,32 @@ def test_react_hardening_workflows_are_wired():
     board = (ROOT / "web" / "src" / "react" / "components" / "ScheduleBoard.tsx").read_text(encoding="utf-8")
     assert 'await api.post<Dict>("/auth/logout", {})' in app
     assert "window.setTimeout(poll" in app and "window.setInterval" not in app[app.index("const jobId"):app.index("async function holdSelected")]
-    assert "scheduleActivities={Object.keys(schedule).length}" in app
-    assert "!scheduleActivities" in operations
+    assert "schedule={schedule}" in app
+    assert "scheduleActivities" not in app
+    assert "instance={instance}" in app and "scenarios={uiContract.scenarios}" in app
+    assert "scheduleActivities" not in operations
     assert "Save current workspace" in projects and "Rename" in projects and "Delete" in projects
-    assert "colSpan={span}" in board and "duration > 1" in board
+    assert "colSpan={span}" in board and 'span > 1 ? "multi-slot"' in board
+
+
+def test_shared_ui_contract_maps_plain_language_choices_to_backend_owned_modes():
+    app = (ROOT / "web" / "src" / "react" / "App.tsx").read_text(encoding="utf-8")
+    operations = (ROOT / "web" / "src" / "react" / "components" / "OperationsPanel.tsx").read_text(encoding="utf-8")
+    planner_api = (ROOT / "web" / "src" / "react" / "planner_api.ts").read_text(encoding="utf-8")
+    ui_contract = (ROOT / "services" / "ui_contract.py").read_text(encoding="utf-8")
+
+    assert "loadUiContract(client)" in app
+    assert "uiContract.scenarios" in app and "uiContract.modes" in app
+    assert "advancedOverridesEnabled" in app
+    assert "Choose the result you want. Planora selects the underlying engine settings." in operations
+    assert "modes.map" in operations
+    assert '"label": "Fast"' in ui_contract and '"label": "Balanced"' in ui_contract
+    assert "run_mode: mode" in planner_api
+    assert "advanced_overrides" in planner_api
+    assert 'UI_CONTRACT_VERSION = "planora.ui.v1"' in ui_contract
+    assert '"id": "spring_2023"' in ui_contract
+    assert '"id": "quality"' in ui_contract
+    assert '"target_case"' not in ui_contract.split("def public_preset_ids", 1)[0]
 
 
 def test_quality_and_local_backup_gates_are_configured():
