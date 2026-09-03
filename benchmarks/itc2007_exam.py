@@ -5940,7 +5940,10 @@ def _solve_projected_itc2007_exam(
             max(0.0, acceptance_deadline - constructive_started_at - 5.0),
             max(20.0, 0.75 * total_budget),
         )
-        if prebuild_skip and total_budget >= 30.0
+        # Adding the requested duration to a large perf-counter value and
+        # subtracting it again can produce 29.999999... for a 30-second
+        # budget. Keep the exact boundary deterministic across hosts.
+        if prebuild_skip and total_budget >= 30.0 - 1e-6
         else 0.0
     )
     constructive_deadline = (
