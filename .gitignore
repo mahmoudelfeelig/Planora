@@ -248,3 +248,22 @@ paper/*.lot
 paper/*.nav
 paper/*.snm
 paper/main.pdf
+
+# Local editor and QA artifacts
+/.idea/
+/artifacts/
+/android/artifacts/
+/web/artifacts/
+/web/test-results/
+
+# Local scratch and generated release bundles
+/tmp/
+/release/
+
+# Benchmark runs are reproducible local output. Keep only the compact
+# custody/authorization receipts and official validation evidence in Git.
+/output/*
+!/output/diagnostic-receipts/
+!/output/diagnostic-receipts/**
+!/output/official-solves/
+!/output/official-solves/**

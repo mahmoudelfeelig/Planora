@@ -16,13 +16,18 @@ dependencies = [
   "ortools==9.15.6755",
   "PyQt6==6.10.2",
   "python-docx==1.2.0",
-  "PyJWT[crypto]==2.10.1",
+  "PyJWT[crypto]==2.13.0",
+  "cryptography==50.0.0",
+  "lxml==6.1.0",
   "argon2-cffi==25.1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest==9.0.2",
+  "pytest==9.0.3",
+  "Pygments==2.20.0",
+  "pytest-cov==7.1.0",
+  "coverage==7.15.2",
   "ruff==0.14.10",
 ]
 
@@ -40,7 +45,44 @@ planora-api = "api.server:main"
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
+testpaths = ["tests"]
 markers = [
   "slow: slower tests run in the second CI phase",
+  "timing_sensitive: real-time SLA tests run once without coverage instrumentation",
   "ui: tests that exercise the desktop UI layer",
 ]
+
+[tool.coverage.run]
+branch = true
+relative_files = true
+source = ["api", "core", "services", "utils"]
+
+[tool.coverage.report]
+include = [
+  "api/http.py",
+  "api/rate_limit.py",
+  "api/server.py",
+  "core/adaptive_lns.py",
+  "core/fixed_time_room_oracle.py",
+  "core/fixed_time_room_proof_checker.py",
+  "core/partitioned_solver.py",
+  "core/room_decomposition.py",
+  "core/room_proof_checker.py",
+  "core/solver_cp_sat.py",
+  "services/auth_service.py",
+  "services/env_service.py",
+  "services/password_auth_service.py",
+  "services/persistence_access.py",
+  "services/persistence_service.py",
+  "services/teaching_load_import_service.py",
+  "utils/feasibility.py",
+  "utils/io.py",
+  "utils/schedule_rules.py",
+  "utils/specs.py",
+]
+precision = 2
+show_missing = true
+skip_empty = true
+
+[tool.coverage.json]
+pretty_print = true

@@ -1,0 +1,336 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "basis": "Each floor is the lower of the full-local and CI-portable observations, floored to two decimal places so the ratchet never exceeds fresh evidence.",
+    "raise": "Raise a floor only with deterministic tests that exercise meaningful critical behavior.",
+    "lower": "Lowering a floor requires documented before-and-after evidence and an explicit release-hardening disposition.",
+    "coverage_boundary": "The numeric ratchet measures in-process Python execution. Spawned API server code is verified by separate live tests but does not inflate this baseline."
+  },
+  "measurement": {
+    "date": "2026-08-11",
+    "source_snapshot_sha256": "a63732de42d9e0053ea196f46a410024b85c006e4cc6d7f91e5529f3bd1294cb",
+    "base_git_commit": "43028f327ee94d648bb8ce3479e3bd9276aad52a",
+    "working_tree_dirty": true,
+    "tools": {
+      "python": "3.12.3",
+      "pytest": "9.0.3",
+      "pytest_cov": "7.1.0",
+      "coverage": "7.15.2"
+    },
+    "full_local": {
+      "report": "cover/critical-coverage-full-local.json",
+      "report_sha256": "aba88f1688c143aba147ee960ba79af1c18778ae160564f981b98dd7a80b9e2e",
+      "timing_sensitive_uninstrumented": {
+        "passed": 1,
+        "deselected": 398,
+        "seconds": 73.98,
+        "node_ids": [
+          "tests/test_room_decomposition.py::test_bounded_decomposed_optimization_reserves_exact_room_time"
+        ]
+      },
+      "instrumented_quick": {
+        "passed": 344,
+        "deselected": 55,
+        "seconds": 174.90
+      },
+      "instrumented_slow": {
+        "passed": 51,
+        "skipped": 2,
+        "deselected": 346,
+        "seconds": 249.55
+      },
+      "totals": {
+        "covered_lines": 4140,
+        "statements": 5780,
+        "line_percent": 71.62629757785467,
+        "covered_branches": 1893,
+        "branches": 2886,
+        "branch_percent": 65.5925155925156,
+        "combined_percent": 69.61689360720055
+      }
+    },
+    "ci_portable": {
+      "report": "cover/critical-coverage-ci-portable.json",
+      "report_sha256": "a7935e7aca73199180dfecd52d6fe5700e6af455f6b7e4638df5d110625358d6",
+      "instrumented_quick": {
+        "passed": 338,
+        "deselected": 61,
+        "seconds": 170.33
+      },
+      "instrumented_slow": {
+        "passed": 49,
+        "skipped": 2,
+        "deselected": 348,
+        "seconds": 242.55
+      },
+      "totals": {
+        "covered_lines": 4139,
+        "statements": 5780,
+        "line_percent": 71.60899653979239,
+        "covered_branches": 1892,
+        "branches": 2886,
+        "branch_percent": 65.55786555786555,
+        "combined_percent": 69.59381490883914
+      },
+      "optional_data_nodes_deselected_for_calibration_only": [
+        "tests/test_giu_calibration.py::test_local_giu_calibration_sources_reproduce_committed_artifact",
+        "tests/test_new_data_import.py::test_new_teaching_load_workbook_extracts_named_course_assignments",
+        "tests/test_new_data_import.py::test_new_quiz_calendar_archive_contains_expected_pdf_corpus",
+        "tests/test_new_data_import.py::test_timetable_import_uses_exact_teaching_load_staff",
+        "tests/test_pdf_schedule_extraction.py::test_ss23_all_majors_schedule_pdf_extracts_to_valid_cells",
+        "tests/test_pdf_schedule_extraction.py::test_ss23_all_majors_events_build_scheduler_scenario",
+        "tests/test_ss23_regression_guard.py::test_ss23_regression_guard_real_data_if_present",
+        "tests/test_timetable_import_service.py::test_import_ss23_csv_scores_original_if_fixture_exists"
+      ]
+    },
+    "bootstrap_node_deselected_for_calibration_only": "tests/test_release_artifacts.py::test_frozen_release_preserves_paper_tree_and_verifies",
+    "bootstrap_reason": "This test packages and verifies the baseline and generated reports, so it is executed immediately after those artifacts are created and is not part of their calibration.",
+    "environmental_skips": [
+      {
+        "node_id": "tests/test_api_live.py::test_live_api_server_health_solve_and_portfolio_contract",
+        "reason": "Live socket binding is not permitted in the measurement sandbox."
+      },
+      {
+        "node_id": "tests/test_api_security_live.py::test_production_api_rejects_anonymous_forged_and_local_admin",
+        "reason": "Live socket binding is unavailable in the measurement sandbox."
+      }
+    ]
+  },
+  "categories": {
+    "solver": {
+      "files": [
+        "core/adaptive_lns.py",
+        "core/partitioned_solver.py",
+        "core/room_decomposition.py",
+        "core/room_proof_checker.py",
+        "core/solver_cp_sat.py"
+      ],
+      "minimum_line_percent": 81.79,
+      "minimum_branch_percent": 72.60,
+      "full_local": {
+        "covered_lines": 2866,
+        "statements": 3504,
+        "covered_branches": 1378,
+        "branches": 1898
+      },
+      "ci_portable": {
+        "covered_lines": 2866,
+        "statements": 3504,
+        "covered_branches": 1378,
+        "branches": 1898
+      }
+    },
+    "auth_api_boundary": {
+      "files": [
+        "api/server.py",
+        "services/auth_service.py",
+        "services/env_service.py",
+        "services/password_auth_service.py"
+      ],
+      "minimum_line_percent": 28.96,
+      "minimum_branch_percent": 14.33,
+      "full_local": {
+        "covered_lines": 296,
+        "statements": 1022,
+        "covered_branches": 45,
+        "branches": 314
+      },
+      "ci_portable": {
+        "covered_lines": 296,
+        "statements": 1022,
+        "covered_branches": 45,
+        "branches": 314
+      },
+      "limitation": "The aggregate is intentionally low because api/server.py subprocess execution is not counted by the in-process ratchet."
+    },
+    "persistence_tenant_boundary": {
+      "files": [
+        "services/persistence_access.py",
+        "services/persistence_service.py"
+      ],
+      "minimum_line_percent": 80.50,
+      "minimum_branch_percent": 60.75,
+      "full_local": {
+        "covered_lines": 380,
+        "statements": 472,
+        "covered_branches": 96,
+        "branches": 158
+      },
+      "ci_portable": {
+        "covered_lines": 380,
+        "statements": 472,
+        "covered_branches": 96,
+        "branches": 158
+      }
+    },
+    "validation": {
+      "files": [
+        "utils/feasibility.py",
+        "utils/schedule_rules.py",
+        "utils/specs.py"
+      ],
+      "minimum_line_percent": 76.34,
+      "minimum_branch_percent": 72.28,
+      "full_local": {
+        "covered_lines": 598,
+        "statements": 782,
+        "covered_branches": 374,
+        "branches": 516
+      },
+      "ci_portable": {
+        "covered_lines": 597,
+        "statements": 782,
+        "covered_branches": 373,
+        "branches": 516
+      }
+    },
+    "extended_critical_boundaries": {
+      "files": [
+        "api/http.py",
+        "api/rate_limit.py",
+        "core/fixed_time_room_oracle.py",
+        "core/fixed_time_room_proof_checker.py",
+        "services/teaching_load_import_service.py",
+        "utils/io.py"
+      ],
+      "minimum_line_percent": 81.72,
+      "minimum_branch_percent": 71.68,
+      "full_local": {
+        "covered_lines": 2133,
+        "statements": 2610,
+        "covered_branches": 876,
+        "branches": 1222
+      },
+      "ci_portable": {
+        "covered_lines": 2133,
+        "statements": 2610,
+        "covered_branches": 876,
+        "branches": 1222
+      },
+      "limitation": "The conservative floor is calibrated from the consolidated non-slow run; the final full gate must meet or exceed it."
+    }
+  },
+  "files": {
+    "api/http.py": {
+      "minimum_line_percent": 51.32,
+      "minimum_branch_percent": 32.35,
+      "full_local": {"covered_lines": 58, "statements": 113, "covered_branches": 11, "branches": 34},
+      "ci_portable": {"covered_lines": 58, "statements": 113, "covered_branches": 11, "branches": 34}
+    },
+    "api/rate_limit.py": {
+      "minimum_line_percent": 94.20,
+      "minimum_branch_percent": 84.61,
+      "full_local": {"covered_lines": 65, "statements": 69, "covered_branches": 22, "branches": 26},
+      "ci_portable": {"covered_lines": 65, "statements": 69, "covered_branches": 22, "branches": 26}
+    },
+    "api/server.py": {
+      "minimum_line_percent": 13.26,
+      "minimum_branch_percent": 2.43,
+      "full_local": {"covered_lines": 100, "statements": 754, "covered_branches": 6, "branches": 246},
+      "ci_portable": {"covered_lines": 100, "statements": 754, "covered_branches": 6, "branches": 246},
+      "limitation": "This low floor is an explicit gap, not evidence of strong route coverage; live subprocess tests are separate gates."
+    },
+    "core/adaptive_lns.py": {
+      "minimum_line_percent": 92.23,
+      "minimum_branch_percent": 79.88,
+      "full_local": {"covered_lines": 368, "statements": 399, "covered_branches": 139, "branches": 174},
+      "ci_portable": {"covered_lines": 368, "statements": 399, "covered_branches": 139, "branches": 174}
+    },
+    "core/fixed_time_room_oracle.py": {
+      "minimum_line_percent": 88.39,
+      "minimum_branch_percent": 80.69,
+      "full_local": {"covered_lines": 914, "statements": 1034, "covered_branches": 347, "branches": 430},
+      "ci_portable": {"covered_lines": 914, "statements": 1034, "covered_branches": 347, "branches": 430}
+    },
+    "core/fixed_time_room_proof_checker.py": {
+      "minimum_line_percent": 71.96,
+      "minimum_branch_percent": 63.94,
+      "full_local": {"covered_lines": 598, "statements": 831, "covered_branches": 321, "branches": 502},
+      "ci_portable": {"covered_lines": 598, "statements": 831, "covered_branches": 321, "branches": 502}
+    },
+    "core/partitioned_solver.py": {
+      "minimum_line_percent": 74.11,
+      "minimum_branch_percent": 52.83,
+      "full_local": {"covered_lines": 189, "statements": 255, "covered_branches": 56, "branches": 106},
+      "ci_portable": {"covered_lines": 189, "statements": 255, "covered_branches": 56, "branches": 106}
+    },
+    "core/room_decomposition.py": {
+      "minimum_line_percent": 89.45,
+      "minimum_branch_percent": 75.56,
+      "full_local": {"covered_lines": 314, "statements": 351, "covered_branches": 133, "branches": 176},
+      "ci_portable": {"covered_lines": 314, "statements": 351, "covered_branches": 133, "branches": 176}
+    },
+    "core/room_proof_checker.py": {
+      "minimum_line_percent": 70.73,
+      "minimum_branch_percent": 60.11,
+      "full_local": {"covered_lines": 232, "statements": 328, "covered_branches": 107, "branches": 178},
+      "ci_portable": {"covered_lines": 232, "statements": 328, "covered_branches": 107, "branches": 178}
+    },
+    "core/solver_cp_sat.py": {
+      "minimum_line_percent": 81.20,
+      "minimum_branch_percent": 74.60,
+      "full_local": {"covered_lines": 1763, "statements": 2171, "covered_branches": 943, "branches": 1264},
+      "ci_portable": {"covered_lines": 1763, "statements": 2171, "covered_branches": 943, "branches": 1264}
+    },
+    "services/auth_service.py": {
+      "minimum_line_percent": 78.78,
+      "minimum_branch_percent": 52.77,
+      "full_local": {"covered_lines": 104, "statements": 132, "covered_branches": 19, "branches": 36},
+      "ci_portable": {"covered_lines": 104, "statements": 132, "covered_branches": 19, "branches": 36}
+    },
+    "services/env_service.py": {
+      "minimum_line_percent": 80.00,
+      "minimum_branch_percent": 83.33,
+      "full_local": {"covered_lines": 24, "statements": 30, "covered_branches": 10, "branches": 12},
+      "ci_portable": {"covered_lines": 24, "statements": 30, "covered_branches": 10, "branches": 12}
+    },
+    "services/password_auth_service.py": {
+      "minimum_line_percent": 64.15,
+      "minimum_branch_percent": 50.00,
+      "full_local": {"covered_lines": 68, "statements": 106, "covered_branches": 10, "branches": 20},
+      "ci_portable": {"covered_lines": 68, "statements": 106, "covered_branches": 10, "branches": 20}
+    },
+    "services/persistence_access.py": {
+      "minimum_line_percent": 75.43,
+      "minimum_branch_percent": 62.50,
+      "full_local": {"covered_lines": 86, "statements": 114, "covered_branches": 30, "branches": 48},
+      "ci_portable": {"covered_lines": 86, "statements": 114, "covered_branches": 30, "branches": 48}
+    },
+    "services/persistence_service.py": {
+      "minimum_line_percent": 82.12,
+      "minimum_branch_percent": 60.00,
+      "full_local": {"covered_lines": 294, "statements": 358, "covered_branches": 66, "branches": 110},
+      "ci_portable": {"covered_lines": 294, "statements": 358, "covered_branches": 66, "branches": 110}
+    },
+    "services/teaching_load_import_service.py": {
+      "minimum_line_percent": 86.30,
+      "minimum_branch_percent": 74.17,
+      "full_local": {"covered_lines": 353, "statements": 409, "covered_branches": 135, "branches": 182},
+      "ci_portable": {"covered_lines": 353, "statements": 409, "covered_branches": 135, "branches": 182}
+    },
+    "utils/feasibility.py": {
+      "minimum_line_percent": 61.27,
+      "minimum_branch_percent": 57.01,
+      "full_local": {"covered_lines": 106, "statements": 173, "covered_branches": 65, "branches": 114},
+      "ci_portable": {"covered_lines": 106, "statements": 173, "covered_branches": 65, "branches": 114}
+    },
+    "utils/schedule_rules.py": {
+      "minimum_line_percent": 73.27,
+      "minimum_branch_percent": 62.50,
+      "full_local": {"covered_lines": 170, "statements": 232, "covered_branches": 85, "branches": 136},
+      "ci_portable": {"covered_lines": 170, "statements": 232, "covered_branches": 85, "branches": 136}
+    },
+    "utils/specs.py": {
+      "minimum_line_percent": 85.14,
+      "minimum_branch_percent": 83.83,
+      "full_local": {"covered_lines": 322, "statements": 377, "covered_branches": 224, "branches": 266},
+      "ci_portable": {"covered_lines": 321, "statements": 377, "covered_branches": 223, "branches": 266}
+    },
+    "utils/io.py": {
+      "minimum_line_percent": 94.15,
+      "minimum_branch_percent": 83.33,
+      "full_local": {"covered_lines": 145, "statements": 154, "covered_branches": 40, "branches": 48},
+      "ci_portable": {"covered_lines": 145, "statements": 154, "covered_branches": 40, "branches": 48}
+    }
+  }
+}
