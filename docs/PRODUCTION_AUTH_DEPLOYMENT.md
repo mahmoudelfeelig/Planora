@@ -23,7 +23,7 @@ Create the env file:
 copy deploy\.env.example deploy\.env
 ```
 
-Generate two random values and paste them into `PLANORA_AUTH_SECRET` and `PLANORA_TOKEN_PEPPER`:
+Generate two independent random values and paste them into `PLANORA_AUTH_SECRET` and `PLANORA_TOKEN_PEPPER`. Production rejects either value when it is missing or shorter than 32 UTF-8 bytes, and rejects a token pepper that equals the authentication secret. Use the 48-byte generation command below rather than a memorable phrase:
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -39,6 +39,7 @@ PLANORA_TOKEN_PEPPER=<different-long-random-secret>
 PLANORA_AUTH_ISSUER=planora
 PLANORA_AUTH_AUDIENCE=planora-web
 PLANORA_SESSION_TTL_SECONDS=28800
+PLANORA_REQUIRE_AUTH_SESSION_RECORD=1
 PLANORA_MAX_REQUEST_BYTES=20971520
 PLANORA_RATE_LIMIT_PER_MINUTE=120
 PLANORA_RATE_LIMIT_ANONYMOUS_PER_MINUTE=120
@@ -61,7 +62,6 @@ PLANORA_BACKUP_KEEP_COUNT=800
 ```
 
 ## Deployment
-
 The official production release path is the repository's minimal OIDC caller.
 After `main` CI succeeds, it invokes the immutable shared release workflow;
 the private deployment controller builds and verifies the candidate, records
@@ -76,6 +76,7 @@ contract. Do not run a direct host-side `compose up --build` as a substitute
 for the controller-owned release.
 
 The API is not published directly. Caddy terminates HTTPS, strips `/api`, and applies browser security headers. `/health` checks the process and `/ready` checks database readiness.
+Production startup and `/ready` also fail closed when the production-mode value is ambiguous, development identity headers are enabled, either authentication secret is missing or too short, or the token pepper equals the JWT secret. The production Compose file uses required substitutions for both secrets, so Compose stops before creating the API container when either value is absent.
 
 ## First administrator
 
@@ -109,6 +110,9 @@ docker compose -f deploy/docker-compose.prod.yml run --rm planora-backup python 
 - Use long random invite codes and rotate any code that leaks.
 - Use single-use or low-use-count invites for admin roles.
 - Keep `PLANORA_EMAIL_VERIFICATION_REQUIRED=1` in production.
+- Keep `PLANORA_REQUIRE_AUTH_SESSION_RECORD=1`. Production enforces a persisted, non-revoked session even if this setting is accidentally disabled, so deleting or revoking a session invalidates its signed token immediately.
+- Treat refresh as session rotation: a successful refresh revokes the presented session before returning the replacement. Clients must discard the old token.
+- Do not send a bearer token and the session cookie in the same request. The API rejects ambiguous credentials; browser bearer clients omit cookies automatically.
 - Restrict access to the deployment host and secret files.
 - Alert on repeated `401`, `403`, `429`, job failures, readiness failures, disk usage, and backup age.
 - Complete privacy review, data-retention policy, incident-response procedure, and external security testing before handling real student/staff data.

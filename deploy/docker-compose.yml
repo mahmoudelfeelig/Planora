@@ -5,8 +5,10 @@ services:
       dockerfile: deploy/Dockerfile
     environment:
       PLANORA_DB_PATH: /app/data/planora.sqlite3
+      PLANORA_TRUST_DEV_HEADERS: "1"
+      PLANORA_TRUST_PROXY_HEADERS: "0"
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"
     volumes:
       - planora-data:/app/data
 
@@ -17,7 +19,7 @@ services:
     environment:
       VITE_PLANORA_API_URL: http://localhost:8787
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - ..:/app
     depends_on:

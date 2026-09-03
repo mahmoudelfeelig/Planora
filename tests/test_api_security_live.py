@@ -24,6 +24,7 @@ from services.auth_service import (
 from services.password_auth_service import (
     build_password_reset_email,
     build_verification_email,
+    send_email,
     verification_base_url,
 )
 from services.persistence_service import PersistenceStore
@@ -189,6 +190,48 @@ def test_account_email_embeds_the_elephant_and_uses_the_planora_palette():
     assert image.content_id == "planora-elephant"
     assert image.content_type == "image/png"
     assert image.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_smtp_message_attaches_the_elephant_as_an_inline_related_part(monkeypatch):
+    sent = []
+
+    class FakeSmtp:
+        def __init__(self, host, port, timeout):
+            assert (host, port, timeout) == ("smtp.example", 2525, 15)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def starttls(self):
+            return None
+
+        def send_message(self, message):
+            sent.append(message)
+
+    monkeypatch.setenv("PLANORA_SMTP_HOST", "smtp.example")
+    monkeypatch.setenv("PLANORA_SMTP_PORT", "2525")
+    monkeypatch.setenv("PLANORA_SMTP_FROM", "Planora <no-reply@planora.example>")
+    monkeypatch.setenv("PLANORA_SMTP_STARTTLS", "1")
+    monkeypatch.setattr("services.password_auth_service.smtplib.SMTP", FakeSmtp)
+
+    send_email(
+        build_verification_email(
+            "https://planora.example",
+            "student@example.edu",
+            "verification-token",
+            "123456",
+        )
+    )
+
+    assert len(sent) == 1
+    related = [part for part in sent[0].walk() if part.get("Content-ID") == "<planora-elephant>"]
+    assert len(related) == 1
+    assert related[0].get_content_type() == "image/png"
+    assert related[0].get_content_disposition() == "inline"
+    assert related[0].get_payload(decode=True).startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_csrf_gate_exempts_only_public_auth_posts():

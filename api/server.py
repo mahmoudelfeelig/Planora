@@ -807,6 +807,7 @@ class PlanoraApiHandler(BaseHTTPRequestHandler):
             ("auth", "forgot-password"),
             ("auth", "reset-password"),
             ("auth", "login"),
+            ("auth", "logout"),
             ("auth", "refresh"),
             ("access", "join-invite"),
             ("graphql",),
