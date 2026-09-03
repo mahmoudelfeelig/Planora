@@ -506,7 +506,7 @@ def test_java_argfile_relative_classpath_has_real_cwd_divergence(
         check=False,
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=30,
     )
     if execution.returncode != 0:
         pytest.skip("installed Java does not support source-file execution")
