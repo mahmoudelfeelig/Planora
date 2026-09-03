@@ -1,0 +1,118 @@
+{
+  "schema": "planora.itc2019.competitor-source-custody-policy.v1",
+  "source_inventory": {
+    "path": "source-inventory.json",
+    "sha256": "6a7c940793b1088c0c13762e83dac5d4bb4ca0652568e1d044b32d9900697054"
+  },
+  "claim_boundary": {
+    "scope": "IMMUTABLE_VENDORED_SOURCE_ARCHIVE_CUSTODY_ONLY",
+    "build_ready": false,
+    "claim_grade_ready": false,
+    "performance_claims_authorized": false,
+    "statement": "This policy can establish deterministic source-archive custody only. It does not attest a toolchain, dependency closure, build, executable image, solver run, resource parity, output validity, quality, or comparative performance."
+  },
+  "solvers": [
+    {
+      "solver": "gashi-sa",
+      "sources": [
+        {
+          "archive_path": "gashi-b7b7110d1968758b0b7efe099e7f68aa7f19a4a0.tar.gz",
+          "repository_url": "https://github.com/edongashi/itc-2019",
+          "commit_sha": "b7b7110d1968758b0b7efe099e7f68aa7f19a4a0",
+          "archive_root": "itc-2019-b7b7110d1968758b0b7efe099e7f68aa7f19a4a0",
+          "license_evidence": {
+            "spdx": "MIT",
+            "scope": "UPSTREAM_ROOT_DECLARED_LICENSE_ONLY",
+            "members": [
+              "LICENSE"
+            ]
+          },
+          "toolchain_intent": {
+            "ecosystem": "dotnet-fsharp-csharp-make",
+            "status": "INTENT_ONLY_NOT_TOOLCHAIN_OR_BUILD_READINESS",
+            "descriptor_members": [
+              "Makefile",
+              "Timetabling.sln",
+              "src/Timetabling.CLI/Timetabling.CLI.fsproj",
+              "src/Timetabling.Common/Timetabling.Common.fsproj",
+              "src/Timetabling.Internal/Timetabling.Internal.csproj"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "solver": "unitime-cpsolver",
+      "sources": [
+        {
+          "archive_path": "cpsolver-itc2019-d1576ac94a8f7b6562e49f9476a89fb741cb226f.tar.gz",
+          "repository_url": "https://github.com/tomas-muller/cpsolver-itc2019",
+          "commit_sha": "d1576ac94a8f7b6562e49f9476a89fb741cb226f",
+          "archive_root": "cpsolver-itc2019-d1576ac94a8f7b6562e49f9476a89fb741cb226f",
+          "license_evidence": {
+            "spdx": "LGPL-3.0-only",
+            "scope": "UPSTREAM_ROOT_DECLARED_LICENSE_ONLY",
+            "members": [
+              "LICENSE"
+            ]
+          },
+          "toolchain_intent": {
+            "ecosystem": "java-maven",
+            "status": "INTENT_ONLY_NOT_TOOLCHAIN_OR_BUILD_READINESS",
+            "descriptor_members": [
+              "pom.xml"
+            ]
+          }
+        },
+        {
+          "archive_path": "cpsolver-core-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26.tar.gz",
+          "repository_url": "https://github.com/UniTime/cpsolver",
+          "commit_sha": "3abbcaaf26d739d25e45c8e191b7ef94bc15cc26",
+          "archive_root": "cpsolver-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26",
+          "license_evidence": {
+            "spdx": "LGPL-3.0-only",
+            "scope": "UPSTREAM_ROOT_DECLARED_LICENSE_ONLY",
+            "members": [
+              "LICENSE"
+            ]
+          },
+          "toolchain_intent": {
+            "ecosystem": "java-maven-ant",
+            "status": "INTENT_ONLY_NOT_TOOLCHAIN_OR_BUILD_READINESS",
+            "descriptor_members": [
+              "pom.xml",
+              "build.xml",
+              "distribution.xml"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "solver": "lemos-maxsat",
+      "sources": [
+        {
+          "archive_path": "lemos-c33d15797686a27c192eabb90948baa54d3ddef5.tar.gz",
+          "repository_url": "https://github.com/ADDALemos/MPPTimetables",
+          "commit_sha": "c33d15797686a27c192eabb90948baa54d3ddef5",
+          "archive_root": "MPPTimetables-c33d15797686a27c192eabb90948baa54d3ddef5",
+          "license_evidence": {
+            "spdx": "MIT",
+            "scope": "UPSTREAM_ROOT_DECLARED_LICENSE_ONLY",
+            "members": [
+              "LICENSE"
+            ]
+          },
+          "toolchain_intent": {
+            "ecosystem": "cpp-make",
+            "status": "INTENT_ONLY_NOT_TOOLCHAIN_OR_BUILD_READINESS",
+            "descriptor_members": [
+              "Makefile",
+              "INSTALL"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

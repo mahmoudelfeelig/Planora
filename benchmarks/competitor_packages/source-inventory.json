@@ -1,0 +1,58 @@
+{
+  "schema": "planora.itc2019.competitor-source-inventory.v2",
+  "claim_grade_ready": false,
+  "solvers": [
+    {
+      "solver": "gashi-sa",
+      "sources": [
+        {
+          "role": "primary",
+          "archive_path": "gashi-b7b7110d1968758b0b7efe099e7f68aa7f19a4a0.tar.gz",
+          "archive_sha256": "d1ac7f6979c03f47fbc247ffb839288f18302963853e1935adfc5ed71480227b",
+          "archive_size_bytes": 43232,
+          "commit_sha": "b7b7110d1968758b0b7efe099e7f68aa7f19a4a0",
+          "license_spdx": "MIT",
+          "repository_url": "https://github.com/edongashi/itc-2019"
+        }
+      ]
+    },
+    {
+      "solver": "unitime-cpsolver",
+      "sources": [
+        {
+          "role": "primary",
+          "archive_path": "cpsolver-itc2019-d1576ac94a8f7b6562e49f9476a89fb741cb226f.tar.gz",
+          "archive_sha256": "a6b56f4c0017dc45cb6e3d3c0b0f46cabe06ab08f42ef2b43914280dec846484",
+          "archive_size_bytes": 19377,
+          "commit_sha": "d1576ac94a8f7b6562e49f9476a89fb741cb226f",
+          "license_spdx": "LGPL-3.0-only",
+          "repository_url": "https://github.com/tomas-muller/cpsolver-itc2019"
+        },
+        {
+          "role": "required-source-dependency",
+          "archive_path": "cpsolver-core-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26.tar.gz",
+          "archive_sha256": "af9e8dd246a4f61675a85a0aa7e18296b921ee8524c9d4937bb7237650810f04",
+          "archive_size_bytes": 3243399,
+          "commit_sha": "3abbcaaf26d739d25e45c8e191b7ef94bc15cc26",
+          "license_spdx": "LGPL-3.0-only",
+          "repository_url": "https://github.com/UniTime/cpsolver"
+        }
+      ]
+    },
+    {
+      "solver": "lemos-maxsat",
+      "sources": [
+        {
+          "role": "primary",
+          "archive_path": "lemos-c33d15797686a27c192eabb90948baa54d3ddef5.tar.gz",
+          "archive_sha256": "7f70b5c6b9f035a0e8b29069a641cb0f14c7e5f421f19a61a3c2b2397aa25cef",
+          "archive_size_bytes": 12909097,
+          "commit_sha": "c33d15797686a27c192eabb90948baa54d3ddef5",
+          "license_spdx": "MIT",
+          "repository_url": "https://github.com/ADDALemos/MPPTimetables"
+        }
+      ]
+    }
+  ],
+  "status": "SOURCE_ARCHIVES_ONLY_NOT_BUILD_OR_CUSTODY_EVIDENCE"
+}

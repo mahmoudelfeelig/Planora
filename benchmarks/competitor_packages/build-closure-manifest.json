@@ -1,0 +1,1060 @@
+{
+  "schema": "planora.itc2019.competitor-build-closure-manifest.v1",
+  "policy": {
+    "path": "build-closure-policy.json",
+    "size_bytes": 32629,
+    "sha256": "f76edbdc0979462f65f50fb7159b7ffed03cbf46359fce55dfdbc590ba1b97f2"
+  },
+  "custody_binding_sha256": "c30affdb1a8f7d2866fbdd9b41c38f6cd577f6cc6435b407945ab8c432abc0ec",
+  "build_admission_binding_sha256": "56be3ad100e604ee1e858396d85e692c6a7d3ac809ec8230945c38b2ff45c2c1",
+  "reviewed_predecessors": [
+    {
+      "role": "build-admission-implementation",
+      "path": "benchmarks/itc2019_competitor_build_admission.py",
+      "size_bytes": 25424,
+      "sha256": "e6226ff541ba275417252ea3dff6bf8b1325c2463c710bf8957c53aedd2981c8"
+    },
+    {
+      "role": "build-admission-tests",
+      "path": "tests/test_itc2019_competitor_build_admission.py",
+      "size_bytes": 13578,
+      "sha256": "19b23c9528e6b12a1e841850e935b3e724fc7302ba0cfd1e5ab04965ebc06349"
+    },
+    {
+      "role": "build-admission-policy",
+      "path": "benchmarks/competitor_packages/build-admission-policy.json",
+      "size_bytes": 15706,
+      "sha256": "a3eead9b0c8883487b9c5cdee7507a994a3d3b2f7fa733118c34739057f80192"
+    },
+    {
+      "role": "build-admission-documentation",
+      "path": "benchmarks/competitor_packages/BUILD_ADMISSION.md",
+      "size_bytes": 1739,
+      "sha256": "d53fb49651a43591d85edc92dad1b192a0f4ddf951541edefd6a7bd917696675"
+    },
+    {
+      "role": "build-admission-manifest",
+      "path": "benchmarks/competitor_packages/build-admission-manifest.json",
+      "size_bytes": 7453,
+      "sha256": "60097eee95ed15d15cd4c8be082c759fbf1ac08e7279a8688e1f85560af87205"
+    }
+  ],
+  "archive_inventory": [
+    {
+      "id": "gashi",
+      "path": "benchmarks/competitor_packages/gashi-b7b7110d1968758b0b7efe099e7f68aa7f19a4a0.tar.gz",
+      "size_bytes": 43232,
+      "sha256": "d1ac7f6979c03f47fbc247ffb839288f18302963853e1935adfc5ed71480227b",
+      "compressed_size_bytes": 43232,
+      "member_count": 90,
+      "regular_file_count": 80,
+      "total_declared_regular_bytes": 252753,
+      "descriptor_total_bytes": 1577,
+      "requested_member_sizes": []
+    },
+    {
+      "id": "unitime-extension",
+      "path": "benchmarks/competitor_packages/cpsolver-itc2019-d1576ac94a8f7b6562e49f9476a89fb741cb226f.tar.gz",
+      "size_bytes": 19377,
+      "sha256": "a6b56f4c0017dc45cb6e3d3c0b0f46cabe06ab08f42ef2b43914280dec846484",
+      "compressed_size_bytes": 19377,
+      "member_count": 21,
+      "regular_file_count": 14,
+      "total_declared_regular_bytes": 88694,
+      "descriptor_total_bytes": 3614,
+      "requested_member_sizes": []
+    },
+    {
+      "id": "unitime-core",
+      "path": "benchmarks/competitor_packages/cpsolver-core-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26.tar.gz",
+      "size_bytes": 3243399,
+      "sha256": "af9e8dd246a4f61675a85a0aa7e18296b921ee8524c9d4937bb7237650810f04",
+      "compressed_size_bytes": 3243399,
+      "member_count": 675,
+      "regular_file_count": 609,
+      "total_declared_regular_bytes": 8670399,
+      "descriptor_total_bytes": 12774,
+      "requested_member_sizes": [
+        {
+          "path": "cpsolver-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26/lib/dom4j-2.1.5.jar",
+          "size_bytes": 328171
+        },
+        {
+          "path": "cpsolver-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26/lib/log4j-api-2.25.4.jar",
+          "size_bytes": 351127
+        },
+        {
+          "path": "cpsolver-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26/lib/log4j-core-2.25.4.jar",
+          "size_bytes": 2023860
+        }
+      ]
+    },
+    {
+      "id": "lemos",
+      "path": "benchmarks/competitor_packages/lemos-c33d15797686a27c192eabb90948baa54d3ddef5.tar.gz",
+      "size_bytes": 12909097,
+      "sha256": "7f70b5c6b9f035a0e8b29069a641cb0f14c7e5f421f19a61a3c2b2397aa25cef",
+      "compressed_size_bytes": 12909097,
+      "member_count": 468,
+      "regular_file_count": 414,
+      "total_declared_regular_bytes": 331551749,
+      "descriptor_total_bytes": 4492,
+      "requested_member_sizes": []
+    }
+  ],
+  "descriptor_inventory": [
+    {
+      "id": "gashi-cli",
+      "archive": "gashi",
+      "path": "itc-2019-b7b7110d1968758b0b7efe099e7f68aa7f19a4a0/src/Timetabling.CLI/Timetabling.CLI.fsproj",
+      "format": "msbuild",
+      "size_bytes": 439,
+      "sha256": "2565c95babd826435122043ffe0220786cef49dbc2be30fcf3a3f285fbc0ea22",
+      "facts_sha256": "8a168a4ab4939af10d97137edf44304d37454e6d6d88cbde6ed21e1122f02552"
+    },
+    {
+      "id": "gashi-common",
+      "archive": "gashi",
+      "path": "itc-2019-b7b7110d1968758b0b7efe099e7f68aa7f19a4a0/src/Timetabling.Common/Timetabling.Common.fsproj",
+      "format": "msbuild",
+      "size_bytes": 686,
+      "sha256": "f5aa72283abcdf64ac0f0116b8f1a10c342ae22efec2ea9beec4d0a46e2434aa",
+      "facts_sha256": "3ee04868f7b486ede0c48688069666d485cd234dbd1be904981b4b8891df77e9"
+    },
+    {
+      "id": "gashi-internal",
+      "archive": "gashi",
+      "path": "itc-2019-b7b7110d1968758b0b7efe099e7f68aa7f19a4a0/src/Timetabling.Internal/Timetabling.Internal.csproj",
+      "format": "msbuild",
+      "size_bytes": 179,
+      "sha256": "6a420b89f33f17293979a812a7f7f85286cde024550b2645387f1f608233a1d0",
+      "facts_sha256": "d1e45a2bc0ebd5a0f66cc8ba9a2f3a2f548ef1b165a927f60a1367738ea49ee0"
+    },
+    {
+      "id": "gashi-make",
+      "archive": "gashi",
+      "path": "itc-2019-b7b7110d1968758b0b7efe099e7f68aa7f19a4a0/Makefile",
+      "format": "make",
+      "size_bytes": 273,
+      "sha256": "896c76db3db167a93a3b69cb8c80657bb9a173c961fe5b3998844375c9d08779",
+      "facts_sha256": "495755e90365e2f26dde666ee53fcdd715173db5a050842b06669ec0eda26127"
+    },
+    {
+      "id": "unitime-extension-pom",
+      "archive": "unitime-extension",
+      "path": "cpsolver-itc2019-d1576ac94a8f7b6562e49f9476a89fb741cb226f/pom.xml",
+      "format": "maven-pom",
+      "size_bytes": 3614,
+      "sha256": "72b23fd52ec56828c37965161498bd297b29994f1e168fff161759ef77446c64",
+      "facts_sha256": "f1da3088928ab9d46a8dbb323c3cc28dae8fbe814ffcf674b247ab4103219270"
+    },
+    {
+      "id": "unitime-core-pom",
+      "archive": "unitime-core",
+      "path": "cpsolver-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26/pom.xml",
+      "format": "maven-pom",
+      "size_bytes": 12774,
+      "sha256": "82a44ab2a45b262d840b80b084371dfed6e6cd9d9a3576afcb1df17587bc5eaa",
+      "facts_sha256": "bf7d3074be012630dfd8c91c83508fb7a80306d90af66ef436b8bcd520e67fd0"
+    },
+    {
+      "id": "lemos-make",
+      "archive": "lemos",
+      "path": "MPPTimetables-c33d15797686a27c192eabb90948baa54d3ddef5/Makefile",
+      "format": "make",
+      "size_bytes": 1049,
+      "sha256": "d0a3731a4821efb81612a5ce4ec4ca83f04b2ac1ec900a2c58e7147b46988df1",
+      "facts_sha256": "524d7f9d1d85a1fcda7d580e9316728d1cba86a18f32396978fb1e610d3e2c13"
+    },
+    {
+      "id": "lemos-glucose-template",
+      "archive": "lemos",
+      "path": "MPPTimetables-c33d15797686a27c192eabb90948baa54d3ddef5/solvers/glucose4.1/mtl/template.mk",
+      "format": "make",
+      "size_bytes": 3239,
+      "sha256": "e843b7b1d83155ebba9bbc1d7751b61cc5b6fd632ac9a30a4721f3f5ce59770c",
+      "facts_sha256": "77b4b40ac961aa3914abc214e0813ec7963fde5a0bc9abb8314a287494d671e9"
+    },
+    {
+      "id": "lemos-glucose-config",
+      "archive": "lemos",
+      "path": "MPPTimetables-c33d15797686a27c192eabb90948baa54d3ddef5/solvers/glucose4.1/mtl/config.mk",
+      "format": "make",
+      "size_bytes": 204,
+      "sha256": "be6dbe7434545d9ef9e842cdb0f42818e311b7c79304fd32b9c667ed5a50c57a",
+      "facts_sha256": "b264e951a82b3e6d8a96990f7e1703904bfa16641fec421be8d74dc856957dc0"
+    }
+  ],
+  "solvers": [
+    {
+      "solver": "gashi-sa",
+      "descriptor_ids": [
+        "gashi-cli",
+        "gashi-common",
+        "gashi-internal",
+        "gashi-make"
+      ],
+      "requirements": [
+        {
+          "id": "gashi-source",
+          "kind": "source",
+          "coordinate": "git:github.com/edongashi/itc-2019@b7b7110d1968758b0b7efe099e7f68aa7f19a4a0",
+          "version": "b7b7110d1968758b0b7efe099e7f68aa7f19a4a0",
+          "classification": "pinned-present",
+          "evidence": {
+            "archive": "gashi",
+            "custody": "reviewed"
+          },
+          "acquisition": {
+            "canonical_coordinates": "archive:gashi-b7b7110d1968758b0b7efe099e7f68aa7f19a4a0.tar.gz",
+            "candidate_sources": [],
+            "expected_sha256": "d1ac7f6979c03f47fbc247ffb839288f18302963853e1935adfc5ed71480227b",
+            "expected_size_bytes": 43232,
+            "license_review_required": true,
+            "provenance_review_required": false
+          }
+        },
+        {
+          "id": "gashi-dotnet-sdk",
+          "kind": "toolchain",
+          "coordinate": "dotnet-sdk compatible with netcoreapp2.1 and FSharp",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "host_observation": "dotnet 10.0.1026.32716 is mutable and compatibility is unverified"
+          },
+          "acquisition": {
+            "canonical_coordinates": "oci-or-archive:dotnet-sdk-linux-x64",
+            "candidate_sources": [
+              "https://dotnet.microsoft.com/download/dotnet/2.1"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "gashi-argu",
+          "kind": "nuget-package",
+          "coordinate": "nuget:argu",
+          "version": "5.2.0",
+          "classification": "missing",
+          "evidence": {
+            "cache_path": "C:/Users/mahmo/.nuget/packages/argu",
+            "observed": "absent"
+          },
+          "acquisition": {
+            "canonical_coordinates": "nuget:argu@5.2.0",
+            "candidate_sources": [
+              "https://api.nuget.org/v3-flatcontainer/argu/5.2.0/argu.5.2.0.nupkg"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "gashi-fsharp-core",
+          "kind": "implicit-nuget-package",
+          "coordinate": "nuget:FSharp.Core",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "reason": "version is SDK-resolved and cache path was absent"
+          },
+          "acquisition": {
+            "canonical_coordinates": "nuget:FSharp.Core@SDK_RESOLVED",
+            "candidate_sources": [
+              "https://api.nuget.org/v3-flatcontainer/fsharp.core/"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "gashi-netstandard-reference",
+          "kind": "reference-pack",
+          "coordinate": "NETStandard.Library",
+          "version": "2.0-compatible",
+          "classification": "missing",
+          "evidence": {
+            "cache_observation": "only mutable 1.6.1 directory observed"
+          },
+          "acquisition": {
+            "canonical_coordinates": "nuget:NETStandard.Library@SDK_RESOLVED",
+            "candidate_sources": [
+              "https://api.nuget.org/v3-flatcontainer/netstandard.library/"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "gashi-linux-x64-runtime-pack",
+          "kind": "runtime-pack",
+          "coordinate": "Microsoft.NETCore.App linux-x64 self-contained",
+          "version": "2.1 SDK-resolved",
+          "classification": "missing",
+          "evidence": {
+            "cache_observation": "runtime pack absent"
+          },
+          "acquisition": {
+            "canonical_coordinates": "nuget:Microsoft.NETCore.App.Runtime.linux-x64@SDK_RESOLVED",
+            "candidate_sources": [
+              "https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.linux-x64/"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "gashi-msbuild-restore-closure",
+          "kind": "transitive-build-closure",
+          "coordinate": "Microsoft.NET.Sdk targets plus NuGet transitive graph",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "reason": "no locked assets file or offline restore graph is in the archive"
+          },
+          "acquisition": {
+            "canonical_coordinates": "closure:dotnet-msbuild-restore",
+            "candidate_sources": [
+              "https://dotnet.microsoft.com",
+              "https://api.nuget.org"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "gashi-make-coreutils",
+          "kind": "build-tools",
+          "coordinate": "GNU Make plus POSIX rm",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "host_observation": "make was not found; host rm is not a pinned Linux tool"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-packages:make,coreutils",
+            "candidate_sources": [
+              "https://packages.debian.org"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "gashi-linux-native-runtime",
+          "kind": "native-runtime",
+          "coordinate": "linux-x64 host libraries required by .NET Core 2.1",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "reason": "runtime RID does not pin glibc, OpenSSL, ICU, zlib, libstdc++, or Kerberos packages"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-closure:dotnet-core-2.1-linux-x64",
+            "candidate_sources": [
+              "https://packages.debian.org"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        }
+      ],
+      "classification_counts": {
+        "missing": 8,
+        "mutable-unverified": 0,
+        "pinned-present": 1
+      },
+      "closure_complete": false,
+      "build_ready": false
+    },
+    {
+      "solver": "unitime-cpsolver",
+      "descriptor_ids": [
+        "unitime-extension-pom",
+        "unitime-core-pom"
+      ],
+      "requirements": [
+        {
+          "id": "unitime-extension-source",
+          "kind": "source",
+          "coordinate": "git:github.com/tomas-muller/cpsolver-itc2019@d1576ac94a8f7b6562e49f9476a89fb741cb226f",
+          "version": "d1576ac94a8f7b6562e49f9476a89fb741cb226f",
+          "classification": "pinned-present",
+          "evidence": {
+            "archive": "unitime-extension",
+            "custody": "reviewed"
+          },
+          "acquisition": {
+            "canonical_coordinates": "archive:cpsolver-itc2019-d1576ac94a8f7b6562e49f9476a89fb741cb226f.tar.gz",
+            "candidate_sources": [],
+            "expected_sha256": "a6b56f4c0017dc45cb6e3d3c0b0f46cabe06ab08f42ef2b43914280dec846484",
+            "expected_size_bytes": 19377,
+            "license_review_required": true,
+            "provenance_review_required": false
+          }
+        },
+        {
+          "id": "unitime-core-source",
+          "kind": "source-dependency",
+          "coordinate": "git:github.com/UniTime/cpsolver@3abbcaaf26d739d25e45c8e191b7ef94bc15cc26",
+          "version": "3abbcaaf26d739d25e45c8e191b7ef94bc15cc26",
+          "classification": "pinned-present",
+          "evidence": {
+            "archive": "unitime-core",
+            "custody": "reviewed"
+          },
+          "acquisition": {
+            "canonical_coordinates": "archive:cpsolver-core-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26.tar.gz",
+            "candidate_sources": [],
+            "expected_sha256": "af9e8dd246a4f61675a85a0aa7e18296b921ee8524c9d4937bb7237650810f04",
+            "expected_size_bytes": 3243399,
+            "license_review_required": true,
+            "provenance_review_required": false
+          }
+        },
+        {
+          "id": "unitime-dom4j",
+          "kind": "vendored-maven-dependency",
+          "coordinate": "org.dom4j:dom4j",
+          "version": "2.1.5",
+          "classification": "pinned-present",
+          "evidence": {
+            "archive": "unitime-core",
+            "member_path": "cpsolver-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26/lib/dom4j-2.1.5.jar",
+            "member_size_bytes": 328171
+          },
+          "acquisition": {
+            "canonical_coordinates": "archive-member:unitime-core/lib/dom4j-2.1.5.jar",
+            "candidate_sources": [
+              "https://repo1.maven.org/maven2/org/dom4j/dom4j/2.1.5/"
+            ],
+            "expected_sha256": "af9e8dd246a4f61675a85a0aa7e18296b921ee8524c9d4937bb7237650810f04",
+            "expected_size_bytes": 3243399,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "unitime-log4j-api",
+          "kind": "vendored-transitive-maven-dependency",
+          "coordinate": "org.apache.logging.log4j:log4j-api",
+          "version": "2.25.4",
+          "classification": "pinned-present",
+          "evidence": {
+            "archive": "unitime-core",
+            "member_path": "cpsolver-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26/lib/log4j-api-2.25.4.jar",
+            "member_size_bytes": 351127
+          },
+          "acquisition": {
+            "canonical_coordinates": "archive-member:unitime-core/lib/log4j-api-2.25.4.jar",
+            "candidate_sources": [
+              "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-api/2.25.4/"
+            ],
+            "expected_sha256": "af9e8dd246a4f61675a85a0aa7e18296b921ee8524c9d4937bb7237650810f04",
+            "expected_size_bytes": 3243399,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "unitime-log4j-core",
+          "kind": "vendored-maven-dependency",
+          "coordinate": "org.apache.logging.log4j:log4j-core",
+          "version": "2.25.4",
+          "classification": "pinned-present",
+          "evidence": {
+            "archive": "unitime-core",
+            "member_path": "cpsolver-3abbcaaf26d739d25e45c8e191b7ef94bc15cc26/lib/log4j-core-2.25.4.jar",
+            "member_size_bytes": 2023860
+          },
+          "acquisition": {
+            "canonical_coordinates": "archive-member:unitime-core/lib/log4j-core-2.25.4.jar",
+            "candidate_sources": [
+              "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.25.4/"
+            ],
+            "expected_sha256": "af9e8dd246a4f61675a85a0aa7e18296b921ee8524c9d4937bb7237650810f04",
+            "expected_size_bytes": 3243399,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "unitime-jdk",
+          "kind": "toolchain",
+          "coordinate": "JDK with javac --release/source 11 and Java 8 target support",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "host_observation": "Java and javac 25.0.2 are mutable and Maven compatibility is unverified"
+          },
+          "acquisition": {
+            "canonical_coordinates": "oci-or-archive:jdk-linux-x64",
+            "candidate_sources": [
+              "https://adoptium.net/temurin/releases/"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "unitime-maven",
+          "kind": "build-tool",
+          "coordinate": "Apache Maven",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "host_observation": "mvn command was not found"
+          },
+          "acquisition": {
+            "canonical_coordinates": "archive:apache-maven",
+            "candidate_sources": [
+              "https://maven.apache.org/download.cgi"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "unitime-extension-plugins",
+          "kind": "maven-plugin-set",
+          "coordinate": "resources:3.3.1,jar:3.4.2,compiler:3.13.0",
+          "version": "descriptor-pinned",
+          "classification": "mutable-unverified",
+          "evidence": {
+            "cache_observation": "matching top-level plugin directories exist but files and transitives are unverified"
+          },
+          "acquisition": {
+            "canonical_coordinates": "maven-closure:extension-build-plugins",
+            "candidate_sources": [
+              "https://repo1.maven.org/maven2/org/apache/maven/plugins/"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "unitime-core-lifecycle-plugins",
+          "kind": "maven-plugin-set",
+          "coordinate": "resources:2.5,jar:2.4,source:2.1.2,compiler:2.5.1,javadoc:2.8.1,assembly:2.3,buildnumber:1.1,antrun:1.7",
+          "version": "descriptor-pinned",
+          "classification": "missing",
+          "evidence": {
+            "cache_observation": "required old plugin versions were not present"
+          },
+          "acquisition": {
+            "canonical_coordinates": "maven-closure:core-package-plugins",
+            "candidate_sources": [
+              "https://repo1.maven.org/maven2/"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "unitime-declared-nonphase-plugins",
+          "kind": "maven-declared-plugin-set",
+          "coordinate": "release:2.5,eclipse:2.9,scm-provider-gitexe:1.9.1",
+          "version": "descriptor-pinned",
+          "classification": "missing",
+          "evidence": {
+            "reason": "declared in build but not proven excluded from the reviewed effective build graph"
+          },
+          "acquisition": {
+            "canonical_coordinates": "maven-closure:core-declared-plugins",
+            "candidate_sources": [
+              "https://repo1.maven.org/maven2/"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "unitime-wagon-ftp",
+          "kind": "maven-build-extension",
+          "coordinate": "org.apache.maven.wagon:wagon-ftp",
+          "version": "2.2",
+          "classification": "missing",
+          "evidence": {
+            "cache_observation": "artifact directory absent"
+          },
+          "acquisition": {
+            "canonical_coordinates": "maven:org.apache.maven.wagon:wagon-ftp:2.2",
+            "candidate_sources": [
+              "https://repo1.maven.org/maven2/org/apache/maven/wagon/wagon-ftp/2.2/"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "unitime-maven-transitives",
+          "kind": "transitive-build-closure",
+          "coordinate": "all POM parents, plugin transitives, metadata, checksums, and Maven core artifacts",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "reason": "no empty-repository offline resolution receipt exists"
+          },
+          "acquisition": {
+            "canonical_coordinates": "closure:maven-effective-build",
+            "candidate_sources": [
+              "https://repo1.maven.org/maven2/",
+              "https://maven.restlet.talend.com",
+              "https://oss.sonatype.org/content/repositories/snapshots"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "unitime-linux-runtime",
+          "kind": "native-runtime",
+          "coordinate": "Linux JRE native and C library closure",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "reason": "no immutable JRE image or root filesystem digest is available"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-closure:jre-linux-x64",
+            "candidate_sources": [
+              "https://packages.debian.org"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        }
+      ],
+      "classification_counts": {
+        "missing": 7,
+        "mutable-unverified": 1,
+        "pinned-present": 5
+      },
+      "closure_complete": false,
+      "build_ready": false
+    },
+    {
+      "solver": "lemos-maxsat",
+      "descriptor_ids": [
+        "lemos-make",
+        "lemos-glucose-template",
+        "lemos-glucose-config"
+      ],
+      "requirements": [
+        {
+          "id": "lemos-source",
+          "kind": "source",
+          "coordinate": "git:github.com/ADDALemos/MPPTimetables@c33d15797686a27c192eabb90948baa54d3ddef5",
+          "version": "c33d15797686a27c192eabb90948baa54d3ddef5",
+          "classification": "pinned-present",
+          "evidence": {
+            "archive": "lemos",
+            "custody": "reviewed"
+          },
+          "acquisition": {
+            "canonical_coordinates": "archive:lemos-c33d15797686a27c192eabb90948baa54d3ddef5.tar.gz",
+            "candidate_sources": [],
+            "expected_sha256": "7f70b5c6b9f035a0e8b29069a641cb0f14c7e5f421f19a61a3c2b2397aa25cef",
+            "expected_size_bytes": 12909097,
+            "license_review_required": true,
+            "provenance_review_required": false
+          }
+        },
+        {
+          "id": "lemos-glucose41-core",
+          "kind": "vendored-source-dependency",
+          "coordinate": "Glucose 4.1 core namespace Glucose",
+          "version": "4.1",
+          "classification": "pinned-present",
+          "evidence": {
+            "archive": "lemos",
+            "selection": "SOLVERDIR=glucose4.1 VERSION=core"
+          },
+          "acquisition": {
+            "canonical_coordinates": "archive-subtree:lemos/solvers/glucose4.1",
+            "candidate_sources": [],
+            "expected_sha256": "7f70b5c6b9f035a0e8b29069a641cb0f14c7e5f421f19a61a3c2b2397aa25cef",
+            "expected_size_bytes": 12909097,
+            "license_review_required": true,
+            "provenance_review_required": false
+          }
+        },
+        {
+          "id": "lemos-gnu-make",
+          "kind": "build-tool",
+          "coordinate": "GNU Make",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "host_observation": "make command was not found"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-package:make",
+            "candidate_sources": [
+              "https://packages.debian.org/make"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "lemos-gxx",
+          "kind": "compiler",
+          "coordinate": "GNU g++ with C++11",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "host_observation": "Strawberry Perl g++.exe is mutable Windows tooling, not a pinned Linux compiler"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-package:g++",
+            "candidate_sources": [
+              "https://packages.debian.org/g++"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "lemos-binutils",
+          "kind": "toolchain",
+          "coordinate": "GNU binutils ar and linker",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "reason": "AR and linker are used by the Make template but are not pinned"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-package:binutils",
+            "candidate_sources": [
+              "https://packages.debian.org/binutils"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "lemos-gmp",
+          "kind": "native-library",
+          "coordinate": "libgmpxx and libgmp headers plus runtime",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "descriptor_flags": "-lgmpxx -lgmp"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-packages:libgmp-dev,libgmpxx-runtime",
+            "candidate_sources": [
+              "https://packages.debian.org/libgmp-dev"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "lemos-zlib",
+          "kind": "native-library",
+          "coordinate": "zlib headers and libz runtime",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "descriptor_flags": "-lz"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-packages:zlib1g-dev,zlib1g",
+            "candidate_sources": [
+              "https://packages.debian.org/zlib1g-dev"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "lemos-pthread",
+          "kind": "native-library",
+          "coordinate": "POSIX threads",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "descriptor_flags": "-lpthread"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-runtime:libpthread-via-libc",
+            "candidate_sources": [
+              "https://packages.debian.org/libc6-dev"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "lemos-cxx-runtime",
+          "kind": "native-runtime",
+          "coordinate": "glibc, libstdc++, libgcc_s, loader, and compiler-selected runtime",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "reason": "dynamic runtime closure is selected by the future compiler and root filesystem"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-closure:g++-runtime-linux-x64",
+            "candidate_sources": [
+              "https://packages.debian.org"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "lemos-posix-build-utilities",
+          "kind": "build-tools",
+          "coordinate": "POSIX shell, coreutils, findutils, sed, cat, and pwd",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "descriptor_tools": "pwd,sed,rm,ln,cat and shell loops"
+          },
+          "acquisition": {
+            "canonical_coordinates": "os-packages:dash,coreutils,findutils,sed",
+            "candidate_sources": [
+              "https://packages.debian.org"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        },
+        {
+          "id": "lemos-linux-rootfs",
+          "kind": "runtime-rootfs",
+          "coordinate": "Linux x86_64 root filesystem and locale data",
+          "version": null,
+          "classification": "missing",
+          "evidence": {
+            "docker_observation": "daemon unavailable and no immutable image IDs or repo digests observed"
+          },
+          "acquisition": {
+            "canonical_coordinates": "oci:linux-build-runtime-rootfs",
+            "candidate_sources": [
+              "https://hub.docker.com/_/debian"
+            ],
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "license_review_required": true,
+            "provenance_review_required": true
+          }
+        }
+      ],
+      "classification_counts": {
+        "missing": 9,
+        "mutable-unverified": 0,
+        "pinned-present": 2
+      },
+      "closure_complete": false,
+      "build_ready": false
+    }
+  ],
+  "local_observations": {
+    "scope": "READ_ONLY_NON_CLAIM_GRADE_SNAPSHOT",
+    "docker": {
+      "classification": "missing",
+      "daemon_available": false,
+      "image_ids": [],
+      "repo_digests": [],
+      "detail": "Docker configuration was unreadable and the engine named pipe was absent; no image identity was observed.",
+      "trusted_for_closure": false
+    },
+    "host_tools": [
+      {
+        "name": "dotnet",
+        "classification": "mutable-unverified",
+        "path": "C:/Program Files/dotnet/dotnet.exe",
+        "observed_version": "10.0.1026.32716"
+      },
+      {
+        "name": "java",
+        "classification": "mutable-unverified",
+        "path": "C:/Program Files/Common Files/Oracle/Java/javapath/java.exe",
+        "observed_version": "25.0.2.0"
+      },
+      {
+        "name": "javac",
+        "classification": "mutable-unverified",
+        "path": "C:/Program Files/Common Files/Oracle/Java/javapath/javac.exe",
+        "observed_version": "25.0.2.0"
+      },
+      {
+        "name": "gcc",
+        "classification": "mutable-unverified",
+        "path": "C:/dev/strawberry_perl/c/bin/gcc.exe",
+        "observed_version": "unresolved"
+      },
+      {
+        "name": "g++",
+        "classification": "mutable-unverified",
+        "path": "C:/dev/strawberry_perl/c/bin/g++.exe",
+        "observed_version": "unresolved"
+      },
+      {
+        "name": "cmake",
+        "classification": "mutable-unverified",
+        "path": "C:/dev/strawberry_perl/c/bin/cmake.exe",
+        "observed_version": "3.29.2.0"
+      },
+      {
+        "name": "ninja",
+        "classification": "mutable-unverified",
+        "path": "C:/dev/strawberry_perl/c/bin/ninja.exe",
+        "observed_version": "unresolved"
+      },
+      {
+        "name": "nuget",
+        "classification": "missing",
+        "path": null,
+        "observed_version": null
+      },
+      {
+        "name": "mvn",
+        "classification": "missing",
+        "path": null,
+        "observed_version": null
+      },
+      {
+        "name": "make",
+        "classification": "missing",
+        "path": null,
+        "observed_version": null
+      },
+      {
+        "name": "clang",
+        "classification": "missing",
+        "path": null,
+        "observed_version": null
+      }
+    ],
+    "package_caches": [
+      {
+        "ecosystem": "nuget",
+        "path": "C:/Users/mahmo/.nuget/packages",
+        "classification": "mutable-unverified",
+        "observed": [
+          "netstandard.library/1.6.1"
+        ],
+        "missing_relevant": [
+          "argu/5.2.0",
+          "fsharp.core",
+          "microsoft.netcore.app",
+          "microsoft.netcore.app.runtime.linux-x64"
+        ]
+      },
+      {
+        "ecosystem": "maven",
+        "path": "C:/Users/mahmo/.m2/repository",
+        "classification": "mutable-unverified",
+        "observed": [
+          "org.apache.maven.plugins:maven-resources-plugin:3.3.1",
+          "org.apache.maven.plugins:maven-jar-plugin:3.4.2",
+          "org.apache.maven.plugins:maven-compiler-plugin:3.13.0"
+        ],
+        "missing_relevant": [
+          "org.unitime:cpsolver:1.4-SNAPSHOT",
+          "org.apache.logging.log4j:log4j-core:2.25.4",
+          "org.dom4j:dom4j:2.1.5",
+          "core old plugin set",
+          "wagon-ftp:2.2"
+        ]
+      },
+      {
+        "ecosystem": "gradle",
+        "path": "C:/Users/mahmo/.gradle/caches",
+        "classification": "mutable-unverified",
+        "observed": [
+          "cache exists but is not part of any selected build"
+        ],
+        "missing_relevant": []
+      }
+    ]
+  },
+  "acquisition_contract": {
+    "network_access_authorized": false,
+    "required_fields": [
+      "canonical coordinate",
+      "authoritative origin URL",
+      "license and provenance review",
+      "exact byte size",
+      "SHA-256",
+      "signing or transparency evidence where available",
+      "transitive graph",
+      "target platform and architecture",
+      "offline cache layout"
+    ],
+    "next_actions": [
+      "Independently review this inventory and descriptor parser.",
+      "Choose digest-pinned Linux toolchain and rootfs artifacts for each solver.",
+      "Acquire each missing artifact in a separately authorized network-enabled custody task and record immutable hashes and sizes.",
+      "Resolve NuGet and Maven transitives from empty caches into content-addressed offline closures.",
+      "Create deterministic network-disabled recipes only after every closure item is pinned and reviewed."
+    ]
+  },
+  "claim_boundary": {
+    "scope": "TOOLCHAIN_DEPENDENCY_INVENTORY_ONLY_NO_BUILD_AUTHORIZATION",
+    "build_ready": false,
+    "claim_grade_ready": false,
+    "performance_claims_authorized": false,
+    "statement": "This inventory identifies archive-declared build targets and closure requirements. It neither authorizes acquisition nor attests that mutable host tools, package caches, transitive dependencies, recipes, adapters, binaries, images, licenses, or matched-resource controls are complete or reviewed."
+  },
+  "build_ready": false,
+  "claim_grade_ready": false,
+  "performance_claims_authorized": false,
+  "status": "BUILD_CLOSURE_INVENTORIED_NOT_BUILD_READY",
+  "binding_sha256": "6743885adfa621829523e452fc56f144106e2550c724a630d053a55b7cd8fd16"
+}
