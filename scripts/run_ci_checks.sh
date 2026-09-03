@@ -31,7 +31,15 @@ COVERAGE_ARGS=(
 )
 RELEASE_ARTIFACT_FILE="tests/test_release_artifacts.py"
 mapfile -t ORDINARY_TEST_FILES < <(
-  find tests -type f -name 'test_*.py' ! -path "${RELEASE_ARTIFACT_FILE}" -print | sort
+  # The MUNI successor suites bind Windows file identities, timestamps, and
+  # PowerShell 5.1/7 parser results into immutable receipts. Running them on
+  # Ubuntu is invalid and some builders intentionally rewrite their reviewed
+  # pair during deterministic regeneration. Keep that custody lane on its
+  # authenticated Windows host instead of weakening the pinned tests.
+  find tests -type f -name 'test_*.py' \
+    ! -name 'test_run_muni_v*.py' \
+    ! -path "${RELEASE_ARTIFACT_FILE}" \
+    -print | sort
 )
 if [[ ${#ORDINARY_TEST_FILES[@]} -eq 0 ]]; then
   echo "No ordinary test files found" >&2
