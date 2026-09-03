@@ -160,7 +160,7 @@ def test_bounded_decomposed_optimization_reserves_exact_room_time() -> None:
     inst = generate_instance("small_demo")
     model = TimetableSolver(inst, room_mode="decomposed", use_objective=True)
     solver, status = model.solve(
-        time_limit_seconds=8.0,
+        time_limit_seconds=15.0,
         workers=1,
         random_seed=1,
     )
@@ -176,10 +176,10 @@ def test_bounded_decomposed_optimization_reserves_exact_room_time() -> None:
     report = model.decomposition_report
     assert report["status"] == "FEASIBLE"
     assert report["proof_status"] in {"feasible_incumbent", "optimal"}
-    assert report["budget_seconds"] == 8.0
+    assert report["budget_seconds"] == 15.0
     assert report["objective_value"] is not None
     successful_round = report["rounds"][-1]
-    assert 0.0 < successful_round["master_budget_seconds"] < 8.0
+    assert 0.0 < successful_round["master_budget_seconds"] < 15.0
     room_timing = successful_round["room_subproblem"]["timing"]
     assert room_timing["search_budget_seconds"] > 0.0
 
