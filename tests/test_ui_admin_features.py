@@ -787,6 +787,71 @@ def test_solver_access_violation_retries_once_in_safe_mode(monkeypatch, qt_app):
         win.deleteLater()
 
 
+def test_window_close_stops_worker_and_removes_private_solver_directory(
+    tmp_path, qt_app
+):
+    class _Signal:
+        def __init__(self):
+            self.disconnected = False
+
+        def disconnect(self):
+            self.disconnected = True
+
+    class _DummyProc:
+        def __init__(self):
+            self.finished = _Signal()
+            self.errorOccurred = _Signal()
+            self.readyRead = _Signal()
+            self.terminated = False
+            self.killed = False
+            self.deleted = False
+            self.waits: list[int] = []
+
+        def state(self):
+            return ui_window.QProcess.ProcessState.Running
+
+        def terminate(self):
+            self.terminated = True
+
+        def waitForFinished(self, timeout: int):
+            self.waits.append(int(timeout))
+            return len(self.waits) > 1
+
+        def kill(self):
+            self.killed = True
+
+        def deleteLater(self):
+            self.deleted = True
+
+    private_dir = tmp_path / "planora_solver_private"
+    private_dir.mkdir(mode=0o700)
+    instance_path = private_dir / "instance.pkl"
+    result_path = private_dir / "result.pkl"
+    instance_path.write_bytes(b"sensitive-instance")
+    result_path.write_bytes(b"sensitive-result")
+
+    win = ui_window.MainWindow()
+    proc = _DummyProc()
+    win.proc = proc
+    win.tmp_solver_dir = str(private_dir)
+    win.tmp_inst_path = str(instance_path)
+    win.tmp_res_path = str(result_path)
+
+    win.close()
+    qt_app.processEvents()
+
+    assert win.proc is None
+    assert proc.terminated is True
+    assert proc.killed is True
+    assert proc.waits == [1500, 2000]
+    assert proc.deleted is True
+    assert proc.finished.disconnected is True
+    assert proc.errorOccurred.disconnected is True
+    assert proc.readyRead.disconnected is True
+    assert not private_dir.exists()
+    win.deleteLater()
+
+
 def test_solver_error_crash_retries_once_in_safe_mode(monkeypatch, qt_app):
     win = ui_window.MainWindow()
     try:

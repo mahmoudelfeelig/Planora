@@ -1280,7 +1280,7 @@ class WindowGenerationMixin:
             QMessageBox.warning(self, "Busy", "Wait for solving to finish first.")
             return
 
-        mode = self.mode_combo.currentText()
+        mode = str(self.mode_combo.currentData() or self.mode_combo.currentText())
         try:
             self.product_scenario = self._build_product_scenario_from_controls(str(mode))
             inst = compile_scenario_instance(self.product_scenario)

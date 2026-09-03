@@ -6,6 +6,23 @@ from ui.window_runtime import _window_global
 
 class WindowRepairMixin:
 
+    def _display_cell_to_day_slot(self, row: int, col: int) -> Tuple[str, int] | None:
+        """Map the visual week grid (time rows, weekday columns) to engine coordinates."""
+        if self.inst is None:
+            return None
+        if not (0 <= int(row) < int(self.inst.slots_per_day)):
+            return None
+        if not (0 <= int(col) < len(self.inst.days)):
+            return None
+        return str(self.inst.days[int(col)]), int(row)
+
+    def _day_slot_to_display_cell(self, day: str, slot: int) -> Tuple[int, int] | None:
+        if self.inst is None or str(day) not in self.inst.days:
+            return None
+        if not (0 <= int(slot) < int(self.inst.slots_per_day)):
+            return None
+        return int(slot), int(self.inst.days.index(str(day)))
+
     def _render_empty_calendar(
         self,
         days: List[str] | Tuple[str, ...] | None,
@@ -16,19 +33,21 @@ class WindowRepairMixin:
         render_days = list(days) if days else list(self.DEFAULT_PREVIEW_DAYS)
         render_slots = int(slots_per_day) if slots_per_day and int(slots_per_day) > 0 else int(self.DEFAULT_PREVIEW_SLOTS)
         self.table.clear()
-        self.table.setRowCount(len(render_days))
-        self.table.setColumnCount(render_slots)
-        self.table.setVerticalHeaderLabels(render_days)
-        self.table.setHorizontalHeaderLabels([f"S{idx + 1}" for idx in range(render_slots)])
+        self.table.setRowCount(render_slots)
+        self.table.setColumnCount(len(render_days))
+        self.table.setVerticalHeaderLabels(
+            [self._slot_display_label(idx) for idx in range(render_slots)]
+        )
+        self.table.setHorizontalHeaderLabels(render_days)
         self._cell_activity_map = {}
-        for row, day in enumerate(render_days):
-            for col in range(render_slots):
+        for row in range(render_slots):
+            for col, day in enumerate(render_days):
                 item = QTableWidgetItem("")
                 item.setTextAlignment(
                     Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
                 )
                 item.setForeground(QBrush(QColor("#f5f5f5")))
-                item.setToolTip(f"{week_label} | {day} S{col + 1}\nActivities: none")
+                item.setToolTip(f"{week_label} | {day} S{row + 1}\nActivities: none")
                 self.table.setItem(row, col, item)
                 self._cell_activity_map[(row, col)] = []
         self._schedule_table_relayout()
@@ -38,11 +57,9 @@ class WindowRepairMixin:
             return None
         if self.selected_cell_row is None or self.selected_cell_col is None:
             return None
-        if not (0 <= int(self.selected_cell_row) < len(self.inst.days)):
-            return None
-        if not (0 <= int(self.selected_cell_col) < int(self.inst.slots_per_day)):
-            return None
-        return (self.inst.days[int(self.selected_cell_row)], int(self.selected_cell_col))
+        return self._display_cell_to_day_slot(
+            int(self.selected_cell_row), int(self.selected_cell_col)
+        )
 
     def _show_held_targets_dialog(self) -> None:
         if self.inst is None or self.held_activity_id is None:
@@ -168,6 +185,7 @@ class WindowRepairMixin:
             self.selected_cell_row = int(row)
             self.selected_cell_col = int(col)
             self._refresh_quick_actions()
+            self._refresh_blueprint_inspector()
         except Exception:
             traceback.print_exc()
             self.set_status("Failed to select cell")
@@ -176,10 +194,11 @@ class WindowRepairMixin:
         if self.inst is None or not self.current_schedule:
             return
         week = self._current_week()
-        if week is None or not (0 <= int(row) < len(self.inst.days)):
+        target = self._display_cell_to_day_slot(int(row), int(col))
+        if week is None or target is None:
             return
-        day = str(self.inst.days[int(row)])
-        act_ids = list(self._cell_activity_ids_for_view(day, int(col), int(week)))
+        day, slot = target
+        act_ids = list(self._cell_activity_ids_for_view(day, int(slot), int(week)))
         if not act_ids:
             return
         a_id = None
@@ -199,10 +218,11 @@ class WindowRepairMixin:
         if self.inst is None or self.held_activity_id is None:
             return
         week = self._current_week()
-        if week is None or not (0 <= int(row) < len(self.inst.days)):
+        target = self._display_cell_to_day_slot(int(row), int(col))
+        if week is None or target is None:
             return
-        day = str(self.inst.days[int(row)])
-        self._attempt_move_held_to(str(day), int(col), int(week))
+        day, slot = target
+        self._attempt_move_held_to(str(day), int(slot), int(week))
 
     def on_selected_activity_changed(self, _idx: int = -1) -> None:
         data = self.selected_activity_combo.currentData()
@@ -634,8 +654,10 @@ class WindowRepairMixin:
 
         if day not in self.inst.days:
             return False
-        row = int(self.inst.days.index(day))
-        col = int(max(0, min(slot, int(self.inst.slots_per_day) - 1)))
+        display_cell = self._day_slot_to_display_cell(day, slot)
+        if display_cell is None:
+            return False
+        row, col = display_cell
         self.selected_cell_row = row
         self.selected_cell_col = col
         self.selected_activity_id = int(a_id)
@@ -1013,8 +1035,11 @@ class WindowRepairMixin:
             self.week_combo.setCurrentIndex(idx)
         info = self.current_schedule[a_id]
         if self.inst is not None and str(info["day"]) in self.inst.days:
-            self.selected_cell_row = self.inst.days.index(str(info["day"]))
-            self.selected_cell_col = int(info["slot"])
+            display_cell = self._day_slot_to_display_cell(
+                str(info["day"]), int(info["slot"])
+            )
+            if display_cell is not None:
+                self.selected_cell_row, self.selected_cell_col = display_cell
             self.selected_activity_id = int(a_id)
         self.update_table()
         self._refresh_quick_actions()
@@ -1873,7 +1898,10 @@ class WindowRepairMixin:
             week = self._current_week()
             if week is None:
                 return
-            day = self.inst.days[row]
+            target = self._display_cell_to_day_slot(row, col)
+            if target is None:
+                return
+            day, slot = target
             act_ids = list(self._cell_activity_map.get((row, col), []))
 
             menu = QMenu(self.table)
@@ -2221,8 +2249,10 @@ class WindowRepairMixin:
                 return
             week = int(week_data)
 
-            day = self.inst.days[row]
-            slot = col
+            target = self._display_cell_to_day_slot(row, col)
+            if target is None:
+                return
+            day, slot = target
 
             act_ids = self._cell_activity_ids_for_view(day, slot, week)
 

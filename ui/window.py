@@ -60,6 +60,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QHeaderView,
     QTabWidget,
+    QSplitter,
     QInputDialog,
     QLineEdit,
     QPlainTextEdit,
@@ -125,7 +126,6 @@ from ui.constants import (
     DEFAULT_DAY_START,
     DEFAULT_SLOT_MINUTES,
     DEFAULT_BREAK_MINUTES,
-    DEFAULT_TIME_LIMIT,
     DEFAULT_CP_WORKERS,
 )
 from services.compare_service import compare_schedule_sets
@@ -136,6 +136,16 @@ from services.export_service import (
     export_ics as export_ics_service,
     export_pdf as export_pdf_service,
     export_reports as export_reports_service,
+)
+from services.engine_backend import (
+    INTERACTIVE_IMPROVE_ITERATIONS,
+    INTERACTIVE_IMPROVE_SECONDS,
+    INTERACTIVE_OBJECTIVE_PROFILE,
+    INTERACTIVE_SOLVE_SECONDS,
+)
+from services.ui_contract import (
+    generator_mode_for_scenario,
+    run_mode_options,
 )
 from services.project_service import load_legacy_project, save_legacy_project
 from services.quality_service import (
@@ -182,9 +192,10 @@ from ui.dialogs import (
 )
 from ui.backend_client import create_backend_client
 from ui.models import SimpleTableModel
-from ui.styles import DARK_STYLE
+from ui.styles import DARK_STYLE, LIGHT_STYLE
+from ui.tutorial import TutorialDialog
 from ui.table_items import NaturalSortTableItem, NumericTableItem, StepSpinBox
-from ui.widgets import ScheduleTableWidget
+from ui.widgets import ScheduleItemDelegate, ScheduleTableWidget, StatusToast
 from ui.workers import FunctionWorker, ImproveWorker
 from connectors.csv_connectors import ERPCsvConnector, LMSCsvConnector, SISCsvConnector
 from utils.generator import (
@@ -334,6 +345,7 @@ class MainWindow(
         self.top_widget: QWidget | None = None
         self._top_controls_height_cache: int | None = None
         self._status_full_text: str = f"{APP_SHORT_NAME} ready"
+        self._last_toast_text: str = self._status_full_text
         self._live_improve_mode: bool = False
         self._improve_running: bool = False
         self._improve_stop_requested: bool = False
@@ -342,12 +354,15 @@ class MainWindow(
         self._maximize_on_first_show: bool = True
         self.tmp_inst_path: str | None = None
         self.tmp_res_path: str | None = None
+        self.tmp_solver_dir: str | None = None
         self._room_table_internal_change = False
         self._custom_program_table_internal_change = False
         self._custom_course_pattern_table_internal_change = False
         self.backend_client = create_backend_client(
-            backend_url=os.getenv("PLANORA_BACKEND_URL", "").strip() or None
+            backend_url=os.getenv("PLANORA_BACKEND_URL", "").strip() or None,
+            bearer_token=os.getenv("PLANORA_BACKEND_TOKEN", "").strip() or None,
         )
+        self._ui_contract: Dict[str, Any] = self._load_backend_ui_contract()
         self._institution_template: Dict[str, Any] | None = None
         self._last_import_mapping: Dict[str, str] = {}
         self._last_group_separator: str = ";"
@@ -372,6 +387,13 @@ class MainWindow(
         self._runtime_settings: Dict[str, Any] = load_runtime_settings(
             self._runtime_paths["settings"]
         )
+        self._theme_mode = str(
+            dict(self._runtime_settings.get("ui_preferences", {}) or {}).get(
+                "theme", "light"
+            )
+        )
+        if self._theme_mode not in {"light", "dark"}:
+            self._theme_mode = "light"
         self._thread_pool = QThreadPool.globalInstance()
         self._held_analysis_async_key: Tuple[Any, ...] | None = None
         self._improve_thread: QThread | None = None
@@ -380,6 +402,8 @@ class MainWindow(
         self._improve_total_iters: int = 0
         self._improve_base_penalty: int | None = None
         self._improve_focus_term: str = ""
+        self._active_solve_worker: FunctionWorker | None = None
+        self._tutorial_checked = False
 
         self._build_ui()
         self._connect_signals()
@@ -391,6 +415,27 @@ class MainWindow(
 
     # ----- UI setup -----
 
+    def _load_backend_ui_contract(self) -> Dict[str, Any]:
+        try:
+            capabilities = self.backend_client.capabilities()
+        except Exception as exc:
+            if os.getenv("PLANORA_BACKEND_URL", "").strip():
+                raise RuntimeError(
+                    "The configured Planora backend could not be reached or authenticated. "
+                    "Set PLANORA_BACKEND_TOKEN to a valid bearer token and try again."
+                ) from exc
+            raise
+        contract = capabilities.get("ui_contract")
+        if not isinstance(contract, dict):
+            raise RuntimeError("The Planora backend did not provide a UI contract.")
+        if str(contract.get("contract_version") or "") != "planora.ui.v1":
+            raise RuntimeError(
+                "This Planora desktop requires backend UI contract planora.ui.v1."
+            )
+        if not contract.get("scenarios") or not contract.get("run_modes"):
+            raise RuntimeError("The Planora backend UI contract is incomplete.")
+        return dict(contract)
+
     def _build_ui(self):
         self.top_widget = QWidget()
         top_layout = QVBoxLayout(self.top_widget)
@@ -398,38 +443,63 @@ class MainWindow(
         top_layout.setSpacing(6)
 
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(
-            [
-                "small_demo",
-                "block_profs",
-                "labs_only",
-                "mixed_large",
-                "random",
-                "ss23_uni_like",
-                "target_case",
-                "custom",
-            ]
-        )
+        for mode in (
+            "small_demo",
+            "giu_target",
+            "ss23_uni_like",
+            "custom",
+            "block_profs",
+            "labs_only",
+            "mixed_large",
+            "random",
+            "target_case",
+        ):
+            self.mode_combo.addItem(mode, mode)
+        self.mode_combo.setVisible(False)
 
-        self.generate_button = QPushButton("Generate")
-        self.solve_button = QPushButton("Solve")
+        self.scenario_combo = QComboBox()
+        shared_ui_contract = self._ui_contract
+        for scenario in shared_ui_contract["scenarios"]:
+            self.scenario_combo.addItem(str(scenario["label"]), str(scenario["id"]))
+
+        self.run_mode_combo = QComboBox()
+        recommended_mode = "balanced"
+        for run_mode in shared_ui_contract["run_modes"]:
+            self.run_mode_combo.addItem(str(run_mode["label"]), str(run_mode["id"]))
+            if bool(run_mode.get("recommended")):
+                recommended_mode = str(run_mode["id"])
+        recommended_index = self.run_mode_combo.findData(recommended_mode)
+        self.run_mode_combo.setCurrentIndex(max(0, recommended_index))
+
+        self.generate_button = QPushButton("Open data")
+        self.solve_button = QPushButton("Build schedule")
         self.clear_locks_button = QPushButton("Clear Locks")
         self.improve_button = QPushButton("Improve")
-        self.stop_improve_button = QPushButton("Stop Improving")
+        self.stop_improve_button = QPushButton("Stop improvement")
         self.stop_improve_button.setEnabled(False)
+        self.stop_improve_button.setVisible(False)
         self.undo_button = QPushButton("Undo")
         self.redo_button = QPushButton("Redo")
         self.revert_button = QPushButton("Revert Base")
-        self.conflicts_button = QPushButton("Conflicts")
+        self.conflicts_button = QPushButton("Validate")
+        self.publish_button = QPushButton("Publish")
+        self.publish_button.setObjectName("publishButton")
+        self.tutorial_button = QPushButton("How it works")
+        self.tutorial_button.setObjectName("quietButton")
 
         self.room_mode_combo = QComboBox()
         self.room_mode_combo.addItem("Auto", "auto")
+        self.room_mode_combo.addItem("Scale (Adaptive week partitions)", "partitioned")
+        self.room_mode_combo.addItem("Research (Certificate decomposition)", "decomposed")
         self.room_mode_combo.addItem("Strict (CP rooms)", "cp_rooms")
         self.room_mode_combo.addItem("Fast (Greedy rooms)", "greedy")
-        self.room_mode_combo.setCurrentIndex(0)
+        interactive_room_idx = self.room_mode_combo.findData("partitioned")
+        self.room_mode_combo.setCurrentIndex(
+            interactive_room_idx if interactive_room_idx >= 0 else 0
+        )
 
         self.objective_cb = QCheckBox("Use CP objective")
-        self.objective_cb.setChecked(True)
+        self.objective_cb.setChecked(False)
         self.debug_diagnostics_cb = QCheckBox("Debug diagnostics")
         self.debug_diagnostics_cb.setChecked(
             str(os.getenv("PLANORA_SOLVER_DEBUG", "")).strip().lower()
@@ -438,13 +508,15 @@ class MainWindow(
         self.objective_profile_combo = QComboBox()
         for profile_id, label in available_objective_profiles():
             self.objective_profile_combo.addItem(str(label), str(profile_id))
-        balanced_idx = self.objective_profile_combo.findData("balanced")
-        if balanced_idx >= 0:
-            self.objective_profile_combo.setCurrentIndex(balanced_idx)
+        interactive_idx = self.objective_profile_combo.findData(
+            INTERACTIVE_OBJECTIVE_PROFILE
+        )
+        if interactive_idx >= 0:
+            self.objective_profile_combo.setCurrentIndex(interactive_idx)
 
         self.time_limit_spin = StepSpinBox()
         self.time_limit_spin.setRange(5, 3600)
-        self.time_limit_spin.setValue(DEFAULT_TIME_LIMIT)
+        self.time_limit_spin.setValue(int(INTERACTIVE_SOLVE_SECONDS))
         self.time_limit_spin.setSuffix(" s")
 
         self.random_seed_spin = StepSpinBox()
@@ -477,13 +549,13 @@ class MainWindow(
         self.improve_runs_spin = StepSpinBox()
         self.improve_runs_spin.setRange(10, 100000)
         self.improve_runs_spin.setSingleStep(10)
-        self.improve_runs_spin.setValue(1000)
+        self.improve_runs_spin.setValue(INTERACTIVE_IMPROVE_ITERATIONS)
         self.improve_runs_spin.setMinimumWidth(90)
         self.improve_runs_spin.setMaximumWidth(130)
 
         self.ls_time_spin = StepSpinBox()
         self.ls_time_spin.setRange(0, 600)
-        self.ls_time_spin.setValue(0)
+        self.ls_time_spin.setValue(int(INTERACTIVE_IMPROVE_SECONDS))
         self.ls_time_spin.setSuffix(" s")
         self.ls_time_spin.setMaximumWidth(120)
 
@@ -505,6 +577,11 @@ class MainWindow(
         self.project_menu = QMenu(self.project_menu_btn)
         self.project_menu_btn.setMenu(self.project_menu)
 
+        self.theme_button = QToolButton()
+        self.theme_button.setObjectName("secondaryButton")
+        self.theme_button.setMinimumWidth(82)
+        self.theme_button.clicked.connect(self._toggle_theme)
+
         self.view_type_combo = QComboBox()
         self.view_type_combo.addItems(["Group", "Staff", "Room", "All"])
         self.entity_combo = QComboBox()
@@ -515,7 +592,10 @@ class MainWindow(
         self.search_edit.setPlaceholderText("Search activities, staff, rooms, conflicts...")
         self.search_button = QPushButton("Search")
 
-        self.status_label = QLabel("Ready")
+        self.status_toast = StatusToast()
+        self.status_label = self.status_toast.message_label
+        self.run_status_label = QLabel("Ready")
+        self.run_status_label.setObjectName("runStatusLabel")
         self.quality_label = QLabel("")
         self.quality_label.setWordWrap(True)
         self.quality_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -529,76 +609,72 @@ class MainWindow(
             lay.addWidget(widget)
             return box
 
-        # Row 0: main actions
-        row_actions = QHBoxLayout()
-        row_actions.setContentsMargins(6, 0, 6, 0)
-        row_actions.setSpacing(6)
+        self.app_header = QFrame()
+        self.app_header.setObjectName("appHeader")
+        brand_row = QHBoxLayout(self.app_header)
+        brand_row.setContentsMargins(14, 9, 12, 9)
+        brand_row.setSpacing(10)
+        icon_path = _app_icon_path()
+        if icon_path:
+            brand_icon = QLabel()
+            brand_icon.setObjectName("brandIcon")
+            brand_icon.setPixmap(QIcon(icon_path).pixmap(40, 40))
+            brand_icon.setFixedSize(44, 44)
+            brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            brand_row.addWidget(brand_icon)
+        brand_copy = QVBoxLayout()
+        brand_copy.setSpacing(0)
+        brand_title = QLabel("Planora")
+        brand_title.setObjectName("brandTitle")
+        brand_context = QLabel("ACADEMIC PLANNING / DRAFT TIMETABLE")
+        brand_context.setObjectName("eyebrowLabel")
+        brand_copy.addWidget(brand_title)
+        brand_copy.addWidget(brand_context)
+        brand_row.addLayout(brand_copy)
+        brand_row.addStretch(1)
+        brand_row.addWidget(self.tutorial_button)
+        brand_row.addWidget(self.theme_button)
+        brand_row.addWidget(self.project_menu_btn)
+        brand_row.addWidget(self.export_menu_btn)
+        top_layout.addWidget(self.app_header)
+
+        # The normal workflow exposes only the meaningful scenario, run mode, and actions.
+        self.command_bar = QFrame()
+        self.command_bar.setObjectName("commandBar")
+        row_actions = QHBoxLayout(self.command_bar)
+        row_actions.setContentsMargins(10, 7, 10, 7)
+        row_actions.setSpacing(7)
         action_widgets: List[QWidget] = [
-            _pair_widget("Mode:", self.mode_combo),
+            _pair_widget("Data:", self.scenario_combo),
             self.generate_button,
+            _pair_widget("Run mode:", self.run_mode_combo),
             self.solve_button,
-            self.clear_locks_button,
             self.improve_button,
             self.stop_improve_button,
-            self.export_menu_btn,
-            self.project_menu_btn,
-            self.undo_button,
-            self.redo_button,
-            self.revert_button,
             self.conflicts_button,
+            self.publish_button,
         ]
         for widget in action_widgets:
             row_actions.addWidget(widget)
         row_actions.addStretch(1)
-        top_layout.addLayout(row_actions)
+        top_layout.addWidget(self.command_bar)
 
-        # Row 1: tuning
-        row_tuning = QHBoxLayout()
-        row_tuning.setContentsMargins(6, 0, 6, 0)
-        row_tuning.setSpacing(6)
-        tuning_widgets: List[QWidget] = [
-            _pair_widget("LS iters:", self.improve_runs_spin),
-            _pair_widget("LS time:", self.ls_time_spin),
-            _pair_widget("Focus:", self.improve_focus_combo),
-            _pair_widget("Room mode:", self.room_mode_combo),
-            _pair_widget("Profile:", self.objective_profile_combo),
-            self.objective_cb,
-        ]
-        for widget in tuning_widgets:
-            row_tuning.addWidget(widget)
-        row_tuning.addStretch(1)
-        top_layout.addLayout(row_tuning)
-
-        # Row 2: solver runtime/debug controls
-        row_solver = QHBoxLayout()
-        row_solver.setContentsMargins(6, 0, 6, 0)
-        row_solver.setSpacing(6)
-        solver_widgets: List[QWidget] = [
-            _pair_widget("Limit:", self.time_limit_spin),
-            _pair_widget("Workers:", self.workers_preset_combo),
-            _pair_widget("Seed:", self.random_seed_spin),
-            self.debug_diagnostics_cb,
-        ]
-        for widget in solver_widgets:
-            row_solver.addWidget(widget)
-        row_solver.addStretch(1)
-        top_layout.addLayout(row_solver)
-
-        # Row 3: view controls + status
-        row_view = QHBoxLayout()
-        row_view.setContentsMargins(6, 0, 6, 0)
-        row_view.setSpacing(6)
+        # Timetable view controls stay adjacent to the canvas.
+        self.filter_bar = QFrame()
+        self.filter_bar.setObjectName("filterBar")
+        row_view = QHBoxLayout(self.filter_bar)
+        row_view.setContentsMargins(10, 7, 10, 7)
+        row_view.setSpacing(7)
         row_view.addWidget(_pair_widget("View:", self.view_type_combo))
         row_view.addWidget(self.entity_combo)
         row_view.addWidget(_pair_widget("Week:", self.week_combo))
         row_view.addWidget(_pair_widget("Search:", self.search_scope_combo))
         row_view.addWidget(self.search_edit)
         row_view.addWidget(self.search_button)
-        row_view.addWidget(self.status_label, 2)
-        top_layout.addLayout(row_view)
+        top_layout.addWidget(self.filter_bar)
 
         # Emphasize primary admin controls and improve discoverability.
-        self.improve_button.setMaximumWidth(96)
+        self.improve_button.setMinimumWidth(92)
         self.stop_improve_button.setMinimumWidth(126)
         self.export_menu_btn.setMinimumWidth(92)
         self.project_menu_btn.setMinimumWidth(92)
@@ -609,10 +685,14 @@ class MainWindow(
         self.search_edit.setMinimumWidth(200)
         self.workers_preset_combo.setMinimumWidth(120)
         self.objective_profile_combo.setMinimumWidth(150)
-        self.status_label.setWordWrap(False)
-        self.status_label.setMinimumWidth(300)
-        self.status_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.run_status_label.setWordWrap(False)
+        self.run_status_label.setMinimumWidth(240)
+        self.run_status_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.run_status_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self.entity_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
@@ -625,6 +705,7 @@ class MainWindow(
         )
 
         self.table = ScheduleTableWidget()
+        self.table.setItemDelegate(ScheduleItemDelegate(self.table))
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.setAlternatingRowColors(False)
@@ -637,33 +718,100 @@ class MainWindow(
         self.table.viewport().setMouseTracking(True)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        # Keep scrolling on the outer Schedule view, not inside the table widget.
-        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.table.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        # Keep headers fixed and use the table's native scrollbars. This avoids
+        # competing nested scroll regions and lets wheel events bubble at bounds.
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self.workspace_tabs = QTabWidget()
+        self.workspace_tabs.setObjectName("workspaceTabs")
         schedule_tab = QWidget()
         schedule_tab_layout = QVBoxLayout(schedule_tab)
         schedule_tab_layout.setContentsMargins(0, 0, 0, 0)
         schedule_tab_layout.setSpacing(0)
+
+        self.blueprint_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.blueprint_splitter.setObjectName("blueprintSplitter")
+        self.resource_panel = QFrame()
+        self.resource_panel.setObjectName("resourcePanel")
+        self.resource_panel.setMinimumWidth(0)
+        resource_layout = QVBoxLayout(self.resource_panel)
+        resource_layout.setContentsMargins(12, 14, 12, 14)
+        resource_title = QLabel("RESOURCES")
+        resource_title.setObjectName("eyebrowLabel")
+        self.blueprint_resource_search = QLineEdit()
+        self.blueprint_resource_search.setPlaceholderText("Find course, group, staff, room")
+        self.blueprint_resource_list = QListWidget()
+        self.blueprint_resource_list.setObjectName("resourceList")
+        resource_layout.addWidget(resource_title)
+        resource_layout.addWidget(self.blueprint_resource_search)
+        resource_layout.addWidget(self.blueprint_resource_list, 1)
+        self.blueprint_splitter.addWidget(self.resource_panel)
+
+        schedule_center = QWidget()
+        schedule_center.setObjectName("scheduleCanvas")
+        schedule_layout = QVBoxLayout(schedule_center)
+        schedule_layout.setContentsMargins(8, 8, 8, 8)
+        schedule_layout.setSpacing(6)
         self.schedule_view_scroll = QScrollArea()
         self.schedule_view_scroll.setWidgetResizable(True)
         self.schedule_view_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.schedule_view_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         self.schedule_view_scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        self.table.setExternalScrollArea(self.schedule_view_scroll)
-        schedule_tab_layout.addWidget(self.schedule_view_scroll)
-        schedule_content = QWidget()
-        self.schedule_view_scroll.setWidget(schedule_content)
-        schedule_layout = QVBoxLayout(schedule_content)
-        schedule_layout.setContentsMargins(0, 0, 0, 0)
-        schedule_layout.setSpacing(6)
-        schedule_layout.addWidget(self.table, 0)
+        self.table.setExternalScrollArea(None)
+        self.schedule_view_scroll.setWidget(self.table)
+        schedule_layout.addWidget(self.status_toast, 0)
+        schedule_layout.addWidget(self.schedule_view_scroll, 1)
+
+        run_strip = QFrame()
+        run_strip.setObjectName("runStrip")
+        run_strip_layout = QHBoxLayout(run_strip)
+        run_strip_layout.setContentsMargins(12, 7, 12, 7)
+        run_strip_layout.setSpacing(10)
+        run_strip_layout.addWidget(QLabel("CURRENT DRAFT"))
+        run_strip_layout.addWidget(self.quality_label, 1)
+        run_strip_layout.addWidget(self.run_status_label)
+        schedule_layout.addWidget(run_strip)
+        self.blueprint_splitter.addWidget(schedule_center)
+
+        self.inspector_panel = QFrame()
+        self.inspector_panel.setObjectName("inspectorPanel")
+        self.inspector_panel.setMinimumWidth(0)
+        inspector_layout = QVBoxLayout(self.inspector_panel)
+        inspector_layout.setContentsMargins(12, 14, 12, 14)
+        inspector_label = QLabel("SELECTED CLASS")
+        inspector_label.setObjectName("eyebrowLabel")
+        self.blueprint_inspector_title = QLabel("Select a class")
+        self.blueprint_inspector_title.setObjectName("inspectorTitle")
+        self.blueprint_inspector_title.setWordWrap(True)
+        self.blueprint_inspector_copy = QLabel(
+            "Its room, teacher, conflicts, and explained suggestions will appear here."
+        )
+        self.blueprint_inspector_copy.setObjectName("inspectorMeta")
+        self.blueprint_inspector_copy.setWordWrap(True)
+        inspector_meta_card = QFrame()
+        inspector_meta_card.setObjectName("inspectorMetaCard")
+        inspector_meta_layout = QVBoxLayout(inspector_meta_card)
+        inspector_meta_layout.setContentsMargins(11, 10, 11, 10)
+        inspector_meta_layout.setSpacing(5)
+        inspector_meta_layout.addWidget(self.blueprint_inspector_title)
+        inspector_meta_layout.addWidget(self.blueprint_inspector_copy)
+        inspector_layout.addWidget(inspector_label)
+        inspector_layout.addWidget(inspector_meta_card)
+        constraint_box = QGroupBox("Constraints")
+        constraint_layout = QVBoxLayout(constraint_box)
+        self.blueprint_constraints_copy = QLabel(
+            "Room capacity, staff availability, group overlap, and institutional rules are checked for the selected class."
+        )
+        self.blueprint_constraints_copy.setObjectName("inspectorMeta")
+        self.blueprint_constraints_copy.setWordWrap(True)
+        constraint_layout.addWidget(self.blueprint_constraints_copy)
+        inspector_layout.addWidget(constraint_box)
         self.schedule_actions_scroll = QScrollArea()
         self.schedule_actions_scroll.setWidget(self._build_schedule_actions_panel())
         self.schedule_actions_scroll.setWidgetResizable(True)
@@ -673,28 +821,121 @@ class MainWindow(
         self.schedule_actions_scroll.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
+        self.schedule_actions_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.schedule_actions_scroll.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
-        self.schedule_actions_scroll.setMaximumHeight(210)
-        schedule_layout.addWidget(self.schedule_actions_scroll, 0)
+        suggestion_box = QGroupBox("Suggestions")
+        suggestion_layout = QVBoxLayout(suggestion_box)
+        suggestion_copy = QLabel(
+            "Preview safe alternatives for the selected class before applying a change."
+        )
+        suggestion_copy.setObjectName("inspectorMeta")
+        suggestion_copy.setWordWrap(True)
+        suggestion_layout.addWidget(suggestion_copy)
+        suggestion_layout.addWidget(self.quick_edit_btn)
+        suggestion_layout.addWidget(self.quick_hold_btn)
+        suggestion_layout.addWidget(self.quick_targets_btn)
+        suggestion_layout.addWidget(self.quick_release_btn)
+        suggestion_layout.addStretch(1)
+        inspector_layout.addWidget(suggestion_box, 1)
         self.quality_scroll = QScrollArea()
-        self.quality_scroll.setWidget(self.quality_label)
+        self.quality_scroll.setObjectName("validationCard")
+        self.blueprint_validation_label = QLabel("Validation and score details appear after a run.")
+        self.blueprint_validation_label.setWordWrap(True)
+        self.quality_scroll.setWidget(self.blueprint_validation_label)
         self.quality_scroll.setWidgetResizable(True)
         self.quality_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.quality_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.quality_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.quality_scroll.setMaximumHeight(120)
+        self.quality_scroll.setMaximumHeight(106)
         self.quality_scroll.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
-        schedule_layout.addWidget(self.quality_scroll, 0)
+        inspector_layout.addWidget(self.quality_scroll, 0)
+        self.blueprint_splitter.addWidget(self.inspector_panel)
+        self.blueprint_splitter.setSizes([220, 950, 290])
+        self.blueprint_splitter.setStretchFactor(1, 1)
+        schedule_tab_layout.addWidget(self.blueprint_splitter)
+
+        data_tab = QWidget()
+        data_layout = QVBoxLayout(data_tab)
+        data_layout.setContentsMargins(24, 22, 24, 22)
+        data_layout.setSpacing(14)
+        data_eyebrow = QLabel("TIMETABLE DATA")
+        data_eyebrow.setObjectName("eyebrowLabel")
+        data_heading = QLabel("Start from a clear, relevant scenario")
+        data_heading.setObjectName("pageHeading")
+        data_intro = QLabel(
+            "Use the small demo to learn the workflow, the Spring 2023 university data for a full-scale plan, or import your institution's data."
+        )
+        data_intro.setWordWrap(True)
+        data_layout.addWidget(data_eyebrow)
+        data_layout.addWidget(data_heading)
+        data_layout.addWidget(data_intro)
+        data_cards = QHBoxLayout()
+        self.demo_data_button = QPushButton("Open demo timetable")
+        self.spring_data_button = QPushButton("Open Spring 2023 university")
+        self.import_data_button = QPushButton("Import institutional data")
+        for button in (self.demo_data_button, self.spring_data_button, self.import_data_button):
+            button.setMinimumHeight(72)
+            data_cards.addWidget(button)
+        data_layout.addLayout(data_cards)
+        data_layout.addStretch(1)
+
+        review_tabs = QTabWidget()
+        review_tabs.addTab(self._build_fairness_tab(), "Quality")
+        review_tabs.addTab(self._build_diagnostics_tab(), "Diagnostics")
+
+        advanced_tab = QScrollArea()
+        advanced_tab.setWidgetResizable(True)
+        advanced_tab.setFrameShape(QFrame.Shape.NoFrame)
+        advanced_content = QWidget()
+        advanced_tab.setWidget(advanced_content)
+        advanced_layout = QVBoxLayout(advanced_content)
+        advanced_layout.setContentsMargins(8, 8, 8, 8)
+        advanced_notice = QLabel(
+            "Specialist and research controls. Normal planning uses the shared Fast, Balanced, and Maximum quality modes."
+        )
+        advanced_notice.setObjectName("advancedNotice")
+        advanced_notice.setWordWrap(True)
+        advanced_layout.addWidget(advanced_notice)
+        tuning_box = QGroupBox("Engine overrides")
+        tuning_form = QFormLayout(tuning_box)
+        tuning_form.addRow("Room strategy", self.room_mode_combo)
+        tuning_form.addRow("Objective profile", self.objective_profile_combo)
+        tuning_form.addRow("Solve limit", self.time_limit_spin)
+        tuning_form.addRow("Workers", self.workers_preset_combo)
+        tuning_form.addRow("Random seed", self.random_seed_spin)
+        tuning_form.addRow("Improve iterations", self.improve_runs_spin)
+        tuning_form.addRow("Improve time", self.ls_time_spin)
+        tuning_form.addRow("Improve focus", self.improve_focus_combo)
+        tuning_form.addRow(self.objective_cb)
+        tuning_form.addRow(self.debug_diagnostics_cb)
+        advanced_actions = QHBoxLayout()
+        for button in (self.clear_locks_button, self.undo_button, self.redo_button, self.revert_button):
+            advanced_actions.addWidget(button)
+        advanced_actions.addStretch(1)
+        tuning_form.addRow(advanced_actions)
+        advanced_layout.addWidget(tuning_box)
+        advanced_sections = QTabWidget()
+        generator_tab = QWidget()
+        generator_layout = QVBoxLayout(generator_tab)
+        generator_layout.setContentsMargins(0, 0, 0, 0)
+        self.custom_generate_button = QPushButton("Build custom scenario")
+        self.custom_generate_button.setMinimumHeight(42)
+        generator_layout.addWidget(self.custom_generate_button)
+        generator_layout.addWidget(self._build_generator_tab(), 1)
+        advanced_sections.addTab(generator_tab, "Custom builder")
+        advanced_sections.addTab(self._build_constraints_tab(), "Rules and weights")
+        advanced_sections.addTab(self.schedule_actions_scroll, "Manual repair")
+        advanced_layout.addWidget(advanced_sections, 1)
+
         self.workspace_tabs.addTab(schedule_tab, "Schedule")
-        self.workspace_tabs.addTab(self._build_generator_tab(), "Generator")
-        self.workspace_tabs.addTab(self._build_constraints_tab(), "Constraints")
-        self.workspace_tabs.addTab(self._build_fairness_tab(), "Fairness")
-        self.workspace_tabs.addTab(self._build_diagnostics_tab(), "Diagnostics")
-        self.workspace_tabs.addTab(self._build_history_tab(), "History")
+        self.workspace_tabs.addTab(data_tab, "Data")
+        self.workspace_tabs.addTab(review_tabs, "Review")
+        self.workspace_tabs.addTab(self._build_history_tab(), "Projects")
+        self.workspace_tabs.addTab(advanced_tab, "Advanced")
 
         central = QWidget()
         main_layout = QVBoxLayout(central)
@@ -717,13 +958,16 @@ class MainWindow(
         main_layout.addWidget(self.workspace_tabs)
         self.setCentralWidget(central)
 
-        self.setStyleSheet(DARK_STYLE)
+        self._apply_theme()
 
         self._build_menus()
         self._ensure_custom_generator_seeded()
         self._load_custom_config_local(silent=True)
         self._apply_room_capacity_mode()
         self._load_constraint_controls_from_instance(None)
+        self._apply_run_mode()
+        self._refresh_blueprint_resources()
+        self._refresh_blueprint_inspector()
         self._apply_control_tooltips()
         self._refresh_history_buttons()
         self._refresh_quick_actions()
@@ -755,8 +999,17 @@ class MainWindow(
             QTimer.singleShot(180, self._enforce_true_maximized)
         self._sync_top_controls_height()
         self._defer_layout_stabilization()
+        if not self._tutorial_checked:
+            self._tutorial_checked = True
+            if not TutorialDialog.was_seen() and not os.getenv("PLANORA_SKIP_TUTORIAL"):
+                QTimer.singleShot(250, self.on_show_tutorial)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        try:
+            self._shutdown_solver_process()
+        except Exception:
+            self.proc = None
+            self._cleanup_solver_temp_files()
         try:
             self._save_ui_control_preferences()
         except Exception:
@@ -802,7 +1055,8 @@ class MainWindow(
             week_min = 84
             workers_min = 108
 
-        self.improve_button.setMaximumWidth(improve_max)
+        self.improve_button.setMinimumWidth(improve_max)
+        self.improve_button.setMaximumWidth(16777215)
         self.stop_improve_button.setMinimumWidth(stop_min)
         self.export_menu_btn.setMinimumWidth(menu_min)
         self.project_menu_btn.setMinimumWidth(menu_min)
@@ -821,6 +1075,17 @@ class MainWindow(
         if hasattr(self, "schedule_view_scroll"):
             self.schedule_view_scroll.setMinimumWidth(0)
             self.schedule_view_scroll.updateGeometry()
+        if hasattr(self, "resource_panel"):
+            self.resource_panel.setVisible(w >= 1180)
+        if hasattr(self, "inspector_panel"):
+            self.inspector_panel.setVisible(True)
+            self.inspector_panel.setMinimumWidth(220 if w < 1180 else 250)
+        if hasattr(self, "blueprint_splitter"):
+            self.blueprint_splitter.setSizes(
+                [0, max(420, w - 330), 270]
+                if w < 1180
+                else [210, max(520, w - 560), 280]
+            )
         if self.top_widget is not None:
             top_layout = self.top_widget.layout()
             if top_layout is not None:
@@ -880,6 +1145,11 @@ class MainWindow(
         if "debug_diagnostics" in prefs:
             self.debug_diagnostics_cb.setChecked(bool(prefs.get("debug_diagnostics")))
 
+        theme = str(prefs.get("theme", self._theme_mode))
+        if theme in {"light", "dark"} and theme != self._theme_mode:
+            self._theme_mode = theme
+            self._apply_theme()
+
     def _save_ui_control_preferences(self) -> None:
         prefs = {
             "room_mode": str(self.room_mode_combo.currentData() or "auto"),
@@ -892,12 +1162,29 @@ class MainWindow(
             "improve_seconds": int(self.ls_time_spin.value()),
             "use_cp_objective": bool(self.objective_cb.isChecked()),
             "debug_diagnostics": bool(self.debug_diagnostics_cb.isChecked()),
+            "theme": self._theme_mode,
         }
         self._runtime_settings["ui_preferences"] = prefs
         self._runtime_settings = save_runtime_settings(
             self._runtime_paths["settings"],
             self._runtime_settings,
         )
+
+    def _apply_theme(self) -> None:
+        self.setStyleSheet(DARK_STYLE if self._theme_mode == "dark" else LIGHT_STYLE)
+        if hasattr(self, "theme_button"):
+            self.theme_button.setText("Light" if self._theme_mode == "dark" else "Dark")
+            self.theme_button.setToolTip(
+                f"Switch to {'light' if self._theme_mode == 'dark' else 'dark'} theme"
+            )
+        if hasattr(self, "table") and self.inst is not None:
+            self.update_table()
+            self.table.viewport().update()
+
+    def _toggle_theme(self) -> None:
+        self._theme_mode = "light" if self._theme_mode == "dark" else "dark"
+        self._apply_theme()
+        self._save_ui_control_preferences()
 
     def _defer_layout_stabilization(self) -> None:
         if self._layout_stabilize_pending:
@@ -965,11 +1252,13 @@ class MainWindow(
         v = self.table.verticalHeader()
         h.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         v.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        # Keep schedule cells readable, but expand to fill horizontal space when available.
-        base_col_w = 170
-        min_col_w = 130
-        row_h = 78
-        min_row_h = 42
+        # Keep the timetable dense and readable while leaving scrolling to the
+        # table itself. Fixed headers remain visible as users move through a
+        # large university week.
+        base_col_w = 152
+        min_col_w = 124
+        row_h = 66
+        min_row_h = 48
         h.setDefaultSectionSize(base_col_w)
         v.setDefaultSectionSize(row_h)
         h.setMinimumSectionSize(min_col_w)
@@ -1007,14 +1296,8 @@ class MainWindow(
                 last = int(col_count - 1)
                 self.table.setColumnWidth(last, int(target_col_w + remainder))
 
-        total_w = int(v.width()) + (self.table.frameWidth() * 2) + 4
-        for col in range(col_count):
-            total_w += int(self.table.columnWidth(col))
-        total_h = int(h.height()) + (self.table.frameWidth() * 2) + 4
-        for row in range(self.table.rowCount()):
-            total_h += int(self.table.rowHeight(row))
-        self.table.setMinimumSize(int(total_w), int(total_h))
-        self.table.setMaximumSize(int(total_w), int(total_h))
+        self.table.setMinimumSize(0, 0)
+        self.table.setMaximumSize(16777215, 16777215)
         self.table.updateGeometry()
         self.table.viewport().update()
 
@@ -1028,6 +1311,7 @@ class MainWindow(
         self.redo_button.setToolTip("Redo the last undone schedule change.")
         self.revert_button.setToolTip("Restore the current schedule to the base solved schedule.")
         self.conflicts_button.setToolTip("Open a list of current hard-constraint conflicts.")
+        self.publish_button.setToolTip("Publish the current validated release candidate.")
         self.export_menu_btn.setToolTip("Export schedules/reports.")
         self.project_menu_btn.setToolTip(
             "Save/load/compare plus admin tooling: disruption auto-repair, sandbox branches, and history snapshots."
@@ -1037,14 +1321,16 @@ class MainWindow(
         self.mode_combo.setToolTip("Instance template used when generating data.")
         self.room_mode_combo.setToolTip(
             "Room assignment strategy:\n"
-            "- Auto: strict room variables on small instances, greedy room assignment on large instances.\n"
+            "- Auto: strict room variables on small instances, parallel exact week partitions on large instances.\n"
+            "- Scale: independent weeks run in parallel; exact room certificates activate on demand.\n"
             "- Strict: CP-SAT chooses rooms with room no-overlap constraints.\n"
-            "- Fast: CP-SAT chooses times, then a greedy pass assigns rooms."
+            "- Fast: CP-SAT chooses times, then a greedy pass assigns rooms.\n"
+            "Cross-week hard decision constraints require a monolithic mode."
         )
         self.objective_profile_combo.setToolTip(
             "Solve profile:\n"
             "- Fast feasible: prioritize a valid timetable quickly.\n"
-            "- University fast: large-instance time solve with separate greedy rooming.\n"
+            "- University fast: parallel week solves with adaptive exact room fallback.\n"
             "- University quality: university-fast feasibility plus bounded quality improvement.\n"
             "- Verification: strict CP room assignment for smaller or audit cases.\n"
             "- Balanced: feasibility first, then bounded quality improvement.\n"
@@ -1267,7 +1553,7 @@ class MainWindow(
         return box
 
     def _connect_signals(self):
-        self.generate_button.clicked.connect(self.on_generate)
+        self.generate_button.clicked.connect(self._on_public_generate)
         self.solve_button.clicked.connect(self.on_solve)
         self.clear_locks_button.clicked.connect(self.on_clear_locks)
         self.improve_button.clicked.connect(self.on_improve)
@@ -1276,6 +1562,16 @@ class MainWindow(
         self.redo_button.clicked.connect(self.on_redo)
         self.revert_button.clicked.connect(self.on_revert_to_base)
         self.conflicts_button.clicked.connect(self.on_show_conflicts)
+        self.publish_button.clicked.connect(self.on_publish_release_candidate)
+        self.tutorial_button.clicked.connect(self.on_show_tutorial)
+        self.run_mode_combo.currentIndexChanged.connect(self._apply_run_mode)
+        self.demo_data_button.clicked.connect(lambda: self._select_public_scenario("demo"))
+        self.spring_data_button.clicked.connect(
+            lambda: self._select_public_scenario("spring_2023")
+        )
+        self.import_data_button.clicked.connect(self.on_import_timetable_csv)
+        self.custom_generate_button.clicked.connect(self._generate_custom_scenario)
+        self.blueprint_resource_search.textChanged.connect(self._refresh_blueprint_resources)
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self.custom_reset_staff_btn.clicked.connect(self._reset_custom_staff_table)
         self.custom_reset_rooms_btn.clicked.connect(self._reset_custom_room_table)
@@ -1311,7 +1607,11 @@ class MainWindow(
         self.selected_activity_combo.currentIndexChanged.connect(
             self.on_selected_activity_changed
         )
+        self.selected_activity_combo.currentIndexChanged.connect(
+            self._refresh_blueprint_inspector
+        )
         self.table.itemSelectionChanged.connect(self._refresh_quick_actions)
+        self.table.itemSelectionChanged.connect(self._refresh_blueprint_inspector)
         self.table.dragRequested.connect(self._on_schedule_drag_requested)
         self.table.dropRequested.connect(self._on_schedule_drop_requested)
         self.quick_edit_btn.clicked.connect(self.on_quick_edit_selected)
@@ -2225,8 +2525,175 @@ class MainWindow(
             traceback.print_exc()
             self.set_status("Failed to apply constraints from controls")
 
+    def on_show_tutorial(self) -> None:
+        tutorial_steps = [
+            {
+                "title": str(step.get("title") or ""),
+                "description": str(step.get("body") or step.get("description") or ""),
+            }
+            for step in self._ui_contract.get("tutorial", [])
+            if isinstance(step, dict)
+        ]
+        dialog = TutorialDialog(self, icon_path=_app_icon_path(), steps=tutorial_steps)
+        if dialog.exec() == 2:
+            self.workspace_tabs.setCurrentIndex(1)
+
+    def _select_public_scenario(self, mode: str) -> None:
+        scenario_index = self.scenario_combo.findData(str(mode))
+        if scenario_index >= 0:
+            self.scenario_combo.setCurrentIndex(scenario_index)
+        self.workspace_tabs.setCurrentIndex(0)
+        self._on_public_generate()
+
+    def _on_public_generate(self) -> None:
+        scenario_id = str(self.scenario_combo.currentData() or "demo")
+        if scenario_id == "import":
+            self.on_import_timetable_csv()
+            return
+        mode = generator_mode_for_scenario(scenario_id)
+        mode_index = self.mode_combo.findData(mode)
+        if mode_index >= 0:
+            self.mode_combo.setCurrentIndex(mode_index)
+        self.on_generate()
+        self.workspace_tabs.setCurrentIndex(0)
+
+    def _generate_custom_scenario(self) -> None:
+        mode_index = self.mode_combo.findData("custom")
+        if mode_index >= 0:
+            self.mode_combo.setCurrentIndex(mode_index)
+        self.on_generate()
+        self.workspace_tabs.setCurrentIndex(0)
+
+    def _apply_run_mode(self, *_args: Any) -> None:
+        mode = str(self.run_mode_combo.currentData() or "balanced")
+        solve_defaults = run_mode_options(mode, action="solve")
+        improve_defaults = run_mode_options(mode, action="improve")
+        room_mode = str(solve_defaults["room_mode"])
+        profile = str(solve_defaults["objective_profile"])
+        seconds = float(solve_defaults["time_limit_seconds"])
+        objective = bool(solve_defaults["use_objective"])
+        iterations = int(improve_defaults["iterations"])
+        improve_seconds = float(improve_defaults["max_seconds"])
+        room_index = self.room_mode_combo.findData(room_mode)
+        if room_index >= 0:
+            self.room_mode_combo.setCurrentIndex(room_index)
+        profile_index = self.objective_profile_combo.findData(profile)
+        if profile_index >= 0:
+            self.objective_profile_combo.setCurrentIndex(profile_index)
+        self.time_limit_spin.setValue(max(self.time_limit_spin.minimum(), int(round(seconds))))
+        self.objective_cb.setChecked(bool(objective))
+        self.improve_runs_spin.setValue(int(iterations))
+        self.ls_time_spin.setValue(int(round(improve_seconds)))
+
+    def _active_advanced_solve_options(self) -> Dict[str, Any]:
+        return {
+            "room_mode": str(self.room_mode_combo.currentData()),
+            "objective_profile": str(self.objective_profile_combo.currentData()),
+            "time_limit_seconds": float(self.time_limit_spin.value()),
+            "workers": int(self.workers_preset_combo.currentData()),
+            "use_objective": bool(self.objective_cb.isChecked()),
+        }
+
+    def _refresh_blueprint_resources(self, *_args: Any) -> None:
+        if not hasattr(self, "blueprint_resource_list"):
+            return
+        query = str(self.blueprint_resource_search.text()).strip().lower()
+        self.blueprint_resource_list.clear()
+        if self.inst is None:
+            self.blueprint_resource_list.addItem("Choose timetable data to see resources")
+            return
+        collections = (
+            ("GROUPS", getattr(self.inst, "groups", {})),
+            ("COURSES", getattr(self.inst, "courses", {})),
+            ("STAFF", getattr(self.inst, "staff", {})),
+            ("ROOMS", getattr(self.inst, "rooms", {})),
+        )
+        for heading, collection in collections:
+            labels = []
+            for entity_id, entity in collection.items():
+                name = str(getattr(entity, "name", "") or getattr(entity, "code", "") or entity_id)
+                if query and query not in name.lower():
+                    continue
+                labels.append(name)
+            if not labels:
+                continue
+            heading_item = QListWidgetItem(f"{heading}  {len(labels)}")
+            heading_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.blueprint_resource_list.addItem(heading_item)
+            for label in labels[:18]:
+                self.blueprint_resource_list.addItem(f"  {label}")
+
+    def _refresh_blueprint_inspector(self, *_args: Any) -> None:
+        if not hasattr(self, "blueprint_inspector_title"):
+            return
+        activity_id = self.selected_activity_id
+        if activity_id is None or self.inst is None:
+            self.blueprint_inspector_title.setText("Select a class")
+            self.blueprint_inspector_copy.setText(
+                "Its room, teacher, conflicts, and explained suggestions will appear here."
+            )
+            self.blueprint_constraints_copy.setText(
+                "Room capacity, staff availability, group overlap, and institutional rules are checked for the selected class."
+            )
+            self.blueprint_validation_label.setText(
+                "Validation and score details appear after a run."
+            )
+            return
+        activity = self.inst.activities.get(int(activity_id))
+        placement = self.current_schedule.get(int(activity_id), {})
+        if activity is None:
+            return
+        course = self.inst.courses.get(int(activity.course_id))
+        default_staff_id = (
+            int(activity.prof_id)
+            if str(activity.kind).upper() == "LEC"
+            else int(activity.ta_id)
+        )
+        staff = self.inst.staff.get(int(placement.get("staff_id", default_staff_id)))
+        room = self.inst.rooms.get(int(placement.get("room_id", -1)))
+        title = str(getattr(course, "name", "") or f"Activity {activity_id}")
+        self.blueprint_inspector_title.setText(title)
+        self.blueprint_inspector_copy.setText(
+            "\n".join(
+                (
+                    f"{str(activity.kind)} · Activity {int(activity_id)}",
+                    f"Staff: {getattr(staff, 'name', 'Unassigned')}",
+                    f"Room: {getattr(room, 'name', 'Unassigned')}",
+                    f"Time: {placement.get('day', 'Not placed')} · Slot {int(placement.get('slot', -1)) + 1}",
+                )
+            )
+        )
+        if self.current_schedule and self._conflict_ids_cache_revision != int(self._schedule_revision):
+            self._conflict_ids_cache = self._compute_conflicting_activity_ids(self.current_schedule)
+            self._conflict_ids_cache_revision = int(self._schedule_revision)
+        conflict_count = len(self._conflict_ids_cache) if self.current_schedule else 0
+        selected_has_conflict = int(activity_id) in self._conflict_ids_cache
+        lock = self.locked_activities.get(int(activity_id), {})
+        lock_labels: List[str] = []
+        if "day" in lock and "slot" in lock:
+            lock_labels.append("time locked")
+        if "room_id" in lock:
+            lock_labels.append("room locked")
+        lock_summary = ", ".join(lock_labels) if lock_labels else "editable"
+        self.blueprint_constraints_copy.setText(
+            " · ".join(
+                (
+                    "Room capacity checked",
+                    "Staff availability checked",
+                    "No overlap checked",
+                    "Conflict detected" if selected_has_conflict else "No hard conflict",
+                    lock_summary.capitalize(),
+                )
+            )
+        )
+        self.blueprint_validation_label.setText(
+            "No hard conflict is currently reported for this draft."
+            if conflict_count == 0
+            else f"The current draft contains {conflict_count} activities in hard conflict. Open Validate for details."
+        )
+
     def _on_mode_changed(self) -> None:
-        mode = self.mode_combo.currentText()
+        mode = str(self.mode_combo.currentData() or self.mode_combo.currentText())
         if mode in {"ss23_uni_like", "uni_like"}:
             if hasattr(self, "room_mode_combo"):
                 idx = self.room_mode_combo.findData("auto")
@@ -2241,7 +2708,7 @@ class MainWindow(
                 self.objective_cb.setChecked(False)
         if mode == "custom":
             self._ensure_custom_generator_seeded()
-            self.workspace_tabs.setCurrentIndex(1)
+            self.workspace_tabs.setCurrentIndex(4)
 
     # ----- helpers -----
 
@@ -2296,6 +2763,7 @@ class MainWindow(
 
             self.entity_combo.blockSignals(False)
             self._refresh_diagnostics_controls()
+            self._refresh_blueprint_resources()
             self.update_table()
         except Exception:
             traceback.print_exc()
@@ -2311,6 +2779,8 @@ class MainWindow(
         self.selected_cell_col = None
         self.selected_activity_id = None
         self._refresh_quick_actions()
+        self._refresh_blueprint_resources()
+        self._refresh_blueprint_inspector()
         self.quality_label.setText("")
         self._last_solver_result_meta = {}
         self._update_diagnostics_dashboard()
@@ -2465,10 +2935,13 @@ class MainWindow(
             days = self.inst.days
             S = self.inst.slots_per_day
 
-            self.table.setRowCount(len(days))
-            self.table.setColumnCount(S)
-            self.table.setVerticalHeaderLabels(days)
-            self.table.setHorizontalHeaderLabels([f"S{idx + 1}" for idx in range(S)])
+            self.table.setRowCount(S)
+            self.table.setColumnCount(len(days))
+            self.table.setVerticalHeaderLabels(
+                [self._slot_display_label(idx) for idx in range(S)]
+            )
+            self.table.setHorizontalHeaderLabels(days)
+            self.table.clearSpans()
             self._held_move_analysis_map = {}
 
             # Render an empty calendar right after generation/loading even before solving.
@@ -2553,16 +3026,16 @@ class MainWindow(
                         f"| G{len(info['group_ids'])} | {room_name} | {staff_name}"
                     )
                 else:
-                    parts: List[str] = []
+                    title = f"{course_code} · {course_name}" if course_name else course_code
                     if lock_text:
-                        parts.append(lock_text.strip())
-                    parts.append(course_code)
-                    if course_name:
-                        parts.append(course_name)
-                    parts.append(str(info["kind"]))
-                    parts.append(f"Room: {room_name}")
-                    parts.append(f"Staff: {staff_name}")
-                    label = "\n".join(parts)
+                        title = f"{lock_text.strip()} {title}"
+                    label = "\n".join(
+                        (
+                            title,
+                            f"{str(info['kind'])} · {room_name}",
+                            staff_name,
+                        )
+                    )
 
                 detail = (
                     f"A{a_id} {course_code} {course_name} {info['kind']} | "
@@ -2572,7 +3045,9 @@ class MainWindow(
                 for ds in range(dur):
                     s = s0 + ds
                     if 0 <= s < S:
-                        cell_entries[(day, s)].append((int(a_id), label, detail))
+                        cell_entries[(day, s)].append(
+                            (int(a_id), label if ds == 0 else "", detail)
+                        )
 
             if self._conflict_ids_cache_revision != int(self._schedule_revision):
                 self._conflict_ids_cache = self._compute_conflicting_activity_ids(
@@ -2646,10 +3121,19 @@ class MainWindow(
             color_conflict_target = QColor("#ffd43b")
             color_changed = QColor("#8a3f7a")
             color_current_conflict = QColor("#8a1f1f")
+            course_card_colors = (
+                QColor("#dbeafe"),
+                QColor("#d9f3e8"),
+                QColor("#fff0cf"),
+                QColor("#e8ddfa"),
+                QColor("#f9d9cc"),
+            )
 
-            for row, day in enumerate(days):
-                for col in range(S):
-                    entries = sorted(cell_entries[(day, col)], key=lambda t: int(t[0]))
+            span_requests: List[Tuple[int, int, int]] = []
+            for row in range(S):
+                for col, day in enumerate(days):
+                    slot = int(row)
+                    entries = sorted(cell_entries[(day, slot)], key=lambda t: int(t[0]))
                     ids = [int(a_id) for a_id, _, _ in entries]
                     if view_type == "All":
                         max_lines = 7
@@ -2661,7 +3145,7 @@ class MainWindow(
                     else:
                         text = "\n\n".join(label for _, label, _ in entries)
                     if held_week_ok and held_id is not None and show_score_deltas:
-                        analysis = self._held_move_analysis_map.get((str(day), int(col)))
+                        analysis = self._held_move_analysis_map.get((str(day), int(slot)))
                         if analysis is not None and bool(analysis.get("ok", False)):
                             score_after = analysis.get("score_after")
                             score_delta = analysis.get("score_delta")
@@ -2686,23 +3170,34 @@ class MainWindow(
                     item.setTextAlignment(
                         Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
                     )
-                    item.setForeground(QBrush(QColor("#f5f5f5")))
+                    item.setForeground(QBrush(QColor("#20344f")))
                     if ids:
                         item.setData(Qt.ItemDataRole.UserRole, ids)
+                        first_info = self.current_schedule.get(int(ids[0]), {})
+                        course_key = int(first_info.get("course_id", ids[0]))
+                        item.setBackground(
+                            QBrush(course_card_colors[course_key % len(course_card_colors)])
+                        )
+                        card_font = item.font()
+                        card_font.setBold(True)
+                        item.setFont(card_font)
 
                     if held_week_ok and held_id is not None and held_id in ids:
+                        item.setForeground(QBrush(QColor("#ffffff")))
                         item.setBackground(QBrush(color_held))
                     elif ids and any(int(a_id) in conflict_ids for a_id in ids):
+                        item.setForeground(QBrush(QColor("#ffffff")))
                         item.setBackground(QBrush(color_current_conflict))
                     elif held_week_ok and held_id is not None:
-                        analysis = self._held_move_analysis_map.get((str(day), int(col)))
-                        if analysis is not None and held_target_map.get((str(day), int(col)), False):
-                            delta_here = held_delta_map.get((str(day), int(col)))
+                        analysis = self._held_move_analysis_map.get((str(day), int(slot)))
+                        if analysis is not None and held_target_map.get((str(day), int(slot)), False):
+                            delta_here = held_delta_map.get((str(day), int(slot)))
                             if not text:
                                 text = "VALID TARGET"
                             elif "VALID TARGET" not in text and "BETTER" not in text and "WORSE" not in text:
                                 text = f"VALID TARGET\n{text}"
                             item.setText(text)
+                            item.setForeground(QBrush(QColor("#ffffff")))
                             if isinstance(delta_here, int) and delta_here < 0:
                                 item.setBackground(QBrush(color_valid_target_better))
                             elif isinstance(delta_here, int) and delta_here > 0:
@@ -2718,11 +3213,12 @@ class MainWindow(
                             item.setForeground(QBrush(QColor("#111111")))
                             item.setBackground(QBrush(color_conflict_target))
                     elif ids and any(int(a_id) in changed_ids for a_id in ids):
+                        item.setForeground(QBrush(QColor("#ffffff")))
                         item.setBackground(QBrush(color_changed))
 
                     tooltip = self._build_cell_tooltip(
                         row=int(row),
-                        col=int(col),
+                        col=int(slot),
                         ids=ids,
                         week=int(week),
                         day=str(day),
@@ -2742,8 +3238,33 @@ class MainWindow(
                     self.table.setItem(row, col, item)
                     self._cell_activity_map[(row, col)] = ids
 
+                    if view_type != "All" and len(entries) == 1 and entries[0][1]:
+                        placement = self.current_schedule.get(int(entries[0][0]), {})
+                        duration = max(1, int(placement.get("duration", 1) or 1))
+                        span = min(duration, S - row)
+                        if span > 1 and all(
+                            [int(entry[0]) for entry in cell_entries.get((day, row + offset), [])]
+                            == [int(entries[0][0])]
+                            for offset in range(span)
+                        ):
+                            span_requests.append((int(row), int(col), int(span)))
+
+            for row, col, span in span_requests:
+                self.table.setSpan(int(row), int(col), int(span), 1)
+
+            if self.selected_activity_id is None:
+                for (row, col), activity_ids in self._cell_activity_map.items():
+                    if not activity_ids:
+                        continue
+                    self.selected_cell_row = int(row)
+                    self.selected_cell_col = int(col)
+                    self.selected_activity_id = int(activity_ids[0])
+                    self.table.setCurrentCell(int(row), int(col))
+                    break
+
             self._schedule_table_relayout()
             self._refresh_quick_actions()
+            self._refresh_blueprint_inspector()
         except Exception:
             traceback.print_exc()
             self.clear_table()

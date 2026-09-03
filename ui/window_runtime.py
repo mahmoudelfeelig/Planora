@@ -5,6 +5,7 @@ import os
 import uuid
 import pickle
 import tempfile
+import shutil
 import traceback
 import time
 import re
@@ -80,6 +81,7 @@ from PyQt6.QtWidgets import (
 )
 
 from product.model import ProductScenario
+from core.partitioned_solver import week_partitioning_blockers
 from services.approval_service import approval_to_dict, build_approval_record
 from services.branch_service import (
     branch_merge_assistance,

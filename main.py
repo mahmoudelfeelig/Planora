@@ -10,7 +10,7 @@ from ortools.sat.python import cp_model
 from utils.generator import generate_instance
 from core.metaheuristics import LocalSearchImprover
 from services.contracts import ImproveOptions, SolveOptions
-from services.solver_service import improve_schedule, solve_instance
+from services.engine_backend import improve_with_engine, solve_with_engine
 from utils.domain import Instance
 from utils.exporter import (
     export_group_schedules_to_docx,
@@ -331,7 +331,7 @@ def main():
     strict_limit_env = os.getenv("TT_STRICT_TIME_LIMIT")
     strict_limit = float(strict_limit_env) if strict_limit_env else min(CP_TIME_LIMIT, 300.0)
 
-    solve_result = solve_instance(
+    solve_result = solve_with_engine(
         inst,
         SolveOptions(
             room_mode=room_mode,
@@ -366,11 +366,13 @@ def main():
         ls_progress_env = os.getenv("TT_LS_PROGRESS", "1").strip().lower()
         ls_progress = ls_progress_env not in ("0", "false", "no")
 
-        def _ls_progress_hook(iteration: int, best_pen: int, current_pen: int):
+        def _ls_progress_hook(
+            iteration: int, best_pen: int, current_pen: int, **_meta: object
+        ):
             if ls_progress:
                 print(f"[ls] iter {iteration}/{LS_ITERATIONS} best={best_pen} current={current_pen}")
 
-        improved = improve_schedule(
+        improve_result = improve_with_engine(
             inst,
             schedule,
             ImproveOptions(
@@ -382,6 +384,7 @@ def main():
             ),
             progress_hook=_ls_progress_hook if ls_progress else None,
         )
+        improved = improve_result["schedule"]
         print("Soft penalty after local search:", ls.compute_soft_penalty(improved))
 
     print_group_quality(inst, improved)

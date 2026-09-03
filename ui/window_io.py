@@ -546,7 +546,7 @@ class WindowIOMixin:
                 self,
                 "Save imported scenario",
                 "imported_timetable_scenario.json",
-                "Scenario (*.json *.pkl)",
+                "Scenario (*.json)",
             )
             if out_path:
                 try:
@@ -718,7 +718,7 @@ class WindowIOMixin:
             self,
             "Save project",
             "project.json",
-            "Project (*.json *.pkl *.db *.sqlite)",
+            "Project (*.json *.db *.sqlite)",
         )
         if not path:
             return
@@ -1239,7 +1239,7 @@ class WindowIOMixin:
             self,
             "Load project",
             "",
-            "Project (*.json *.pkl *.db *.sqlite)",
+            "Project (*.json *.db *.sqlite)",
         )
         if not path:
             return
@@ -1279,19 +1279,8 @@ class WindowIOMixin:
                 for row in list(_meta.get("change_history", []) or [])
                 if isinstance(row, dict)
             ][-200:]
-            self._import_export_template_path = str(
-                _meta.get(
-                    "import_export_template_store_path",
-                    self._import_export_template_path,
-                )
-                or self._import_export_template_path
-            )
             self._branding_profile = ensure_branding_profile(
                 dict(_meta.get("branding_profile", self._branding_profile) or {})
-            )
-            self._runtime_settings = save_runtime_settings(
-                self._runtime_paths["settings"],
-                dict(_meta.get("runtime_settings", self._runtime_settings) or {}),
             )
             self._last_import_mapping = {
                 str(k): str(v)
@@ -1362,7 +1351,7 @@ class WindowIOMixin:
             self,
             "Compare with project",
             "",
-            "Project (*.json *.pkl)",
+            "Project (*.json *.db *.sqlite)",
         )
         if not path:
             return
@@ -1558,7 +1547,7 @@ class WindowIOMixin:
             self,
             "Load instance",
             "",
-            "Instance (*.json *.pkl)",
+            "Instance (*.json)",
         )
         if not path:
             return
@@ -1856,7 +1845,16 @@ class WindowIOMixin:
         lines.append("Group quality:")
         lines.append(" | ".join(parts))
         text = "\n".join(line for line in lines if line)
-        self.quality_label.setText(text)
+        compact: List[str] = []
+        if global_penalty is not None:
+            compact.append(f"Penalty {int(global_penalty)}")
+        compact.append(f"Hard {int(hard_conflicts)}")
+        compact.append(
+            "SLA pass" if bool(sla_summary.get("passed", True)) else "SLA review"
+        )
+        compact.append(f"{len(self.current_schedule)} activities")
+        self.quality_label.setText("  ·  ".join(compact))
+        self.quality_label.setToolTip(text)
         self._update_fairness_dashboard()
         self._update_diagnostics_dashboard()
 

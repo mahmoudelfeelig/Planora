@@ -6,6 +6,17 @@ from ui.window_runtime import *  # noqa: F401,F403
 class WindowHelpersMixin:
 
     @staticmethod
+    def _slot_display_label(slot_index: int) -> str:
+        try:
+            hour_text, minute_text = str(DEFAULT_DAY_START).split(":", 1)
+            start_minutes = (int(hour_text) * 60) + int(minute_text)
+        except Exception:
+            start_minutes = 8 * 60 + 30
+        stride = max(1, int(DEFAULT_SLOT_MINUTES) + int(DEFAULT_BREAK_MINUTES))
+        minute_of_day = start_minutes + (max(0, int(slot_index)) * stride)
+        return f"{(minute_of_day // 60) % 24:02d}:{minute_of_day % 60:02d}"
+
+    @staticmethod
     def _infer_room_category(capacity: int) -> str:
         if capacity <= 80:
             return "SMALL"

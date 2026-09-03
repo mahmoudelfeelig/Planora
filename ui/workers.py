@@ -4,8 +4,6 @@ from typing import Any, Callable, Dict
 
 from PyQt6.QtCore import QObject, QRunnable, QThread, pyqtSignal
 
-from core.metaheuristics import LocalSearchImprover
-
 
 class FunctionWorkerSignals(QObject):
     finished = pyqtSignal(object)
@@ -35,17 +33,23 @@ class ImproveWorker(QObject):
 
     def __init__(
         self,
+        improve_action: Callable[..., Dict[str, Any]],
         inst,
         schedule: Dict[int, Dict[str, Any]],
         *,
+        run_mode: str,
         iterations: int,
         max_seconds: float | None,
+        focus_term: str = "",
     ):
         super().__init__()
+        self.improve_action = improve_action
         self.inst = inst
         self.schedule = {int(a_id): dict(info) for a_id, info in schedule.items()}
+        self.run_mode = str(run_mode)
         self.iterations = int(iterations)
         self.max_seconds = max_seconds
+        self.focus_term = str(focus_term)
         self._stop_requested = False
 
     def request_stop(self) -> None:
@@ -53,27 +57,41 @@ class ImproveWorker(QObject):
 
     def run(self) -> None:
         try:
-            improver = LocalSearchImprover(self.inst)
 
-            def _progress_hook(it_done: int, best_pen: int, cur_pen: int, **kwargs: Any) -> None:
-                snapshot = kwargs.get("best_schedule") or kwargs.get("current_schedule") or {}
+            def _progress_hook(
+                it_done: int, best_pen: int, cur_pen: int, **kwargs: Any
+            ) -> None:
+                snapshot = (
+                    kwargs.get("best_schedule") or kwargs.get("current_schedule") or {}
+                )
                 self.progress.emit(
                     int(it_done),
                     int(best_pen),
                     int(cur_pen),
-                    {int(a_id): dict(info) for a_id, info in dict(snapshot or {}).items()},
+                    {
+                        int(a_id): dict(info)
+                        for a_id, info in dict(snapshot or {}).items()
+                    },
                 )
 
-            improved = improver.improve(
+            result = self.improve_action(
+                self.inst,
                 self.schedule,
-                iterations=int(self.iterations),
-                max_seconds=self.max_seconds,
-                progress_every=max(1, min(25, max(1, int(self.iterations) // 100))),
+                run_mode=self.run_mode,
+                options={
+                    "iterations": int(self.iterations),
+                    "max_seconds": self.max_seconds,
+                    "progress_every": max(
+                        1, min(25, max(1, int(self.iterations) // 100))
+                    ),
+                },
+                focus_term=self.focus_term,
                 progress_hook=_progress_hook,
                 stop_hook=lambda: bool(self._stop_requested),
             )
-            start_pen = int(improver.compute_soft_penalty(self.schedule))
-            final_pen = int(improver.compute_soft_penalty(improved))
+            improved = dict(result.get("schedule") or {})
+            start_pen = int(dict(result.get("before") or {}).get("soft_penalty", 0))
+            final_pen = int(dict(result.get("after") or {}).get("soft_penalty", 0))
             self.finished.emit(
                 {int(a_id): dict(info) for a_id, info in improved.items()},
                 int(start_pen),

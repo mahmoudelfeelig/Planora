@@ -3,7 +3,63 @@ from __future__ import annotations
 from ui.window_runtime import *  # noqa: F401,F403
 
 
+def _write_private_solver_payload(path: str, payload: Any) -> None:
+    descriptor = os.open(
+        path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600,
+    )
+    try:
+        stream = os.fdopen(descriptor, "wb")
+    except BaseException:
+        os.close(descriptor)
+        raise
+    with stream:
+        pickle.dump(payload, stream)
+
+
 class WindowSolverMixin:
+
+    def _shutdown_solver_process(self) -> None:
+        proc = self.proc
+        self.proc = None
+        try:
+            if proc is not None:
+                for signal_name in ("finished", "errorOccurred", "readyRead"):
+                    signal = getattr(proc, signal_name, None)
+                    if signal is not None:
+                        try:
+                            signal.disconnect()
+                        except Exception:
+                            pass
+                try:
+                    running = proc.state() != QProcess.ProcessState.NotRunning
+                except Exception:
+                    running = True
+                if running:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+                    try:
+                        stopped = bool(proc.waitForFinished(1500))
+                    except Exception:
+                        stopped = False
+                    if not stopped:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                        try:
+                            proc.waitForFinished(2000)
+                        except Exception:
+                            pass
+                try:
+                    proc.deleteLater()
+                except Exception:
+                    pass
+        finally:
+            self._cleanup_solver_temp_files()
 
     def set_status(self, text: str):
         self._status_full_text = str(text)
@@ -26,11 +82,74 @@ class WindowSolverMixin:
         full = str(getattr(self, "_status_full_text", "") or "")
         if not hasattr(self, "status_label"):
             return
-        self.status_label.setToolTip(full)
+        compact = full
         try:
-            self.status_label.setText(self._compact_status_text(full))
+            compact = self._compact_status_text(full)
         except Exception:
-            self.status_label.setText(full)
+            compact = full
+        self.status_label.setToolTip(full)
+        self.status_label.setText(compact)
+        if hasattr(self, "run_status_label"):
+            self.run_status_label.setToolTip(full)
+            self.run_status_label.setText(compact)
+        if hasattr(self, "status_toast") and full != getattr(self, "_last_toast_text", None):
+            level = self._status_level(full)
+            auto_close_ms = 6000 if level in {"info", "success"} else 0
+            self.status_toast.show_message(
+                compact,
+                level=level,
+                auto_close_ms=auto_close_ms,
+            )
+            self._last_toast_text = full
+
+    @staticmethod
+    def _status_level(text: str) -> str:
+        value = str(text or "").strip().lower()
+        if any(
+            marker in value
+            for marker in (
+                "error",
+                "failed",
+                "rejected",
+                "no feasible",
+                "could not",
+            )
+        ):
+            return "error"
+        if any(marker in value for marker in ("blocked", "conflict", "warning")):
+            return "warning"
+        if any(
+            marker in value
+            for marker in (
+                "solving",
+                "building",
+                "improving",
+                "loading",
+                "saving",
+                "exporting",
+                "importing",
+                "running",
+                "stopping",
+            )
+        ):
+            return "busy"
+        if any(
+            marker in value
+            for marker in (
+                "draft ready",
+                "solved",
+                "improved",
+                "exported",
+                "saved",
+                "loaded",
+                "imported",
+                "published",
+                "complete",
+                "applied",
+            )
+        ):
+            return "success"
+        return "info"
 
     def set_busy(self, busy: bool):
         enable = not busy
@@ -46,6 +165,7 @@ class WindowSolverMixin:
             self.redo_button,
             self.revert_button,
             self.conflicts_button,
+            self.publish_button,
         ]:
             btn.setEnabled(enable)
         self.improve_runs_spin.setEnabled(enable)
@@ -57,6 +177,8 @@ class WindowSolverMixin:
         self.time_limit_spin.setEnabled(enable)
         self.random_seed_spin.setEnabled(enable)
         self.workers_preset_combo.setEnabled(enable)
+        self.scenario_combo.setEnabled(enable)
+        self.run_mode_combo.setEnabled(enable)
         self.workspace_tabs.setEnabled(enable)
         self.custom_reset_staff_btn.setEnabled(enable)
         self.custom_reset_rooms_btn.setEnabled(enable)
@@ -66,6 +188,7 @@ class WindowSolverMixin:
         # Keep stop available while a local improvement pass is running.
         if hasattr(self, "stop_improve_button"):
             self.stop_improve_button.setEnabled(bool(busy and self._improve_running))
+            self.stop_improve_button.setVisible(bool(self._improve_running))
         if enable:
             self._refresh_history_buttons()
             self._refresh_quick_actions()
@@ -146,13 +269,17 @@ class WindowSolverMixin:
         if not hasattr(self, "room_mode_combo") or self.room_mode_combo is None:
             return "cp_rooms"
         data = self.room_mode_combo.currentData()
-        if str(data) in {"auto", "cp_rooms", "greedy"}:
+        if str(data) in {"auto", "cp_rooms", "greedy", "decomposed", "partitioned"}:
             return str(data)
         text = str(self.room_mode_combo.currentText()).strip().lower()
         if "fast" in text or "greedy" in text:
             return "greedy"
         if "auto" in text:
             return "auto"
+        if "scale" in text or "parallel" in text or "partition" in text:
+            return "partitioned"
+        if "research" in text or "decomposed" in text or "certificate" in text:
+            return "decomposed"
         return "cp_rooms"
 
     def _estimate_cp_room_candidate_count(self, inst: Any | None = None) -> int:
@@ -189,7 +316,7 @@ class WindowSolverMixin:
             total += int(count)
         return int(total)
 
-    def _auto_room_mode_uses_greedy(self, inst: Any | None = None) -> bool:
+    def _auto_room_mode_uses_partitioning(self, inst: Any | None = None) -> bool:
         inst = inst or self.inst
         if inst is None:
             return False
@@ -205,7 +332,9 @@ class WindowSolverMixin:
     def _selected_room_mode(self) -> str:
         selection = self._room_mode_selection()
         if selection == "auto":
-            return "greedy" if self._auto_room_mode_uses_greedy() else "cp_rooms"
+            if self._auto_room_mode_uses_partitioning():
+                return "decomposed" if week_partitioning_blockers(self.inst) else "partitioned"
+            return "cp_rooms"
         return selection
 
     def _selected_room_mode_label(self) -> str:
@@ -302,7 +431,11 @@ class WindowSolverMixin:
             mode = str(event.get("mode", ctx.get("room_mode", "")))
             objective = bool(event.get("objective", False))
             phase = "objective" if objective else "feasibility"
-            mode_label = "strict cp_rooms" if mode == "cp_rooms" else "greedy"
+            mode_label = {
+                "cp_rooms": "strict cp_rooms",
+                "partitioned": "adaptive week partitions",
+                "decomposed": "certificate decomposition",
+            }.get(mode, "greedy")
             if mode == "greedy" and str(ctx.get("room_mode", "")) == "cp_rooms" and int(attempt) > 1:
                 mode_label = "greedy fallback"
             ctx["phase_label"] = f"attempt {attempt}/{expected_attempts}: {mode_label} ({phase})"
@@ -957,6 +1090,13 @@ class WindowSolverMixin:
                     pass
         self.tmp_inst_path = None
         self.tmp_res_path = None
+        private_dir = getattr(self, "tmp_solver_dir", None)
+        if private_dir and os.path.isdir(private_dir):
+            try:
+                shutil.rmtree(private_dir)
+            except OSError:
+                pass
+        self.tmp_solver_dir = None
 
     @staticmethod
     def _is_access_violation_exit_code(exit_code: int) -> bool:
@@ -1009,20 +1149,24 @@ class WindowSolverMixin:
         self.inst.locked_activities = dict(self.locked_activities)
         self._apply_constraint_settings(self.inst)
 
-        tmp_dir = tempfile.gettempdir()
+        self._cleanup_solver_temp_files()
+        tmp_dir = tempfile.mkdtemp(prefix="planora_solver_")
+        try:
+            os.chmod(tmp_dir, 0o700)
+        except OSError:
+            pass
+        self.tmp_solver_dir = tmp_dir
         inst_name = f"tt_inst_{uuid.uuid4().hex}.pkl"
         res_name = f"tt_res_{uuid.uuid4().hex}.pkl"
         self.tmp_inst_path = os.path.join(tmp_dir, inst_name)
         self.tmp_res_path = os.path.join(tmp_dir, res_name)
 
         try:
-            with open(self.tmp_inst_path, "wb") as f:
-                pickle.dump(self.inst, f)
+            _write_private_solver_payload(self.tmp_inst_path, self.inst)
         except Exception as e:
             traceback.print_exc()
             QMessageBox.critical(self, "File error", f"Cannot write instance: {e}")
-            self.tmp_inst_path = None
-            self.tmp_res_path = None
+            self._cleanup_solver_temp_files()
             return
 
         self.proc = QProcess(self)
@@ -1063,7 +1207,7 @@ class WindowSolverMixin:
         if objective_profile in {"fast_feasible", "university_fast"}:
             objective_on = False
             if objective_profile == "university_fast":
-                room_mode = "greedy"
+                room_mode = "partitioned"
         elif objective_profile == "university_quality":
             objective_on = True
             room_mode = "greedy"
@@ -1072,6 +1216,11 @@ class WindowSolverMixin:
             room_mode = "cp_rooms"
         elif objective_profile == "quality_first":
             objective_on = True
+        elif objective_profile == "fairness_first":
+            objective_on = True
+            room_mode = "decomposed"
+        if room_mode == "partitioned":
+            objective_on = False
         worker_count = int(self._selected_worker_count())
         if retry_safe:
             objective_on = False
@@ -1180,8 +1329,85 @@ class WindowSolverMixin:
 
     def on_solve(self):
         self._restore_locks_after_solve = None
-        self._append_audit_log("solve_started", {"keep_locks": False})
-        self._start_solver_process(keep_locks=False)
+        if self.inst is None:
+            self.set_status("Generate or load an instance first")
+            return
+        if self._active_solve_worker is not None:
+            self.set_status("A solve is already running")
+            return
+        run_mode = str(self.run_mode_combo.currentData() or "balanced")
+        self._append_audit_log(
+            "solve_started", {"keep_locks": False, "run_mode": run_mode, "backend": "shared"}
+        )
+        self.set_busy(True)
+        self.set_status(f"Building schedule with {self.run_mode_combo.currentText()} mode...")
+        worker = FunctionWorker(
+            self.backend_client.solve,
+            self.inst,
+            run_mode=run_mode,
+            options=self._active_advanced_solve_options(),
+        )
+        self._active_solve_worker = worker
+        worker.signals.finished.connect(self._on_shared_solve_finished)
+        worker.signals.error.connect(self._on_shared_solve_error)
+        self._thread_pool.start(worker)
+
+    def _on_shared_solve_error(self, message: str) -> None:
+        self._active_solve_worker = None
+        self.set_busy(False)
+        self.set_status(f"Solve error: {str(message)}")
+        self._append_audit_log("solve_error", {"error": str(message), "backend": "shared"})
+
+    def _on_shared_solve_finished(self, payload: object) -> None:
+        self._active_solve_worker = None
+        self.set_busy(False)
+        result = dict(payload) if isinstance(payload, dict) else {}
+        raw_schedule = result.get("schedule") or {}
+        schedule = {
+            int(activity_id): dict(placement)
+            for activity_id, placement in dict(raw_schedule).items()
+            if isinstance(placement, dict)
+        }
+        status = int(result.get("raw_status", result.get("status", -1)) or -1)
+        if status not in (2, 4) or not schedule:
+            self.set_status(f"No feasible schedule (status {status})")
+            self._append_audit_log(
+                "solve_no_feasible", {"status": status, "backend": "shared"}
+            )
+            return
+        hard_errors = self._validate_schedule_hard_errors(schedule, require_all=True)
+        if hard_errors:
+            self.set_status(f"Solve rejected: {len(hard_errors)} hard conflicts")
+            self._append_audit_log(
+                "solve_rejected_hard_conflicts",
+                {"count": len(hard_errors), "backend": "shared"},
+            )
+            return
+        self._last_solver_result_meta = dict(result.get("meta") or {})
+        self.base_schedule = {activity_id: row.copy() for activity_id, row in schedule.items()}
+        self.current_schedule = {activity_id: row.copy() for activity_id, row in schedule.items()}
+        self._set_manual_highlight_base(self.current_schedule)
+        self.held_activity_id = None
+        self.selected_activity_id = next(iter(self.current_schedule), None)
+        self._bump_schedule_revision()
+        self._reset_history()
+        self.populate_weeks()
+        self.update_entities()
+        self.update_table()
+        self.update_quality_summary()
+        self._refresh_blueprint_inspector()
+        run_mode = str(self.run_mode_combo.currentText())
+        self.set_status(f"Draft ready · {len(self.current_schedule)} activities · {run_mode}")
+        self._append_audit_log(
+            "solve_finished",
+            {
+                "status": status,
+                "activities": len(self.current_schedule),
+                "backend": "shared",
+                "run_mode": str(self.run_mode_combo.currentData() or "balanced"),
+            },
+        )
+        self._save_persistent_history()
 
     def on_solver_error(self, error):
         sender_proc = self.sender()
@@ -1557,10 +1783,13 @@ class WindowSolverMixin:
 
         self._improve_thread = QThread(self)
         self._improve_worker = ImproveWorker(
+            self.backend_client.improve,
             improve_inst,
             self._improve_original_schedule,
+            run_mode=str(self.run_mode_combo.currentData() or "balanced"),
             iterations=int(self._improve_total_iters),
             max_seconds=(float(self.ls_time_spin.value()) or None),
+            focus_term=str(self._improve_focus_term),
         )
         self._improve_worker.moveToThread(self._improve_thread)
         self._improve_thread.started.connect(self._improve_worker.run)
