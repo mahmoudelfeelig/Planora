@@ -28,6 +28,7 @@ def run_case(
     room_mode: str | None = None,
     use_objective: bool | None = None,
     case_id: str | None = None,
+    workers: int | None = None,
 ) -> Dict[str, Any]:
     inst = generate_instance(str(mode))
     recommendation = recommend_solver_profile(inst)
@@ -38,6 +39,9 @@ def run_case(
         if use_objective is not None
         else objective_profile not in {"fast_feasible", "university_fast"}
     )
+    selected_workers = int(
+        workers if workers is not None else (4 if selected_room_mode == "partitioned" else 1)
+    )
     started = time.perf_counter()
     result = solve_instance(
         inst,
@@ -47,7 +51,7 @@ def run_case(
             use_objective=bool(selected_use_objective),
             time_limit_seconds=float(time_limit),
             strict_limit_seconds=min(float(time_limit), 300.0),
-            workers=1,
+            workers=selected_workers,
             phased_solve=bool(selected_use_objective),
             enforce_hard_conflict_free=True,
         ),
@@ -66,6 +70,7 @@ def run_case(
         "rooms": int(len(inst.rooms)),
         "profile": str(objective_profile),
         "room_mode": str(final_attempt.room_mode if final_attempt is not None else selected_room_mode),
+        "workers": int(selected_workers),
         "scale": estimate_cp_model_scale(inst),
         "hard_conflicts": int(len(hard)),
         "soft_penalty": breakdown.get("total"),
@@ -100,6 +105,7 @@ def main() -> int:
                 room_mode=str(case.room_mode),
                 use_objective=bool(case.use_objective),
                 case_id=str(case.case_id),
+                workers=int(case.workers),
             )
             for case in BENCHMARK_CASES
         ]

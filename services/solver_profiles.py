@@ -5,11 +5,11 @@ from typing import Any, Dict
 
 OBJECTIVE_PROFILE_PRESETS: Dict[str, Dict[str, Any]] = {
     "university_fast": {
-        "label": "University fast",
+        "label": "University fast (partitioned)",
         "use_objective": False,
         "retry_without_objective": False,
         "phased_solve": False,
-        "room_mode": "greedy",
+        "room_mode": "partitioned",
         "improve_total_seconds": 0.0,
     },
     "university_quality": {
@@ -47,5 +47,23 @@ OBJECTIVE_PROFILE_PRESETS: Dict[str, Dict[str, Any]] = {
         "improve_slice_seconds": 6.0,
         "improve_iters_per_slice": 1500,
         "improve_max_rounds": 16,
+    },
+    "fairness_first": {
+        "label": "Fairness-first research",
+        "use_objective": True,
+        "retry_without_objective": False,
+        "phased_solve": False,
+        "room_mode": "decomposed",
+        "improve_total_seconds": 0.0,
+    },
+    "research_adaptive": {
+        "label": "Proof-guided adaptive LNS",
+        "use_objective": False,
+        "retry_without_objective": False,
+        "phased_solve": False,
+        "room_mode": "partitioned",
+        "improve_total_seconds": 0.0,
+        "adaptive_lns_slice_seconds": 2.0,
+        "adaptive_lns_max_rounds": 24,
     },
 }

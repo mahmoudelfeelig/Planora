@@ -3,7 +3,10 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple
 
+from core.partitioned_solver import week_partitioning_blockers
 from utils.domain import Instance
+from utils.demand import required_capacity
+from utils.schedule_rules import hard_flag
 
 
 def _activity_staff_id(inst: Instance, activity_id: int) -> int:
@@ -13,11 +16,8 @@ def _activity_staff_id(inst: Instance, activity_id: int) -> int:
 
 def eligible_room_ids_for_activity(inst: Instance, activity_id: int) -> List[int]:
     act = inst.activities[int(activity_id)]
-    need = sum(
-        int(inst.groups[int(g_id)].size)
-        for g_id in act.group_ids
-        if int(g_id) in inst.groups
-    )
+    enforce_capacity = hard_flag(inst, "enforce_room_capacity", True)
+    need = required_capacity(inst, act.group_ids) if enforce_capacity else 0
     out: List[int] = []
     for room_id, room in inst.rooms.items():
         if int(room.capacity) < int(need):
@@ -80,6 +80,8 @@ def estimate_cp_model_scale(inst: Instance) -> Dict[str, Any]:
         "days": int(len(inst.days)),
         "slots_per_day": int(inst.slots_per_day),
         "estimated_start_literals": int(starts),
+        "estimated_start_domain_values": int(starts),
+        "compact_start_int_vars": int(len(inst.activities)),
         "estimated_cp_room_candidates": int(room_candidates),
         "estimated_cp_room_intervals": int(room_candidates),
         "estimated_conflict_edges": int(conflict_edges),
@@ -92,11 +94,24 @@ def recommend_solver_profile(inst: Instance) -> Dict[str, Any]:
     activities = int(scale["activities"])
     room_candidates = int(scale["estimated_cp_room_candidates"])
     if activities >= 1000 or room_candidates >= 50000:
+        blockers = week_partitioning_blockers(inst)
+        if blockers:
+            return {
+                "profile": "university_coupled",
+                "room_mode": "decomposed",
+                "objective_profile": "fast_feasible",
+                "reason": (
+                    "large instance has hard cross-week coupling; preserve it in the "
+                    f"monolithic certificate mode ({blockers[0]})"
+                ),
+                "partitioning_blockers": blockers,
+            }
         return {
             "profile": "university_fast",
-            "room_mode": "greedy",
+            "room_mode": "partitioned",
             "objective_profile": "fast_feasible",
-            "reason": "large activity or room-candidate count; solve times first and assign rooms separately",
+            "reason": "large activity or room-candidate count; solve independent weeks in parallel with validated rooming and exact certificate fallback",
+            "partitioning_blockers": [],
         }
     if activities >= 350 or room_candidates >= 12000:
         return {
@@ -155,9 +170,9 @@ def build_decomposition_plan(inst: Instance) -> Dict[str, Any]:
 
     return {
         "recommended_order": [
-            "solve_or_relax_by_week",
-            "room_assignment_by_slot",
-            "repair_cross_program_staff_conflicts",
+            "preflight_cross_week_hard_constraints",
+            "solve_weeks_in_parallel",
+            "validated_rooming_with_exact_certificate_fallback",
             "local_search_quality_pass",
         ],
         "week_blocks": by_week,

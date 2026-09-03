@@ -134,14 +134,17 @@ def test_institution_template_roundtrip(tmp_path: Path):
     assert restored["import_defaults"]["group_separator"] == "|"
 
 
-def test_local_backend_client_uses_portfolio_service(monkeypatch):
+def test_local_backend_client_uses_shared_engine_backend(monkeypatch):
     called = {}
 
     def fake_portfolio(inst, options):
         called["profile"] = str(options.objective_profile)
         return "ok"
 
-    monkeypatch.setattr("ui.backend_client.solve_portfolio", fake_portfolio)
+    monkeypatch.setattr(
+        "ui.backend_client.solve_portfolio_with_engine",
+        fake_portfolio,
+    )
     client = LocalBackendClient()
     result = client.solve_portfolio(object(), SolveOptions(objective_profile="balanced"))
     assert result == "ok"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from core.metaheuristics import LocalSearchImprover
+from utils.distribution_constraints import distribution_penalty
 from utils.schedule_rules import evaluate_sla_targets
 
 
@@ -33,10 +34,14 @@ def load_soft_weights(inst) -> Dict[str, int]:
     return weights
 
 
-def compute_penalty_breakdown(inst, schedule: Dict[int, Dict[str, Any]]) -> Dict[str, int]:
+def compute_penalty_breakdown(
+    inst, schedule: Dict[int, Dict[str, Any]]
+) -> Dict[str, int]:
     weights = load_soft_weights(inst)
     improver = LocalSearchImprover(inst)
-    total = int(improver.compute_soft_penalty(schedule))
+    base_total = int(improver.compute_soft_penalty(schedule))
+    distribution_total = int(distribution_penalty(inst, schedule))
+    total = int(base_total)
     # Reuse the current scorer while providing a structured, explainable breakdown.
     breakdown: Dict[str, int] = {
         "total": int(total),
@@ -51,13 +56,26 @@ def compute_penalty_breakdown(inst, schedule: Dict[int, Dict[str, Any]]) -> Dict
         "room_consistency": 0,
         "single_slot": 0,
         "same_kind_week": 0,
+        "distribution_constraints": int(distribution_total),
     }
 
     days = list(inst.days)
     weeks = list(inst.weeks)
     slots = int(inst.slots_per_day)
-    group_occ = {(g, w, d, s): 0 for g in inst.groups for w in weeks for d in days for s in range(slots)}
-    staff_occ = {(s_id, w, d, s): 0 for s_id in inst.staff for w in weeks for d in days for s in range(slots)}
+    group_occ = {
+        (g, w, d, s): 0
+        for g in inst.groups
+        for w in weeks
+        for d in days
+        for s in range(slots)
+    }
+    staff_occ = {
+        (s_id, w, d, s): 0
+        for s_id in inst.staff
+        for w in weeks
+        for d in days
+        for s in range(slots)
+    }
     for info in schedule.values():
         w = int(info["week"])
         d = str(info["day"])
@@ -73,11 +91,15 @@ def compute_penalty_breakdown(inst, schedule: Dict[int, Dict[str, Any]]) -> Dict
 
     group_day_active = {
         (g, w, d): int(any(group_occ[(g, w, d, s)] for s in range(slots)))
-        for g in inst.groups for w in weeks for d in days
+        for g in inst.groups
+        for w in weeks
+        for d in days
     }
     staff_day_active = {
         (s_id, w, d): int(any(staff_occ[(s_id, w, d, s)] for s in range(slots)))
-        for s_id in inst.staff for w in weeks for d in days
+        for s_id in inst.staff
+        for w in weeks
+        for d in days
     }
     workdays = [d for d in days if d in {"MON", "TUE", "WED", "THU", "FRI"}]
 
@@ -86,13 +108,19 @@ def compute_penalty_breakdown(inst, schedule: Dict[int, Dict[str, Any]]) -> Dict
         for w in weeks:
             free_days = sum(1 - group_day_active[(g_id, w, d)] for d in days)
             if free_days < preferred:
-                breakdown["stud_free_days"] += int(weights["stud_free_days"]) * int(preferred - free_days)
+                breakdown["stud_free_days"] += int(weights["stud_free_days"]) * int(
+                    preferred - free_days
+                )
             free_mf = sum(1 - group_day_active[(g_id, w, d)] for d in workdays)
             if free_mf < preferred:
-                breakdown["stud_free_mf"] += int(weights["stud_free_mf"]) * int(preferred - free_mf)
+                breakdown["stud_free_mf"] += int(weights["stud_free_mf"]) * int(
+                    preferred - free_mf
+                )
             active_days = sum(group_day_active[(g_id, w, d)] for d in days)
             if active_days > 3:
-                breakdown["active_days"] += int(weights["active_days"]) * int(active_days - 3)
+                breakdown["active_days"] += int(weights["active_days"]) * int(
+                    active_days - 3
+                )
             for d in days:
                 occ = [group_occ[(g_id, w, d, s)] for s in range(slots)]
                 blocks = 0
@@ -108,7 +136,9 @@ def compute_penalty_breakdown(inst, schedule: Dict[int, Dict[str, Any]]) -> Dict
                             first_slot = idx
                     prev = value
                 if blocks > 1:
-                    breakdown["stud_gaps"] += int(weights["stud_gaps"]) * int(blocks - 1)
+                    breakdown["stud_gaps"] += int(weights["stud_gaps"]) * int(
+                        blocks - 1
+                    )
                 if load == 1:
                     breakdown["single_slot"] += int(weights["single_slot"])
                 if load == 2:
@@ -120,14 +150,19 @@ def compute_penalty_breakdown(inst, schedule: Dict[int, Dict[str, Any]]) -> Dict
         for w in weeks:
             free_days = sum(1 - staff_day_active[(s_id, w, d)] for d in days)
             if free_days < 1:
-                breakdown["staff_free_day"] += int(weights["staff_free_day"]) * int(1 - free_days)
+                breakdown["staff_free_day"] += int(weights["staff_free_day"]) * int(
+                    1 - free_days
+                )
 
     for g_id in inst.groups.keys():
         for wi in range(1, len(weeks)):
             w_prev = weeks[wi - 1]
             w_curr = weeks[wi]
             for d in days:
-                if group_day_active[(g_id, w_prev, d)] != group_day_active[(g_id, w_curr, d)]:
+                if (
+                    group_day_active[(g_id, w_prev, d)]
+                    != group_day_active[(g_id, w_curr, d)]
+                ):
                     breakdown["stability"] += int(weights["stability"])
 
     key_to_rooms = {}
@@ -142,7 +177,9 @@ def compute_penalty_breakdown(inst, schedule: Dict[int, Dict[str, Any]]) -> Dict
         if None in rooms:
             continue
         if len(rooms) > 1:
-            breakdown["room_consistency"] += int(weights["room_consistency"]) * int(len(rooms) - 1)
+            breakdown["room_consistency"] += int(weights["room_consistency"]) * int(
+                len(rooms) - 1
+            )
 
     for g_id in inst.groups.keys():
         for w in weeks:
@@ -159,7 +196,9 @@ def compute_penalty_breakdown(inst, schedule: Dict[int, Dict[str, Any]]) -> Dict
                 counts[key] = int(counts.get(key, 0)) + 1
             for cnt in counts.values():
                 if int(cnt) > 1:
-                    breakdown["same_kind_week"] += int(weights["same_kind_week"]) * int(cnt - 1)
+                    breakdown["same_kind_week"] += int(weights["same_kind_week"]) * int(
+                        cnt - 1
+                    )
 
     return breakdown
 
@@ -183,7 +222,9 @@ def explain_solution_ranking(
             deltas.append((abs(delta), key, delta))
     deltas.sort(reverse=True)
     if not deltas:
-        return f"{candidate_label} matches {base_label} on all modeled soft-penalty terms."
+        return (
+            f"{candidate_label} matches {base_label} on all modeled soft-penalty terms."
+        )
     top = deltas[:4]
     parts = [
         f"{candidate_label} total {int(cand['total'])} vs {base_label} {int(base['total'])}."
@@ -201,6 +242,15 @@ def rank_penalty_drivers(
     limit: int = 6,
 ) -> list[Dict[str, Any]]:
     breakdown = compute_penalty_breakdown(inst, schedule)
+    return rank_penalty_drivers_from_breakdown(breakdown, limit=limit)
+
+
+def rank_penalty_drivers_from_breakdown(
+    breakdown: Dict[str, Any],
+    *,
+    limit: int = 6,
+) -> list[Dict[str, Any]]:
+    """Rank penalty terms from an already computed canonical breakdown."""
     total = max(1, int(breakdown.get("total", 0)))
     rows: list[Dict[str, Any]] = []
     for key, value in breakdown.items():
@@ -217,7 +267,9 @@ def rank_penalty_drivers(
     return rows[: max(1, int(limit))]
 
 
-def evaluate_schedule_sla(inst, schedule: Dict[int, Dict[str, Any]], *, hard_conflicts: int = 0) -> Dict[str, Any]:
+def evaluate_schedule_sla(
+    inst, schedule: Dict[int, Dict[str, Any]], *, hard_conflicts: int = 0
+) -> Dict[str, Any]:
     breakdown = compute_penalty_breakdown(inst, schedule)
     return evaluate_sla_targets(
         inst,

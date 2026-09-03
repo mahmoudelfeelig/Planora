@@ -19,9 +19,15 @@ def test_performance_service_recommends_university_fast_for_ss23_scale():
     assert scale["activities"] == 1621
     assert scale["estimated_cp_room_candidates"] >= 50000
     assert recommendation["profile"] == "university_fast"
-    assert recommendation["room_mode"] == "greedy"
+    assert recommendation["room_mode"] == "partitioned"
     assert certificate["room_missing"] == []
     assert certificate["decomposition"]["week_blocks"]
+
+    inst.hard_constraints["force_repeat_weekly_pattern"] = True
+    coupled = recommend_solver_profile(inst)
+    assert coupled["profile"] == "university_coupled"
+    assert coupled["room_mode"] == "decomposed"
+    assert coupled["partitioning_blockers"]
 
 
 def test_decomposition_plan_reports_week_and_program_blocks():
@@ -30,9 +36,9 @@ def test_decomposition_plan_reports_week_and_program_blocks():
     plan = build_decomposition_plan(inst)
 
     assert plan["recommended_order"] == [
-        "solve_or_relax_by_week",
-        "room_assignment_by_slot",
-        "repair_cross_program_staff_conflicts",
+        "preflight_cross_week_hard_constraints",
+        "solve_weeks_in_parallel",
+        "validated_rooming_with_exact_certificate_fallback",
         "local_search_quality_pass",
     ]
     assert len(plan["week_blocks"]) == len(inst.weeks)

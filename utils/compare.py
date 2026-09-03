@@ -5,6 +5,8 @@ import csv
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from utils.csv_security import spreadsheet_safe_row
+
 
 def compare_schedules(
     base: Dict[int, Dict[str, Any]],
@@ -108,6 +110,6 @@ def write_comparison_report(path: str | Path, summary: Dict[str, Any]) -> None:
         with path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["metric", "value"])
-            writer.writerows(rows)
+            writer.writerows(spreadsheet_safe_row(row) for row in rows)
         return
     raise ValueError(f"Unsupported report format: {path.suffix}")

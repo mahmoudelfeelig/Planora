@@ -5,6 +5,12 @@ import math
 import time
 
 from utils.domain import Instance
+from utils.demand import required_capacity as capacity_required
+from utils.distribution_constraints import (
+    distribution_penalty,
+    distribution_penalty_for_constraints,
+    evaluate_distribution_constraints,
+)
 from utils.schedule_rules import (
     calendar_slot_blocked,
     generic_resource_violations,
@@ -12,6 +18,7 @@ from utils.schedule_rules import (
     precedence_violations,
     room_is_available,
     travel_buffer_violations,
+    hard_flag,
 )
 
 
@@ -25,8 +32,11 @@ class LocalSearchImprover:
     Daily load caps are ignored here by specification; weekly caps are enforced in CP.
     """
 
-    def __init__(self, inst: Instance):
+    def __init__(self, inst: Instance, *, random_seed: int | None = None):
         self.inst = inst
+        # Preserve the historical global-random behavior when no seed is supplied,
+        # while allowing research runs to own an isolated deterministic stream.
+        self._rng = random if random_seed is None else random.Random(int(random_seed))
         self._locked: Dict[int, Dict[str, Any]] = {}
         self._allowed_rooms: Dict[int, List[int]] = {}
         self._cluster_by_act: Dict[int, List[int]] = {}
@@ -43,6 +53,8 @@ class LocalSearchImprover:
         self._group_stability_penalty_cache: Dict[Tuple[int, int, int], int] = {}
         self._staff_week_penalty_cache: Dict[Tuple[int, int], int] = {}
         self._room_key_penalty_cache: Dict[Tuple[int, int, str], int] = {}
+        self._soft_distribution_constraints: List[Any] = []
+        self._soft_distribution_indices_by_activity: Dict[int, List[int]] = {}
 
     # ---------- state ----------
 
@@ -51,25 +63,42 @@ class LocalSearchImprover:
 
         def required_capacity(act_id: int) -> int:
             gids = inst.activities[act_id].group_ids
-            return sum(inst.groups[g].size for g in gids if g in inst.groups)
+            return capacity_required(inst, gids)
 
         for a_id, act in inst.activities.items():
             rooms: List[int] = []
             need = required_capacity(a_id)
+            enforce_capacity = hard_flag(inst, "enforce_room_capacity", True)
             if act.kind == "LAB":
                 req = getattr(act, "requires_specialization", None)
                 lab_candidates = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("SPECIALIZED_LAB", "COMPUTER_LAB")]
                 if req:
                     for r_id in lab_candidates:
                         tags = getattr(inst.rooms[r_id], "specialization_tags", []) or []
-                        if req in tags and inst.rooms[r_id].capacity >= need:
+                        if req in tags and (
+                            not enforce_capacity or inst.rooms[r_id].capacity >= need
+                        ):
                             rooms.append(r_id)
                 else:
-                    rooms = [r_id for r_id in lab_candidates if inst.rooms[r_id].capacity >= need]
+                    rooms = [
+                        r_id
+                        for r_id in lab_candidates
+                        if not enforce_capacity or inst.rooms[r_id].capacity >= need
+                    ]
             elif act.kind == "TUT":
-                rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("TUTORIAL", "LECTURE") and r.capacity >= need]
+                rooms = [
+                    r_id
+                    for r_id, r in inst.rooms.items()
+                    if r.room_type in ("TUTORIAL", "LECTURE")
+                    and (not enforce_capacity or r.capacity >= need)
+                ]
             else:  # LEC
-                rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE" and r.capacity >= need]
+                rooms = [
+                    r_id
+                    for r_id, r in inst.rooms.items()
+                    if r.room_type == "LECTURE"
+                    and (not enforce_capacity or r.capacity >= need)
+                ]
 
             if rooms:
                 self._allowed_rooms[a_id] = rooms
@@ -153,8 +182,21 @@ class LocalSearchImprover:
         self._group_stability_penalty_cache = {}
         self._staff_week_penalty_cache = {}
         self._room_key_penalty_cache = {}
+        self._soft_distribution_constraints = []
+        self._soft_distribution_indices_by_activity = {}
         self._compute_allowed_rooms()
         self._compute_clusters()
+
+        for constraint in getattr(inst, "distribution_constraints", []) or []:
+            if bool(constraint.required) or max(0, int(constraint.penalty)) == 0:
+                continue
+            constraint_index = len(self._soft_distribution_constraints)
+            self._soft_distribution_constraints.append(constraint)
+            for activity_id in {int(value) for value in constraint.activity_ids}:
+                self._soft_distribution_indices_by_activity.setdefault(
+                    activity_id,
+                    [],
+                ).append(constraint_index)
 
         for w in weeks:
             for d in days:
@@ -221,6 +263,51 @@ class LocalSearchImprover:
             dur=int(dur),
         )
 
+    def _activity_start_allowed(self, a_id: int, day: str, slot: int) -> bool:
+        """Mirror the solver and validator's activity/institution start domain.
+
+        Local search used to discover these restrictions only after its result
+        was revalidated. Rejecting the move at generation time avoids wasting
+        the improvement budget and keeps every intermediate schedule inside the
+        same hard domain as CP-SAT.
+        """
+        act = self.inst.activities[int(a_id)]
+        forbidden_starts = {
+            (str(pair[0]), int(pair[1]))
+            for pair in (getattr(self.inst, "activity_unavailability", {}) or {}).get(
+                int(a_id), set()
+            )
+            if isinstance(pair, (list, tuple)) and len(pair) == 2
+        }
+        if (str(day), int(slot)) in forbidden_starts:
+            return False
+
+        policy = getattr(self.inst, "institutional_policy", {}) or {}
+        configured_starts = policy.get("standard_start_slots", [])
+        if isinstance(configured_starts, dict):
+            configured_starts = configured_starts.get(
+                str(act.kind),
+                configured_starts.get("default", []),
+            )
+        standard_starts = {int(value) for value in (configured_starts or [])}
+        if (
+            hard_flag(self.inst, "enforce_standard_start_slots", False)
+            and standard_starts
+            and int(slot) not in standard_starts
+        ):
+            return False
+
+        allowed_day_slots = policy.get("allowed_day_slots", {}) or {}
+        configured_day_slots = allowed_day_slots.get(
+            str(day),
+            allowed_day_slots.get("default"),
+        )
+        if configured_day_slots is not None and int(slot) not in {
+            int(value) for value in configured_day_slots
+        }:
+            return False
+        return True
+
     def _can_place_time(self, schedule, a_id, new_day, new_slot) -> bool:
         inst = self.inst
         info = schedule[a_id]
@@ -233,6 +320,8 @@ class LocalSearchImprover:
         if new_slot < 0 or new_slot + dur > inst.slots_per_day:
             return False
         if calendar_slot_blocked(inst, week=int(w), day=str(new_day)):
+            return False
+        if not self._activity_start_allowed(int(a_id), str(new_day), int(new_slot)):
             return False
 
         locked = self._locked.get(a_id, {})
@@ -311,6 +400,8 @@ class LocalSearchImprover:
             return False
         if generic_resource_violations(inst, trial):
             return False
+        if evaluate_distribution_constraints(inst, trial, required_only=True):
+            return False
 
         return True
 
@@ -357,7 +448,7 @@ class LocalSearchImprover:
         if a_id in self._allowed_rooms and new_room_id not in self._allowed_rooms[a_id]:
             return False
         if a_id not in self._allowed_rooms:
-            need = sum(inst.groups[g].size for g in act.group_ids if g in inst.groups)
+            need = capacity_required(inst, act.group_ids)
             if inst.rooms[new_room_id].capacity < need:
                 return False
 
@@ -392,6 +483,8 @@ class LocalSearchImprover:
         }
         trial[int(a_id)]["room_id"] = int(new_room_id)
         if travel_buffer_violations(inst, trial):
+            return False
+        if evaluate_distribution_constraints(inst, trial, required_only=True):
             return False
 
         return True
@@ -643,7 +736,7 @@ class LocalSearchImprover:
                     if int(cnt) > 1:
                         penalty += int(W_SAME_KIND_WEEK) * int(cnt - 1)
 
-        return penalty
+        return int(penalty + distribution_penalty(inst, schedule))
 
     # ---------- search ----------
 
@@ -847,6 +940,20 @@ class LocalSearchImprover:
                 keys.add(key)
         return int(sum(self._room_key_penalty(key) for key in keys))
 
+    def _affected_soft_distribution_constraints(self, cluster: List[int]) -> List[Any]:
+        indices = {
+            int(constraint_index)
+            for activity_id in cluster
+            for constraint_index in self._soft_distribution_indices_by_activity.get(
+                int(activity_id),
+                [],
+            )
+        }
+        return [
+            self._soft_distribution_constraints[index]
+            for index in sorted(indices)
+        ]
+
     def _time_move_delta(
         self,
         schedule: Dict[int, Dict[str, Any]],
@@ -854,11 +961,28 @@ class LocalSearchImprover:
         new_day: str,
         new_slot: int,
     ) -> int:
+        affected_distribution_constraints = (
+            self._affected_soft_distribution_constraints(cluster)
+            if self._soft_distribution_constraints
+            else []
+        )
         before = self._snapshot_time_local_penalty(schedule, cluster)
+        if affected_distribution_constraints:
+            before += distribution_penalty_for_constraints(
+                self.inst,
+                schedule,
+                affected_distribution_constraints,
+            )
         old_pos = {cid: (str(schedule[cid]["day"]), int(schedule[cid]["slot"])) for cid in cluster}
         for cid in cluster:
             self._apply_time_move(schedule, cid, str(new_day), int(new_slot))
         after = self._snapshot_time_local_penalty(schedule, cluster)
+        if affected_distribution_constraints:
+            after += distribution_penalty_for_constraints(
+                self.inst,
+                schedule,
+                affected_distribution_constraints,
+            )
         for cid in cluster:
             old_day, old_slot = old_pos[cid]
             self._apply_time_move(schedule, cid, old_day, old_slot)
@@ -927,12 +1051,12 @@ class LocalSearchImprover:
             for a_id in activity_ids
             if int(a_id) in self._priority_activity_ids
         ]
-        if targeted_pool and random.random() < 0.9:
+        if targeted_pool and self._rng.random() < 0.9:
             pool = targeted_pool
         else:
             pool = activity_ids
         k = min(24, len(activity_ids))
-        sample = random.sample(pool, min(k, len(pool)))
+        sample = self._rng.sample(pool, min(k, len(pool)))
         best = sample[0]
         best_score = -10**9
         for a_id in sample:
@@ -955,8 +1079,8 @@ class LocalSearchImprover:
     ) -> bool:
         max_dur = max(int(schedule[cid]["duration"]) for cid in cluster)
         for _ in range(int(max_tries)):
-            new_day = str(random.choice(self.inst.days))
-            new_slot = int(random.randint(0, self.inst.slots_per_day - max_dur))
+            new_day = str(self._rng.choice(self.inst.days))
+            new_slot = int(self._rng.randint(0, self.inst.slots_per_day - max_dur))
             if new_day == old_day and int(new_slot) == int(old_slot):
                 continue
             if not self._cluster_can_place_time(schedule, cluster, new_day, int(new_slot)):
@@ -986,7 +1110,7 @@ class LocalSearchImprover:
         if not common_rooms:
             return False
         room_candidates = list(common_rooms)
-        random.shuffle(room_candidates)
+        self._rng.shuffle(room_candidates)
         tries = 0
         for new_room in room_candidates:
             tries += 1
@@ -1016,7 +1140,7 @@ class LocalSearchImprover:
             old_slot = int(info["slot"])
             old_room = info["room_id"]
             # Mostly time diversification; occasional room shake-up.
-            if random.random() < 0.75:
+            if self._rng.random() < 0.75:
                 ok = self._try_random_feasible_time_move(
                     schedule, cluster, old_day, old_slot, max_tries=10
                 )
@@ -1542,7 +1666,7 @@ class LocalSearchImprover:
                         if d == old_day and int(s) == int(old_slot):
                             continue
                         candidates.append((str(d), int(s)))
-                random.shuffle(candidates)
+                self._rng.shuffle(candidates)
 
                 best_time_choice: Tuple[str, int] | None = None
                 best_time_delta: int | None = None
@@ -1572,7 +1696,7 @@ class LocalSearchImprover:
                 if old_room in common_rooms:
                     common_rooms.remove(old_room)
                 room_candidates = list(common_rooms)
-                random.shuffle(room_candidates)
+                self._rng.shuffle(room_candidates)
 
                 best_room: int | None = None
                 best_room_delta: int | None = None
@@ -1599,7 +1723,7 @@ class LocalSearchImprover:
             if best_move is not None:
                 best_delta = int(best_move["delta"])
                 accept = best_delta <= 0 or (
-                    temp > 0 and random.random() < math.exp(-float(best_delta) / float(temp))
+                    temp > 0 and self._rng.random() < math.exp(-float(best_delta) / float(temp))
                 )
                 if accept:
                     cluster = list(best_move["cluster"])

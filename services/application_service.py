@@ -11,25 +11,88 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict
 
-from services.contracts import ImproveOptions, SolveOptions
+from services.contracts import SolveOptions
 from services.schedule_ops_service import (
     candidate_move_deltas_shared,
     clear_activity_lock_shared,
     cp_sat_polish_shared,
     export_schedule_csv_text,
-    improve_schedule_shared,
     move_activity_shared,
     normalize_schedule,
     score_schedule,
     set_activity_lock_shared,
 )
-from services.solver_service import solve_instance, solve_portfolio
+from services.engine_backend import (
+    interactive_improve_options,
+    interactive_solve_options,
+    improve_with_engine,
+    solve_portfolio_with_engine,
+    solve_with_engine,
+)
+from services.ui_contract import run_mode_options
+from services.ui_contract import UI_CONTRACT_VERSION
 from utils.generator import instance_to_json
 from utils.io import instance_from_json
 
 HARD_CONSTRAINT_OPTION_KEYS = {
     "force_repeat_weekly_pattern",
 }
+
+REMOTE_SOLVE_LIMIT_SECONDS = 120.0
+REMOTE_SOLVE_MAX_WORKERS = 16
+REMOTE_IMPROVE_LIMIT_SECONDS = 30.0
+REMOTE_IMPROVE_MAX_ITERATIONS = 10_000
+
+
+def _bounded_remote_solve_options(options: Dict[str, Any]) -> Dict[str, Any]:
+    bounded = dict(options)
+    seconds = bounded.get("time_limit_seconds")
+    if seconds is not None and not (0.05 <= float(seconds) <= REMOTE_SOLVE_LIMIT_SECONDS):
+        raise ValueError(
+            f"time_limit_seconds must be between 0.05 and {REMOTE_SOLVE_LIMIT_SECONDS:g}."
+        )
+    strict = bounded.get("strict_limit_seconds")
+    if strict is not None and not (0.05 <= float(strict) <= REMOTE_SOLVE_LIMIT_SECONDS):
+        raise ValueError(
+            f"strict_limit_seconds must be between 0.05 and {REMOTE_SOLVE_LIMIT_SECONDS:g}."
+        )
+    workers = bounded.get("workers")
+    if workers is not None and not (1 <= int(workers) <= REMOTE_SOLVE_MAX_WORKERS):
+        raise ValueError(f"workers must be between 1 and {REMOTE_SOLVE_MAX_WORKERS}.")
+    for key in (
+        "improve_total_seconds",
+        "adaptive_lns_seconds",
+        "projected_time_feedback_seconds",
+    ):
+        value = float(bounded.get(key, 0.0) or 0.0)
+        if value < 0.0 or value > REMOTE_SOLVE_LIMIT_SECONDS:
+            raise ValueError(f"{key} must be between 0 and {REMOTE_SOLVE_LIMIT_SECONDS:g}.")
+    return bounded
+
+
+def improve_options_from_payload(payload: Dict[str, Any] | None):
+    payload = dict(payload or {})
+    run_mode = payload.get("run_mode", payload.get("mode"))
+    options = run_mode_options(str(run_mode), action="improve") if run_mode else {}
+    options.update(dict(payload.get("options") or {}))
+    advanced = payload.get("advanced_overrides")
+    if advanced is not None:
+        if not isinstance(advanced, dict):
+            raise ValueError("advanced_overrides must be an object.")
+        options.update(dict(advanced.get("improve") or {}))
+    iterations = int(options.get("iterations", 500) or 0)
+    if not (0 <= iterations <= REMOTE_IMPROVE_MAX_ITERATIONS):
+        raise ValueError(
+            f"iterations must be between 0 and {REMOTE_IMPROVE_MAX_ITERATIONS}."
+        )
+    seconds = options.get("max_seconds", 2.0)
+    if seconds is not None and not (
+        0.05 <= float(seconds) <= REMOTE_IMPROVE_LIMIT_SECONDS
+    ):
+        raise ValueError(
+            f"max_seconds must be between 0.05 and {REMOTE_IMPROVE_LIMIT_SECONDS:g}."
+        )
+    return interactive_improve_options(**options)
 
 
 class JobCapacityExceeded(RuntimeError):
@@ -38,6 +101,7 @@ class JobCapacityExceeded(RuntimeError):
 
 def result_payload(result) -> Dict[str, Any]:
     return {
+        "contract_version": UI_CONTRACT_VERSION,
         "status": int(result.status),
         "raw_status": int(result.raw_status),
         "schedule": result.schedule,
@@ -52,6 +116,19 @@ def result_payload(result) -> Dict[str, Any]:
                 "objective_value": attempt.objective_value,
                 "best_objective_bound": attempt.best_objective_bound,
                 "relative_gap": attempt.relative_gap,
+                "status_name": attempt.status_name,
+                "proof_status": attempt.proof_status,
+                "budget_seconds": attempt.budget_seconds,
+                "elapsed_seconds": attempt.elapsed_seconds,
+                "model_build_seconds": attempt.model_build_seconds,
+                "setup_seconds": attempt.setup_seconds,
+                "deadline_safety_margin_seconds": (
+                    attempt.deadline_safety_margin_seconds
+                ),
+                "search_budget_seconds": attempt.search_budget_seconds,
+                "search_seconds": attempt.search_seconds,
+                "deadline_overrun_seconds": attempt.deadline_overrun_seconds,
+                "budget_exhausted": attempt.budget_exhausted,
             }
             for attempt in (result.attempts or [])
         ],
@@ -60,7 +137,14 @@ def result_payload(result) -> Dict[str, Any]:
 
 def solve_options_from_payload(inst: Any, payload: Dict[str, Any] | None) -> SolveOptions:
     payload = dict(payload or {})
-    options = dict(payload.get("options") or {})
+    run_mode = payload.get("run_mode", payload.get("mode"))
+    options = run_mode_options(str(run_mode), action="solve") if run_mode else {}
+    options.update(dict(payload.get("options") or {}))
+    advanced = payload.get("advanced_overrides")
+    if advanced is not None:
+        if not isinstance(advanced, dict):
+            raise ValueError("advanced_overrides must be an object.")
+        options.update(dict(advanced.get("solve") or {}))
     hard_constraints = dict(getattr(inst, "hard_constraints", {}) or {})
     explicit_hard = payload.get("hard_constraints")
     if isinstance(explicit_hard, dict):
@@ -69,7 +153,7 @@ def solve_options_from_payload(inst: Any, payload: Dict[str, Any] | None) -> Sol
         if key in HARD_CONSTRAINT_OPTION_KEYS:
             hard_constraints[str(key)] = bool(options.pop(key))
     inst.hard_constraints = hard_constraints
-    return SolveOptions(**options)
+    return interactive_solve_options(**_bounded_remote_solve_options(options))
 
 
 @dataclass
@@ -370,10 +454,12 @@ def run_workspace_action(
     action = str(action)
 
     if action == "solve":
-        result = solve_instance(inst, solve_options_from_payload(inst, payload))
+        result = solve_with_engine(inst, solve_options_from_payload(inst, payload))
         return result_payload(result)
     if action == "portfolio":
-        portfolio = solve_portfolio(inst, solve_options_from_payload(inst, payload))
+        portfolio = solve_portfolio_with_engine(
+            inst, solve_options_from_payload(inst, payload)
+        )
         return {
             "best_index": int(portfolio.best_index),
             "candidates": [
@@ -390,10 +476,10 @@ def run_workspace_action(
     if action in {"score", "conflicts"}:
         return score_schedule(inst, schedule_i)
     if action == "improve":
-        return improve_schedule_shared(
+        return improve_with_engine(
             inst,
             schedule_i,
-            ImproveOptions(**dict(payload.get("options") or {})),
+            improve_options_from_payload(payload),
             focus_term=str(payload.get("focus_term", "") or ""),
             progress_hook=progress_hook,
             stop_hook=stop_hook,

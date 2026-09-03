@@ -20,6 +20,21 @@ class SolveOptions:
     improve_slice_seconds: float = 5.0
     improve_iters_per_slice: int = 1200
     improve_max_rounds: int = 12
+    adaptive_lns_seconds: float = 0.0
+    adaptive_lns_slice_seconds: float = 2.0
+    adaptive_lns_max_rounds: int = 24
+    adaptive_lns_neighborhood_sizes: Tuple[int, ...] = (12, 24, 48)
+    adaptive_lns_exact_activity_limit: int = 750
+    projected_time_search: bool = False
+    projected_time_room_reserve_seconds: float = 0.8
+    projected_time_feedback: bool = True
+    projected_time_feedback_seconds: float = 5.0
+    projected_time_feedback_rounds: int = 3
+    projected_time_stability_collision_weight: int = 1
+    projected_time_stability_proxy_mode: str = "collision_events"
+    projected_time_small_room_cp_seconds: float = 0.35
+    fixed_time_room_dive: bool = False
+    fixed_time_room_strategy: str = "oracle_then_cp"
     log_progress: bool = False
     enforce_hard_conflict_free: bool = True
     base_schedule: Optional[Dict[int, Dict[str, Any]]] = None
@@ -49,6 +64,17 @@ class SolveAttempt:
     objective_value: Optional[float] = None
     best_objective_bound: Optional[float] = None
     relative_gap: Optional[float] = None
+    status_name: Optional[str] = None
+    proof_status: str = "no_solution"
+    budget_seconds: Optional[float] = None
+    elapsed_seconds: float = 0.0
+    model_build_seconds: float = 0.0
+    setup_seconds: float = 0.0
+    deadline_safety_margin_seconds: float = 0.0
+    search_budget_seconds: Optional[float] = None
+    search_seconds: float = 0.0
+    deadline_overrun_seconds: float = 0.0
+    budget_exhausted: bool = False
 
 
 @dataclass

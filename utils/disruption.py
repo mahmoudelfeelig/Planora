@@ -3,9 +3,54 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Set, Tuple
 
 from utils.domain import Instance
+from utils.demand import required_capacity
 
 
 Schedule = Dict[int, Dict[str, Any]]
+
+
+def certificate_repair_scope(
+    inst: Instance,
+    schedule: Schedule,
+    certificate: Any,
+    *,
+    include_same_week_neighbors: bool = True,
+) -> Set[int]:
+    """Build a deterministic LNS neighborhood from a room infeasibility certificate."""
+    data = certificate.to_dict() if hasattr(certificate, "to_dict") else dict(certificate or {})
+    seed_ids = {
+        int(activity_id)
+        for activity_id in data.get("activity_ids", [])
+        if int(activity_id) in inst.activities and int(activity_id) in schedule
+    }
+    if not include_same_week_neighbors:
+        return seed_ids
+    scope = set(seed_ids)
+    for activity_id in sorted(seed_ids):
+        activity = inst.activities[activity_id]
+        staff_id = int(schedule[activity_id].get("staff_id", -1))
+        group_ids = {int(value) for value in activity.group_ids}
+        for other_id, other in inst.activities.items():
+            if int(other.week) != int(activity.week):
+                continue
+            other_info = schedule.get(int(other_id))
+            if other_info is None:
+                continue
+            same_staff = int(other_info.get("staff_id", -2)) == staff_id
+            same_group = bool(group_ids & {int(value) for value in other.group_ids})
+            same_course = int(other.course_id) == int(activity.course_id)
+            if same_staff or same_group or same_course:
+                scope.add(int(other_id))
+    return scope
+
+
+def build_certificate_guided_locks(
+    inst: Instance,
+    schedule: Schedule,
+    certificate: Any,
+) -> tuple[Dict[int, Dict[str, int | str]], Set[int]]:
+    scope = certificate_repair_scope(inst, schedule, certificate)
+    return build_freeze_locks(schedule, unlocked_activity_ids=scope), scope
 
 
 def _activity_role(kind: str) -> str:
@@ -103,7 +148,7 @@ def _room_fits_activity(inst: Instance, a_id: int, room_id: int, schedule: Sched
     if act is None or info is None or room is None:
         return False
     groups = [int(g) for g in info.get("group_ids", act.group_ids)]
-    need = sum(int(inst.groups[g].size) for g in groups if g in inst.groups)
+    need = required_capacity(inst, groups)
     if int(room.capacity) < int(need):
         return False
     kind = str(info.get("kind", act.kind)).upper()

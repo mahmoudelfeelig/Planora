@@ -10,14 +10,16 @@ from services.export_service import export_csv
 from services.quality_service import (
     SOFT_WEIGHT_DEFAULTS,
     compute_penalty_breakdown,
-    rank_penalty_drivers,
+    rank_penalty_drivers_from_breakdown,
 )
 from services.solver_service import improve_schedule, solve_instance
 from utils.generator import instance_to_json
 from utils.specs import validate_schedule_against_instance
 
 
-def normalize_schedule(schedule: Dict[Any, Dict[str, Any]] | None) -> Dict[int, Dict[str, Any]]:
+def normalize_schedule(
+    schedule: Dict[Any, Dict[str, Any]] | None,
+) -> Dict[int, Dict[str, Any]]:
     out: Dict[int, Dict[str, Any]] = {}
     for raw_id, raw_info in dict(schedule or {}).items():
         info = dict(raw_info or {})
@@ -57,7 +59,9 @@ def build_focused_improve_instance(inst, term: str):
             if str(k) in SOFT_WEIGHT_DEFAULTS
         }
     )
-    weights[str(term)] = max(1, int(weights.get(str(term), SOFT_WEIGHT_DEFAULTS[str(term)]))) * 10
+    weights[str(term)] = (
+        max(1, int(weights.get(str(term), SOFT_WEIGHT_DEFAULTS[str(term)]))) * 10
+    )
     focused.soft_weights = weights
     return focused
 
@@ -88,8 +92,12 @@ def focus_penalty_activity_ids(
             g_id = int(g_raw)
             by_group_week_day.setdefault((g_id, week, day), []).append(int(a_id))
             by_group_week.setdefault((g_id, week), []).append(int(a_id))
-            by_course_group_kind.setdefault((course_id, g_id, kind), []).append(int(a_id))
-            by_course_group_week_kind.setdefault((course_id, g_id, week, kind), []).append(int(a_id))
+            by_course_group_kind.setdefault((course_id, g_id, kind), []).append(
+                int(a_id)
+            )
+            by_course_group_week_kind.setdefault(
+                (course_id, g_id, week, kind), []
+            ).append(int(a_id))
 
     if term in {"thin_day", "single_slot", "stud_gaps", "late_start"}:
         for (_g_id, _week, _day), act_ids in by_group_week_day.items():
@@ -116,12 +124,21 @@ def focus_penalty_activity_ids(
                 or (term == "stud_gaps" and blocks > 1)
                 or (term == "late_start" and first is not None and int(first) >= 2)
             ):
-                ids.update(int(a_id) for slot_ids in members_by_slot.values() for a_id in slot_ids)
+                ids.update(
+                    int(a_id)
+                    for slot_ids in members_by_slot.values()
+                    for a_id in slot_ids
+                )
     elif term in {"active_days", "stud_free_days", "stud_free_mf", "stability"}:
         for (_g_id, _week), act_ids in by_group_week.items():
             ids.update(int(a_id) for a_id in act_ids)
     elif term == "same_kind_week":
-        for (_course, _group, _week, kind), act_ids in by_course_group_week_kind.items():
+        for (
+            _course,
+            _group,
+            _week,
+            kind,
+        ), act_ids in by_course_group_week_kind.items():
             if kind in {"LEC", "TUT"} and len(set(int(a) for a in act_ids)) > 1:
                 ids.update(int(a_id) for a_id in act_ids)
     elif term == "room_consistency":
@@ -138,7 +155,9 @@ def focus_penalty_activity_ids(
         for a_id, info in schedule_i.items():
             staff_id = info.get("staff_id")
             if staff_id is not None:
-                by_staff_week.setdefault((int(staff_id), int(info.get("week", 0))), []).append(int(a_id))
+                by_staff_week.setdefault(
+                    (int(staff_id), int(info.get("week", 0))), []
+                ).append(int(a_id))
         for (_staff, _week), act_ids in by_staff_week.items():
             ids.update(int(a_id) for a_id in act_ids)
 
@@ -154,7 +173,9 @@ def focus_penalty_activity_ids(
     return ranked[: max(1, int(limit))]
 
 
-def score_schedule(inst, schedule: Dict[Any, Dict[str, Any]], *, driver_limit: int = 12) -> Dict[str, Any]:
+def score_schedule(
+    inst, schedule: Dict[Any, Dict[str, Any]], *, driver_limit: int = 12
+) -> Dict[str, Any]:
     schedule_i = normalize_schedule(schedule)
     hard_conflicts = validate_schedule_against_instance(
         inst,
@@ -166,7 +187,10 @@ def score_schedule(inst, schedule: Dict[Any, Dict[str, Any]], *, driver_limit: i
     return {
         "soft_penalty": int(breakdown.get("total", 0)),
         "breakdown": dict(breakdown),
-        "drivers": rank_penalty_drivers(inst, schedule_i, limit=int(driver_limit)),
+        "drivers": rank_penalty_drivers_from_breakdown(
+            breakdown,
+            limit=int(driver_limit),
+        ),
         "hard_conflicts": list(hard_conflicts),
         "hard_conflict_count": int(len(hard_conflicts)),
     }
@@ -186,19 +210,32 @@ def improve_schedule_shared(
     before = score_schedule(focused_inst, base_schedule)
     progress_events: List[Dict[str, Any]] = []
 
-    def _progress(iteration: int, best_penalty: int, current_penalty: int) -> None:
+    def _progress(
+        iteration: int,
+        best_penalty: int,
+        current_penalty: int,
+        **progress_meta: Any,
+    ) -> None:
         event = {
             "iteration": int(iteration),
             "best_penalty": int(best_penalty),
             "current_penalty": int(current_penalty),
         }
+        for key in ("elapsed_seconds", "total_iterations", "moved", "accepted"):
+            if key in progress_meta:
+                event[key] = progress_meta[key]
         maximum = max(10, int(os.environ.get("PLANORA_MAX_PROGRESS_EVENTS", "1000")))
         if len(progress_events) < maximum:
             progress_events.append(event)
         else:
             progress_events[-1] = event
         if progress_hook is not None:
-            progress_hook(int(iteration), int(best_penalty), int(current_penalty))
+            progress_hook(
+                int(iteration),
+                int(best_penalty),
+                int(current_penalty),
+                **progress_meta,
+            )
 
     improved = improve_schedule(
         focused_inst,
@@ -208,7 +245,12 @@ def improve_schedule_shared(
         stop_hook=stop_hook,
     )
     after = score_schedule(focused_inst, improved)
-    global_after = score_schedule(inst, improved)
+    # With no focus override, the focused and global instances are identical.
+    # Reuse the already validated score instead of repeating a full validation,
+    # penalty breakdown, and driver analysis over the same schedule.
+    global_after = (
+        after if not str(focus_term or "").strip() else score_schedule(inst, improved)
+    )
     return {
         "schedule": improved,
         "before": before,
@@ -266,7 +308,9 @@ def cp_sat_polish_shared(
     }
 
 
-def export_schedule_csv_text(inst, schedule: Dict[Any, Dict[str, Any]], path: str | Path) -> str:
+def export_schedule_csv_text(
+    inst, schedule: Dict[Any, Dict[str, Any]], path: str | Path
+) -> str:
     export_csv(inst, normalize_schedule(schedule), path)
     return Path(path).read_text(encoding="utf-8")
 
@@ -337,7 +381,9 @@ def candidate_move_deltas_shared(
     info = dict(schedule_i[a_id])
     target_week = int(week if week is not None else info.get("week", 0))
     target_room = int(room_id if room_id is not None else info.get("room_id", 0) or 0)
-    target_staff = int(staff_id if staff_id is not None else info.get("staff_id", 0) or 0)
+    target_staff = int(
+        staff_id if staff_id is not None else info.get("staff_id", 0) or 0
+    )
     duration = max(1, int(info.get("duration", 1) or 1))
     base_score = score_schedule(inst, schedule_i)
     base_penalty = int(base_score.get("soft_penalty", 0))
@@ -379,7 +425,14 @@ def candidate_move_deltas_shared(
             )
         if limit is not None and checked >= int(limit):
             break
-    rows.sort(key=lambda row: (not bool(row["ok"]), int(row["delta"]), str(row["day"]), int(row["slot"])))
+    rows.sort(
+        key=lambda row: (
+            not bool(row["ok"]),
+            int(row["delta"]),
+            str(row["day"]),
+            int(row["slot"]),
+        )
+    )
     return {
         "activity_id": a_id,
         "base_score": base_score,
@@ -417,7 +470,9 @@ def set_activity_lock_shared(
     }
 
 
-def clear_activity_lock_shared(inst, schedule: Dict[Any, Dict[str, Any]], *, activity_id: int | None = None) -> Dict[str, Any]:
+def clear_activity_lock_shared(
+    inst, schedule: Dict[Any, Dict[str, Any]], *, activity_id: int | None = None
+) -> Dict[str, Any]:
     schedule_i = normalize_schedule(schedule)
     locks = {
         int(k): dict(v)
@@ -436,7 +491,9 @@ def clear_activity_lock_shared(inst, schedule: Dict[Any, Dict[str, Any]], *, act
     }
 
 
-def workspace_payload(inst, schedule: Dict[Any, Dict[str, Any]] | None = None) -> Dict[str, Any]:
+def workspace_payload(
+    inst, schedule: Dict[Any, Dict[str, Any]] | None = None
+) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"instance": instance_to_json(inst)}
     if schedule is not None:
         payload["schedule"] = normalize_schedule(schedule)

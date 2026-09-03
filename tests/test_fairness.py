@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from utils.fairness import compute_fairness_dashboard
+from utils.fairness import compute_fairness_dashboard, fairness_lexicographic_key
 from utils.generator import generate_instance
 
 
@@ -29,3 +29,7 @@ def test_compute_fairness_dashboard_returns_group_and_staff_rows():
     assert out["summary"]["staff"]["count"] == len(inst.staff)
     assert "mean_fairness_score" in out["summary"]["groups"]
     assert "mean_fairness_score" in out["summary"]["staff"]
+    assert "p90_burden" in out["summary"]["groups"]
+    assert "gini_burden" in out["summary"]["groups"]
+    assert "jain_equality_index" in out["summary"]["groups"]
+    assert len(fairness_lexicographic_key(out)) == 5

@@ -1,15 +1,42 @@
 from __future__ import annotations
 import os
+import time
+from itertools import combinations
 from typing import Dict, List, Tuple, Optional, Set, DefaultDict
 from collections import defaultdict, deque
 
 from ortools.sat.python import cp_model
 from utils.domain import Instance
+from utils.demand import required_capacity as capacity_required
+from utils.distribution_constraints import (
+    AGGREGATE_TYPES,
+    ORDERED_TYPES,
+    PAIRWISE_TYPES,
+    distribution_parameter,
+    normalize_distribution_type,
+    pair_satisfies_distribution,
+)
 from utils.schedule_rules import (
     calendar_slot_blocked,
     generic_resources_available,
+    hard_flag,
     room_is_available,
     room_transition_buffer,
+)
+from core.room_decomposition import (
+    ExactRoomSubproblem,
+    RoomConflictCertificate,
+    candidate_rooms_for_members,
+)
+from core.room_proof_checker import (
+    CONTEXTUAL_CUT_RULE,
+    CONTEXTUAL_CUT_SCHEMA,
+    EFFECTIVE_DOMAIN_RULE,
+    check_contextual_hall_derivation,
+    check_hall_certificate,
+    cut_id_for_inequality,
+    derivation_id_for_payload,
+    room_context_id,
 )
 
 
@@ -18,6 +45,31 @@ class GreedyRoomingError(ValueError):
         super().__init__(message)
         self.reason = reason
         self.activity_id = activity_id
+
+
+def resolve_room_mode_for_hard_constraints(
+    inst: Instance,
+    requested_room_mode: str,
+) -> tuple[str, str | None]:
+    """Promote incomplete rooming modes when a hard rule couples time and rooms.
+
+    Greedy rooming runs after the time master has finished.  A repeated weekly
+    room pattern can therefore make an otherwise feasible fixed-time incumbent
+    impossible to room.  The certificate-guided decomposition must participate
+    in the time search for that combination; a room-only retry cannot repair it.
+    """
+
+    mode = str(requested_room_mode)
+    if (
+        mode == "greedy"
+        and len(getattr(inst, "weeks", []) or []) > 1
+        and hard_flag(inst, "force_repeat_weekly_pattern", False)
+    ):
+        return (
+            "decomposed",
+            "force_repeat_weekly_pattern_requires_joint_time_room_search",
+        )
+    return mode, None
 
 
 def _min_cost_room_matching(
@@ -132,6 +184,8 @@ class TimetableSolver:
       - Modes:
           * "greedy" (fast): CP does not choose rooms. A greedy pass assigns rooms and co-locates clusters.
           * "cp_rooms" (slower): CP also chooses rooms with NoOverlap per real room and co-location inside clusters.
+          * "decomposed" (research): CP chooses times; an exact room subproblem either assigns rooms or
+            returns a Hall-deficiency/nogood certificate that is cut from the time master.
 
     Semester rules
       - First week must contain lectures only.
@@ -142,9 +196,21 @@ class TimetableSolver:
     """
 
     def __init__(self, inst: Instance, room_mode: str = "cp_rooms", *, use_objective: bool = True):
-        assert room_mode in ("greedy", "cp_rooms")
+        assert room_mode in ("greedy", "cp_rooms", "decomposed")
+        requested_room_mode = str(room_mode)
+        room_mode, resolution_reason = resolve_room_mode_for_hard_constraints(
+            inst,
+            requested_room_mode,
+        )
         self.inst = inst
         self.room_mode = room_mode
+        self.requested_room_mode = requested_room_mode
+        self.room_mode_resolution: Dict[str, object] = {
+            "requested": requested_room_mode,
+            "effective": str(room_mode),
+            "promoted": bool(str(room_mode) != requested_room_mode),
+            "reason": resolution_reason,
+        }
         self.use_objective = bool(use_objective)
 
         self.m = cp_model.CpModel()
@@ -188,6 +254,13 @@ class TimetableSolver:
         self.room_sel: Dict[Tuple[int, int], cp_model.BoolVar] = {}
         self.room_iv: Dict[Tuple[int, int], cp_model.IntervalVar] = {}
         self.room_candidate_limit: int = self._read_room_candidate_limit()
+        self.decomposition_report: Dict[str, object] = {}
+        self._last_room_cut_metadata: Dict[str, object] = {}
+        self.hint_report: Dict[str, object] = {}
+        self.assumption_report: Dict[str, object] = {}
+        self.symmetry_report: Dict[str, object] = {}
+        self._assumption_activity_by_literal: Dict[int, int] = {}
+        self._decomposed_room_assignment: Dict[int, int] = {}
 
         # build model
         self._precompute()
@@ -197,7 +270,228 @@ class TimetableSolver:
             self._add_objective()
         self._add_decision_strategy()
 
+    @classmethod
+    def validate_instance(cls, inst: Instance) -> None:
+        """Run the solver's global structural preflight without building CP variables.
+
+        Decomposed frontends use this hook before slicing an instance.  It keeps
+        semester totals and staff competency checks global while avoiding a
+        throwaway monolithic CP model.
+        """
+        checker = cls.__new__(cls)
+        checker.inst = inst
+        checker._validate_semester_rules()
+        checker._validate_staff_assignments()
+        checker._validate_block_professor_rules()
+
     # ---------- public API ----------
+
+    def add_solution_hint(
+        self,
+        schedule: Dict[int, Dict[str, object]],
+        *,
+        include_rooms: bool = True,
+    ) -> Dict[str, object]:
+        """Warm-start CP-SAT from a full or partial incumbent.
+
+        Hints do not constrain the model and may be ignored by CP-SAT. Values
+        outside the current start/room domains are skipped so repair calls stay
+        safe after an institutional policy change.
+        """
+        start_hints = 0
+        room_hints = 0
+        skipped: List[int] = []
+        for raw_activity_id, info in (schedule or {}).items():
+            try:
+                activity_id = int(raw_activity_id)
+            except (TypeError, ValueError):
+                continue
+            if activity_id not in self.start or not isinstance(info, dict):
+                skipped.append(activity_id)
+                continue
+            day = str(info.get("day", ""))
+            try:
+                slot = int(info.get("slot"))
+            except (TypeError, ValueError):
+                skipped.append(activity_id)
+                continue
+            if day not in self.days:
+                skipped.append(activity_id)
+                continue
+            start = self.days.index(day) * self.S + slot
+            if int(start) not in self.allowed_starts.get(activity_id, []):
+                skipped.append(activity_id)
+                continue
+            self.m.AddHint(self.start[activity_id], int(start))
+            start_hints += 1
+
+            if include_rooms and self.room_mode == "cp_rooms":
+                raw_room = info.get("room_id")
+                try:
+                    room_id = int(raw_room) if raw_room is not None else None
+                except (TypeError, ValueError):
+                    room_id = None
+                if room_id is not None and (activity_id, room_id) in self.room_sel:
+                    for candidate_room in self.allowed_rooms.get(activity_id, []):
+                        var = self.room_sel.get((activity_id, int(candidate_room)))
+                        if var is not None:
+                            self.m.AddHint(var, int(int(candidate_room) == room_id))
+                            room_hints += 1
+
+        self.hint_report = {
+            "start_hints": int(start_hints),
+            "room_literal_hints": int(room_hints),
+            "skipped_activity_ids": sorted(set(int(value) for value in skipped)),
+        }
+        return dict(self.hint_report)
+
+    def set_neighborhood_assumptions(
+        self,
+        schedule: Dict[int, Dict[str, object]],
+        *,
+        unlocked_activity_ids: Set[int] | List[int] | Tuple[int, ...],
+    ) -> Dict[str, object]:
+        """Fix the complement of an LNS neighborhood with reusable assumptions.
+
+        The underlying global model and objective are built once. Each repair
+        round changes only the assumption list and incumbent hint, avoiding a
+        full Python/model reconstruction while preserving exact hard semantics.
+        """
+        if self.room_mode != "cp_rooms" or not self.use_objective:
+            raise ValueError(
+                "Reusable neighborhood assumptions require CP rooms and an objective"
+            )
+        incumbent_ids = {
+            int(activity_id)
+            for activity_id in (schedule or {})
+            if int(activity_id) in self.inst.activities
+        }
+        missing_ids = sorted(set(int(value) for value in self.inst.activities) - incumbent_ids)
+        if missing_ids:
+            raise ValueError(
+                "Reusable neighborhood assumptions require a complete incumbent; "
+                f"missing activity ids {missing_ids[:10]}"
+            )
+        unlocked = {int(value) for value in unlocked_activity_ids}
+        assumptions: List[cp_model.BoolVar] = []
+        mapping: Dict[int, int] = {}
+        fixed_activities = 0
+        for raw_activity_id, info in (schedule or {}).items():
+            activity_id = int(raw_activity_id)
+            if activity_id in unlocked or activity_id not in self.inst.activities:
+                continue
+            if not isinstance(info, dict):
+                continue
+            day = str(info.get("day", ""))
+            if day not in self.days:
+                raise ValueError(f"Incumbent activity {activity_id} has invalid day {day!r}")
+            start = self.days.index(day) * self.S + int(info.get("slot", 0))
+            start_literal = self._start_literal(activity_id, int(start))
+            assumptions.append(start_literal)
+            mapping[int(start_literal.Index())] = int(activity_id)
+            room_id = info.get("room_id")
+            if room_id is not None:
+                room_literal = self.room_sel.get((activity_id, int(room_id)))
+                if room_literal is None:
+                    raise ValueError(
+                        f"Incumbent room {room_id} is outside activity {activity_id}'s domain"
+                    )
+                assumptions.append(room_literal)
+                mapping[int(room_literal.Index())] = int(activity_id)
+            fixed_activities += 1
+
+        self.m.ClearAssumptions()
+        self.m.AddAssumptions(assumptions)
+        self.m.ClearHints()
+        self.add_solution_hint(schedule, include_rooms=True)
+        self._assumption_activity_by_literal = mapping
+        self.assumption_report = {
+            "unlocked_activities": int(len(unlocked)),
+            "fixed_activities": int(fixed_activities),
+            "assumption_literals": int(len(assumptions)),
+        }
+        return dict(self.assumption_report)
+
+    def set_fixed_time_room_assumptions(
+        self,
+        schedule: Dict[int, Dict[str, object]],
+    ) -> Dict[str, object]:
+        """Fix every incumbent start while leaving all room choices free.
+
+        The assumptions expose the exact room subproblem of the already-built
+        global model.  Room locks, availability, capacity, co-location,
+        travel, resources, and institution-specific relations therefore keep
+        their normal CP semantics; only day/slot decisions are frozen.
+        """
+        if self.room_mode != "cp_rooms" or not self.use_objective:
+            raise ValueError(
+                "Fixed-time room assumptions require CP rooms and an objective"
+            )
+        incumbent_ids = {
+            int(activity_id)
+            for activity_id in (schedule or {})
+            if int(activity_id) in self.inst.activities
+        }
+        missing_ids = sorted(set(int(value) for value in self.inst.activities) - incumbent_ids)
+        if missing_ids:
+            raise ValueError(
+                "Fixed-time room assumptions require a complete incumbent; "
+                f"missing activity ids {missing_ids[:10]}"
+            )
+
+        assumptions: List[cp_model.BoolVar] = []
+        mapping: Dict[int, int] = {}
+        for activity_id in sorted(int(value) for value in self.inst.activities):
+            info = schedule.get(activity_id)
+            if not isinstance(info, dict):
+                raise ValueError(f"Incumbent activity {activity_id} has no schedule row")
+            day = str(info.get("day", ""))
+            if day not in self.days:
+                raise ValueError(f"Incumbent activity {activity_id} has invalid day {day!r}")
+            try:
+                slot = int(info.get("slot"))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Incumbent activity {activity_id} has an invalid slot"
+                ) from exc
+            start = self.days.index(day) * self.S + slot
+            start_literal = self._start_literal(activity_id, int(start))
+            assumptions.append(start_literal)
+            mapping[int(start_literal.Index())] = int(activity_id)
+
+        self.m.ClearAssumptions()
+        self.m.AddAssumptions(assumptions)
+        self.m.ClearHints()
+        self.add_solution_hint(schedule, include_rooms=True)
+        self._assumption_activity_by_literal = mapping
+        self.assumption_report = {
+            "mode": "fixed_time_room_dive",
+            "fixed_start_activities": int(len(assumptions)),
+            "free_room_activities": int(len(self.inst.activities)),
+            "assumption_literals": int(len(assumptions)),
+        }
+        return dict(self.assumption_report)
+
+    def assumption_core_activity_ids(
+        self,
+        solver: cp_model.CpSolver,
+        *,
+        raw_status: int | None = None,
+    ) -> List[int]:
+        """Map an infeasible CP-SAT assumption core back to activity ids."""
+        if raw_status is None or int(raw_status) != int(cp_model.INFEASIBLE):
+            return []
+        activity_ids: Set[int] = set()
+        for raw_literal in solver.SufficientAssumptionsForInfeasibility():
+            literal_index = int(raw_literal)
+            # OR-Tools encodes a negated literal as -index-1. We currently add
+            # positive assumptions, but normalize defensively for future arms.
+            if literal_index < 0:
+                literal_index = -literal_index - 1
+            activity_id = self._assumption_activity_by_literal.get(literal_index)
+            if activity_id is not None:
+                activity_ids.add(int(activity_id))
+        return sorted(activity_ids)
 
     @staticmethod
     def _read_room_candidate_limit() -> int:
@@ -206,8 +500,22 @@ class TimetableSolver:
             try:
                 return max(0, int(raw))
             except Exception:
-                return 24
-        return 24
+                return 0
+        return 0
+
+    def _start_literal(self, activity_id: int, start: int) -> cp_model.BoolVar:
+        """Return a lazily-created literal equivalent to ``start[a] == value``."""
+        key = (int(activity_id), int(start))
+        literal = self.x.get(key)
+        if literal is not None:
+            return literal
+        if int(start) not in self.allowed_starts[int(activity_id)]:
+            raise ValueError(f"Start {start} is outside activity {activity_id}'s domain")
+        literal = self.m.NewBoolVar(f"x[{int(activity_id)},{int(start)}]")
+        self.m.Add(self.start[int(activity_id)] == int(start)).OnlyEnforceIf(literal)
+        self.m.Add(self.start[int(activity_id)] != int(start)).OnlyEnforceIf(literal.Not())
+        self.x[key] = literal
+        return literal
 
     def solve(
         self,
@@ -216,6 +524,13 @@ class TimetableSolver:
         random_seed: Optional[int] = None,
         log_progress: bool = False,
     ):
+        if self.room_mode == "decomposed":
+            return self._solve_decomposed(
+                time_limit_seconds=time_limit_seconds,
+                workers=workers,
+                random_seed=random_seed,
+                log_progress=log_progress,
+            )
         solver = cp_model.CpSolver()
         if time_limit_seconds is not None:
             solver.parameters.max_time_in_seconds = float(time_limit_seconds)
@@ -229,6 +544,561 @@ class TimetableSolver:
             solver.parameters.log_to_stdout = True
         status = solver.Solve(self.m)
         return solver, status
+
+    def _extract_time_solution(self, solver: cp_model.CpSolver) -> Dict[int, Dict[str, object]]:
+        out: Dict[int, Dict[str, object]] = {}
+        for a_id, act in self.inst.activities.items():
+            t = int(solver.Value(self.start[a_id]))
+            day_index = t // self.S
+            out[int(a_id)] = {
+                "room_id": None,
+                "staff_id": int(self.activity_staff[a_id]),
+                "week": int(act.week),
+                "day": str(self.days[day_index]),
+                "slot": int(t % self.S),
+                "duration": int(act.duration),
+                "group_ids": [int(value) for value in act.group_ids],
+                "course_id": int(act.course_id),
+                "kind": str(act.kind),
+            }
+        return out
+
+    def _room_job_members(self, representative: int) -> Tuple[int, ...]:
+        activity = self.inst.activities[int(representative)]
+        for cluster in self.clusters_by_week_kind.get(int(activity.week), {}).get(
+            str(activity.kind),
+            [],
+        ):
+            if int(representative) in {int(value) for value in cluster}:
+                return tuple(sorted(int(value) for value in cluster))
+        return (int(representative),)
+
+    def _contextual_hall_cut_spec(
+        self,
+        certificate: RoomConflictCertificate,
+        schedule: Dict[int, Dict[str, object]],
+        representatives: List[int],
+    ) -> Tuple[List[cp_model.IntVar], Dict[str, object]] | Tuple[None, str]:
+        if certificate.certificate_type != "hall_deficiency":
+            return None, "certificate_is_not_hall_deficiency"
+        if certificate.week is None or certificate.day is None or certificate.slot is None:
+            return None, "hall_witness_has_no_fixed_slot"
+        if str(certificate.day) not in self.days:
+            return None, "hall_witness_day_is_outside_master_calendar"
+
+        certificate_payload = certificate.to_dict()
+        certificate_check = check_hall_certificate(self.inst, certificate_payload)
+        if not certificate_check.valid:
+            return None, f"hall_certificate_check_failed:{certificate_check.errors[0]}"
+
+        witness_rooms = {int(value) for value in certificate.candidate_room_ids}
+        if any(room_id not in self.inst.rooms for room_id in witness_rooms):
+            return None, "hall_witness_references_unknown_room"
+        if len(representatives) <= len(witness_rooms):
+            return None, "hall_witness_is_not_deficient"
+
+        witness_week = int(certificate.week)
+        witness_day = str(certificate.day)
+        witness_slot = int(certificate.slot)
+        term_keys: List[Tuple[int, int]] = []
+        counted_starts: List[Dict[str, object]] = []
+        derived_gamma_rooms: Set[int] = set()
+        incumbent_starts: Dict[int, int] = {}
+        covering_counts: Dict[str, int] = {}
+        proven_counts: Dict[str, int] = {}
+        expanded_counts: Dict[str, int] = {}
+        infeasible_cluster_counts: Dict[str, int] = {}
+        proof_jobs = {
+            int(job["representative_activity_id"]): job
+            for job in certificate.proof.get("representative_jobs", [])
+            if isinstance(job, dict)
+            and job.get("representative_activity_id") is not None
+        }
+        proof_members: Set[int] = set()
+
+        for representative in representatives:
+            activity = self.inst.activities[int(representative)]
+            if int(activity.week) != witness_week:
+                return None, "hall_representative_week_differs_from_witness"
+            members = self._room_job_members(int(representative))
+            proof_job = proof_jobs.get(int(representative))
+            if proof_job is None or tuple(
+                int(value) for value in proof_job.get("member_activity_ids", [])
+            ) != members:
+                return None, "hall_job_members_differ_from_master_cluster"
+            proof_members.update(members)
+            duration = max(
+                int(self.inst.activities[activity_id].duration)
+                for activity_id in members
+            )
+            proven_starts: set[int] = set()
+            covering = 0
+            expanded = 0
+            infeasible_cluster = 0
+            for start in self.allowed_starts[int(representative)]:
+                day_index = int(start) // self.S
+                start_slot = int(start) % self.S
+                if (
+                    self.days[day_index] != witness_day
+                    or not start_slot <= witness_slot < start_slot + duration
+                ):
+                    continue
+                covering += 1
+                if any(
+                    int(start) not in self.allowed_starts[int(member)]
+                    for member in members
+                ):
+                    infeasible_cluster += 1
+                    continue
+                try:
+                    candidate_domain = set(
+                        candidate_rooms_for_members(
+                            self.inst,
+                            members,
+                            week=witness_week,
+                            day=witness_day,
+                            start_slot=start_slot,
+                            duration=duration,
+                        )
+                    )
+                except Exception as exc:
+                    return None, f"candidate_domain_error:{type(exc).__name__}"
+                if candidate_domain.issubset(witness_rooms):
+                    term_keys.append((int(representative), int(start)))
+                    proven_starts.add(int(start))
+                    derived_gamma_rooms.update(candidate_domain)
+                    counted_starts.append(
+                        {
+                            "representative_activity_id": int(representative),
+                            "member_activity_ids": [
+                                int(value) for value in members
+                            ],
+                            "start": int(start),
+                            "effective_room_ids": sorted(
+                                int(value) for value in candidate_domain
+                            ),
+                            "domain_assumptions": {
+                                "domain_rule": EFFECTIVE_DOMAIN_RULE,
+                                "member_activity_ids": [
+                                    int(value) for value in members
+                                ],
+                                "week": int(witness_week),
+                                "day": str(witness_day),
+                                "start_slot": int(start_slot),
+                                "duration": int(duration),
+                            },
+                        }
+                    )
+                else:
+                    expanded += 1
+
+            info = schedule.get(int(representative))
+            if info is None or str(info.get("day")) not in self.days:
+                return None, "incumbent_representative_start_is_missing"
+            incumbent_start = (
+                self.days.index(str(info["day"])) * self.S + int(info["slot"])
+            )
+            if incumbent_start not in proven_starts:
+                return None, "incumbent_domain_is_not_contained_in_hall_witness"
+            incumbent_starts[int(representative)] = int(incumbent_start)
+            key = str(int(representative))
+            covering_counts[key] = int(covering)
+            proven_counts[key] = int(len(proven_starts))
+            expanded_counts[key] = int(expanded)
+            infeasible_cluster_counts[key] = int(infeasible_cluster)
+
+        rhs = len(derived_gamma_rooms)
+        if len(representatives) <= rhs:
+            return None, "contextual_hall_cut_does_not_exclude_incumbent"
+        if len(term_keys) <= rhs:
+            return None, "contextual_hall_cut_has_insufficient_terms"
+        strengthened = bool(
+            len(term_keys) > len(representatives)
+            or rhs < max(0, len(representatives) - 1)
+        )
+        if not strengthened:
+            return None, "no_additional_domain_monotone_start"
+
+        counted_starts.sort(
+            key=lambda item: (
+                int(item["representative_activity_id"]),
+                int(item["start"]),
+            )
+        )
+        metadata: Dict[str, object] = {
+            "schema_version": CONTEXTUAL_CUT_SCHEMA,
+            "cut_kind": "contextual_hall",
+            "certificate_id": str(certificate.certificate_id),
+            "certificate_type": str(certificate.certificate_type),
+            "representative_activity_ids": list(representatives),
+            "witness_room_ids": sorted(witness_rooms),
+            "derived_gamma_room_ids": sorted(derived_gamma_rooms),
+            "room_context_id": room_context_id(self.inst),
+            "week": witness_week,
+            "day": witness_day,
+            "slot": witness_slot,
+            "rhs": int(rhs),
+            "term_count": int(len(term_keys)),
+            "incumbent_term_count": int(len(representatives)),
+            "strengthened": bool(strengthened),
+            "incumbent_starts": {
+                str(activity_id): int(start)
+                for activity_id, start in sorted(incumbent_starts.items())
+            },
+            "covering_start_counts": covering_counts,
+            "proven_subset_start_counts": proven_counts,
+            "excluded_expanded_domain_start_counts": expanded_counts,
+            "excluded_infeasible_cluster_start_counts": infeasible_cluster_counts,
+            "master_start_domains": {
+                str(activity_id): sorted(
+                    int(value) for value in self.allowed_starts[activity_id]
+                )
+                for activity_id in sorted(proof_members)
+            },
+            "counted_starts": counted_starts,
+            "proof_rule": CONTEXTUAL_CUT_RULE,
+        }
+        metadata["cut_id"] = cut_id_for_inequality(counted_starts, int(rhs))
+        metadata["derivation_id"] = derivation_id_for_payload(metadata)
+        derivation_check = check_contextual_hall_derivation(
+            self.inst,
+            certificate_payload,
+            metadata,
+        )
+        if not derivation_check.valid:
+            return None, f"contextual_cut_check_failed:{derivation_check.errors[0]}"
+        terms = [
+            self._start_literal(int(representative), int(start))
+            for representative, start in term_keys
+        ]
+        return terms, metadata
+
+    def _add_room_certificate_cut(
+        self,
+        certificate: RoomConflictCertificate,
+        schedule: Dict[int, Dict[str, object]],
+    ) -> bool:
+        self._last_room_cut_metadata = {}
+        representatives = sorted({
+            int(activity_id)
+            for activity_id in certificate.representative_activity_ids
+            if int(activity_id) in self.inst.activities
+        })
+        if not representatives:
+            return False
+
+        contextual, fallback_reason = self._contextual_hall_cut_spec(
+            certificate,
+            schedule,
+            representatives,
+        )
+        if contextual is not None:
+            terms, metadata = contextual, fallback_reason
+            self.m.Add(sum(terms) <= int(metadata["rhs"]))
+            self._last_room_cut_metadata = dict(metadata)
+            return True
+
+        # Generic room-model certificates, malformed Hall witnesses, and any
+        # candidate-domain proof uncertainty retain the universally sound exact
+        # incumbent nogood.
+        exact_terms = []
+        exact_term_specs: List[Dict[str, int]] = []
+        for activity_id in representatives:
+            info = schedule.get(activity_id)
+            if info is None or str(info["day"]) not in self.days:
+                self._last_room_cut_metadata = {
+                    "cut_kind": "uncuttable",
+                    "certificate_type": str(certificate.certificate_type),
+                    "reason": "incumbent_representative_start_is_missing",
+                }
+                return False
+            start = self.days.index(str(info["day"])) * self.S + int(info["slot"])
+            exact_terms.append(self._start_literal(activity_id, int(start)))
+            exact_term_specs.append(
+                {
+                    "representative_activity_id": int(activity_id),
+                    "start": int(start),
+                }
+            )
+        self.m.Add(sum(exact_terms) <= len(exact_terms) - 1)
+        fallback_metadata: Dict[str, object] = {
+            "schema_version": "planora.exact-room-nogood.v1",
+            "cut_kind": "exact_incumbent_nogood",
+            "certificate_id": str(certificate.certificate_id),
+            "certificate_type": str(certificate.certificate_type),
+            "representative_activity_ids": list(representatives),
+            "witness_room_ids": [
+                int(room_id) for room_id in certificate.candidate_room_ids
+            ],
+            "week": certificate.week,
+            "day": certificate.day,
+            "slot": certificate.slot,
+            "term_count": int(len(exact_terms)),
+            "rhs": int(len(exact_terms) - 1),
+            "strengthened": False,
+            "fallback_reason": str(fallback_reason),
+            "proof_rule": "exclude-exact-incumbent-representative-starts.v1",
+        }
+        fallback_metadata["cut_id"] = cut_id_for_inequality(
+            exact_term_specs,
+            len(exact_terms) - 1,
+        )
+        fallback_metadata["derivation_id"] = derivation_id_for_payload(
+            fallback_metadata
+        )
+        self._last_room_cut_metadata = fallback_metadata
+        return True
+
+    def _solve_decomposed(
+        self,
+        *,
+        time_limit_seconds: Optional[float],
+        workers: Optional[int],
+        random_seed: Optional[int],
+        log_progress: bool,
+    ):
+        started = time.perf_counter()
+        budget_seconds = (
+            None
+            if time_limit_seconds is None
+            else max(0.0, float(time_limit_seconds))
+        )
+        deadline = (
+            None
+            if budget_seconds is None
+            else float(started) + float(budget_seconds)
+        )
+        max_rounds_raw = os.getenv("TT_DECOMPOSITION_MAX_ROUNDS", "100")
+        try:
+            max_rounds = max(1, int(max_rounds_raw))
+        except Exception:
+            max_rounds = 100
+        report_rounds: List[Dict[str, object]] = []
+        cuts_added = 0
+        cut_kind_counts: DefaultDict[str, int] = defaultdict(int)
+        last_solver = cp_model.CpSolver()
+
+        def remaining_seconds() -> float | None:
+            if deadline is None:
+                return None
+            return max(0.0, float(deadline) - time.perf_counter())
+
+        def proof_status(raw_status: int, *, solution_available: bool) -> str:
+            if solution_available:
+                if self.use_objective and int(raw_status) == int(cp_model.OPTIMAL):
+                    return "optimal"
+                return "feasible_incumbent"
+            if int(raw_status) == int(cp_model.INFEASIBLE):
+                return "infeasible"
+            if int(raw_status) == int(cp_model.MODEL_INVALID):
+                return "model_invalid"
+            return "no_solution"
+
+        def objective_metrics(
+            solver: cp_model.CpSolver | None,
+            raw_status: int,
+        ) -> Dict[str, float | None]:
+            objective_value: float | None = None
+            best_bound: float | None = None
+            if self.use_objective and solver is not None:
+                if int(raw_status) in (int(cp_model.OPTIMAL), int(cp_model.FEASIBLE)):
+                    try:
+                        objective_value = float(solver.ObjectiveValue())
+                    except Exception:
+                        objective_value = None
+                try:
+                    best_bound = float(solver.BestObjectiveBound())
+                except Exception:
+                    best_bound = None
+            relative_gap: float | None = None
+            if objective_value is not None and best_bound is not None:
+                relative_gap = max(
+                    0.0,
+                    float(objective_value) - float(best_bound),
+                ) / max(1.0, abs(float(objective_value)))
+            return {
+                "objective_value": objective_value,
+                "best_objective_bound": best_bound,
+                "relative_gap": relative_gap,
+            }
+
+        def store_report(
+            status_name: str,
+            *,
+            raw_status: int = int(cp_model.UNKNOWN),
+            solver_for_bounds: cp_model.CpSolver | None = None,
+            solution_available: bool = False,
+            extra: Dict[str, object] | None = None,
+        ) -> None:
+            elapsed_seconds = float(time.perf_counter() - started)
+            report: Dict[str, object] = {
+                "status": str(status_name),
+                "room_mode_resolution": dict(self.room_mode_resolution),
+                "rounds": report_rounds,
+                "cuts_added": int(cuts_added),
+                "cut_kind_counts": dict(sorted(cut_kind_counts.items())),
+                "budget_seconds": budget_seconds,
+                "elapsed_seconds": elapsed_seconds,
+                "wall_seconds": elapsed_seconds,
+                "deadline_overrun_seconds": (
+                    0.0
+                    if budget_seconds is None
+                    else max(0.0, elapsed_seconds - float(budget_seconds))
+                ),
+                "budget_exhausted": bool(
+                    deadline is not None and time.perf_counter() >= float(deadline)
+                ),
+                "proof_status": proof_status(
+                    int(raw_status),
+                    solution_available=bool(solution_available),
+                ),
+                "proof_scope": (
+                    "decomposed_time_objective_with_exact_room_feasibility"
+                    if self.use_objective
+                    else "decomposed_feasibility"
+                ),
+                "objective_scope": (
+                    "time_master" if self.use_objective else None
+                ),
+                **objective_metrics(solver_for_bounds, int(raw_status)),
+            }
+            if extra:
+                report.update(extra)
+            self.decomposition_report = report
+
+        for round_index in range(max_rounds):
+            remaining = remaining_seconds()
+            if remaining is not None and remaining <= 0:
+                store_report("TIME_LIMIT")
+                return last_solver, cp_model.UNKNOWN
+
+            room_reserve_seconds = 0.0
+            master_budget_seconds = remaining
+            if remaining is not None:
+                room_reserve_seconds = min(
+                    1.5,
+                    max(0.05, float(remaining) * 0.12),
+                    float(remaining) * 0.40,
+                )
+                master_budget_seconds = max(
+                    0.0,
+                    float(remaining) - float(room_reserve_seconds),
+                )
+            if master_budget_seconds is not None and master_budget_seconds <= 0:
+                store_report("TIME_LIMIT")
+                return last_solver, cp_model.UNKNOWN
+
+            solver = cp_model.CpSolver()
+            if master_budget_seconds is not None:
+                solver.parameters.max_time_in_seconds = float(master_budget_seconds)
+            if workers is not None:
+                solver.parameters.num_search_workers = int(workers)
+            if random_seed is not None:
+                solver.parameters.random_seed = int(random_seed)
+            solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH
+            if log_progress:
+                solver.parameters.log_search_progress = True
+                solver.parameters.log_to_stdout = True
+            master_started = time.perf_counter()
+            master_status = int(solver.Solve(self.m))
+            master_elapsed_seconds = float(time.perf_counter() - master_started)
+            last_solver = solver
+            master_metrics = objective_metrics(solver, int(master_status))
+            round_row: Dict[str, object] = {
+                "round": int(round_index + 1),
+                "remaining_at_start_seconds": remaining,
+                "master_budget_seconds": master_budget_seconds,
+                "room_reserve_seconds": float(room_reserve_seconds),
+                "master_status": str(cp_model.CpSolverStatus(master_status)),
+                "master_seconds": float(solver.WallTime()),
+                "master_elapsed_seconds": master_elapsed_seconds,
+                "master_proof_status": proof_status(
+                    int(master_status),
+                    solution_available=master_status
+                    in (int(cp_model.OPTIMAL), int(cp_model.FEASIBLE)),
+                ),
+                **master_metrics,
+            }
+            report_rounds.append(round_row)
+            if master_status not in (int(cp_model.OPTIMAL), int(cp_model.FEASIBLE)):
+                store_report(
+                    str(cp_model.CpSolverStatus(master_status)),
+                    raw_status=int(master_status),
+                    solver_for_bounds=solver,
+                )
+                return solver, master_status
+
+            schedule = self._extract_time_solution(solver)
+            room_setup_started = time.perf_counter()
+            room_subproblem = ExactRoomSubproblem(
+                self.inst,
+                schedule,
+                clusters_by_week_kind=self.clusters_by_week_kind,
+                repeat_pattern_pairs=self._repeat_week_pattern_pairs(),
+                optimize=self.use_objective,
+            )
+            round_row["room_setup_seconds"] = float(
+                time.perf_counter() - room_setup_started
+            )
+            remaining = remaining_seconds()
+            if remaining is not None and remaining <= 0:
+                store_report(
+                    "TIME_LIMIT",
+                    raw_status=int(master_status),
+                    solver_for_bounds=solver,
+                )
+                return solver, cp_model.UNKNOWN
+            room_result = room_subproblem.solve(
+                time_limit_seconds=remaining,
+                workers=1,
+                random_seed=random_seed,
+            )
+            round_row["room_subproblem"] = room_result.to_dict()
+            if room_result.feasible:
+                self._decomposed_room_assignment = dict(room_result.assignments)
+                store_report(
+                    "FEASIBLE",
+                    raw_status=int(master_status),
+                    solver_for_bounds=solver,
+                    solution_available=True,
+                    extra={
+                        "room_objective_value": room_result.objective_value,
+                        "room_best_objective_bound": room_result.best_objective_bound,
+                        "room_relative_gap": room_result.relative_gap,
+                        "room_proof": dict(room_result.proof),
+                    },
+                )
+                return solver, master_status
+            if int(room_result.status) == int(cp_model.UNKNOWN):
+                store_report(
+                    "ROOM_SUBPROBLEM_TIME_LIMIT",
+                    raw_status=int(master_status),
+                    solver_for_bounds=solver,
+                )
+                return solver, cp_model.UNKNOWN
+
+            added_this_round = 0
+            room_cuts: List[Dict[str, object]] = []
+            for certificate in room_result.certificates:
+                if self._add_room_certificate_cut(certificate, schedule):
+                    added_this_round += 1
+                    cut_metadata = dict(self._last_room_cut_metadata)
+                    room_cuts.append(cut_metadata)
+                    cut_kind = str(cut_metadata.get("cut_kind", "unknown"))
+                    cut_kind_counts[cut_kind] += 1
+            cuts_added += added_this_round
+            round_row["cuts_added"] = int(added_this_round)
+            round_row["room_cuts"] = room_cuts
+            if added_this_round == 0:
+                store_report(
+                    "UNCUTTABLE_CERTIFICATE",
+                    raw_status=int(master_status),
+                    solver_for_bounds=solver,
+                )
+                return solver, cp_model.UNKNOWN
+
+        store_report("ROUND_LIMIT")
+        return last_solver, cp_model.UNKNOWN
 
     def extract_solution(self, solver: cp_model.CpSolver):
         inst = self.inst
@@ -244,6 +1114,13 @@ class TimetableSolver:
                         rid = r
                         break
                 chosen_room[a_id] = rid
+        elif self.room_mode == "decomposed":
+            if len(self._decomposed_room_assignment) != len(inst.activities):
+                raise ValueError("No complete exact room assignment is available")
+            chosen_room = {
+                int(a_id): int(self._decomposed_room_assignment[int(a_id)])
+                for a_id in inst.activities
+            }
         else:
             for a_id in inst.activities.keys():
                 chosen_room[a_id] = None
@@ -474,6 +1351,24 @@ class TimetableSolver:
             if max_start_slot < 0:
                 raise ValueError(f"Activity {a_id} duration {act.duration} exceeds day slots {self.S}")
 
+            forbidden_starts = {
+                (str(pair[0]), int(pair[1]))
+                for pair in (getattr(inst, "activity_unavailability", {}) or {}).get(
+                    int(a_id), set()
+                )
+                if isinstance(pair, (list, tuple)) and len(pair) == 2
+            }
+            policy = getattr(inst, "institutional_policy", {}) or {}
+            configured_starts = policy.get("standard_start_slots", [])
+            if isinstance(configured_starts, dict):
+                configured_starts = configured_starts.get(
+                    str(act.kind),
+                    configured_starts.get("default", []),
+                )
+            standard_starts = {
+                int(value) for value in (configured_starts or [])
+            }
+            allowed_day_slots = policy.get("allowed_day_slots", {}) or {}
             times: List[int] = []
             for d_idx in range(self.D):
                 if d_idx not in allowed_day_idx:
@@ -481,6 +1376,22 @@ class TimetableSolver:
                 if calendar_slot_blocked(inst, week=int(act.week), day=str(self.days[d_idx])):
                     continue
                 for s in range(max_start_slot + 1):
+                    if (
+                        self._hard_flag("enforce_standard_start_slots", False)
+                        and standard_starts
+                        and int(s) not in standard_starts
+                    ):
+                        continue
+                    configured_day_slots = allowed_day_slots.get(
+                        str(self.days[d_idx]),
+                        allowed_day_slots.get("default"),
+                    )
+                    if configured_day_slots is not None and int(s) not in {
+                        int(value) for value in configured_day_slots
+                    }:
+                        continue
+                    if (str(self.days[d_idx]), int(s)) in forbidden_starts:
+                        continue
                     if not generic_resources_available(
                         inst,
                         getattr(act, "resource_ids", []) or [],
@@ -580,13 +1491,9 @@ class TimetableSolver:
 
         def required_capacity(act_id: int) -> int:
             gids = inst.activities[act_id].group_ids
-            return sum(inst.groups[g].size for g in gids if g in inst.groups)
+            return capacity_required(inst, gids)
 
         def trim_room_candidates(a_id: int, rooms: List[int], need: int, kind: str) -> List[int]:
-            limit = int(getattr(self, "room_candidate_limit", 0) or 0)
-            if limit <= 0 or len(rooms) <= limit:
-                return list(rooms)
-
             locks = getattr(inst, "locked_activities", {}) or {}
             locked_room = None
             fixed = locks.get(a_id) if isinstance(locks, dict) else None
@@ -595,6 +1502,19 @@ class TimetableSolver:
                     locked_room = int(fixed["room_id"])
                 except Exception:
                     locked_room = None
+            if locked_room is not None:
+                if int(locked_room) not in {int(room_id) for room_id in rooms}:
+                    raise ValueError(
+                        f"Locked activity {a_id}: room_id {locked_room} is not eligible"
+                    )
+                # A singleton room domain removes all redundant room literals
+                # from exact LNS/incremental models instead of creating and then
+                # constraining one literal for every institutional room.
+                return [int(locked_room)]
+
+            limit = int(getattr(self, "room_candidate_limit", 0) or 0)
+            if limit <= 0 or len(rooms) <= limit:
+                return list(rooms)
 
             def rank(room_id: int) -> tuple[int, int, int]:
                 room = inst.rooms[int(room_id)]
@@ -620,32 +1540,44 @@ class TimetableSolver:
                 start = (int(a_id) * 7) % len(pool)
                 for offset in range(min(remaining, len(pool))):
                     selected.append(pool[(start + offset) % len(pool)])
-            if locked_room is not None and locked_room in rooms and locked_room not in selected:
-                if selected:
-                    selected[-1] = int(locked_room)
-                else:
-                    selected.append(int(locked_room))
             return list(dict.fromkeys(selected))
 
         for a_id, act in inst.activities.items():
             rooms: List[int] = []
             need = required_capacity(a_id)
+            enforce_capacity = self._hard_flag("enforce_room_capacity", True)
             if act.kind == "LAB":
                 req = getattr(act, "requires_specialization", None)
                 lab_candidates = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("SPECIALIZED_LAB", "COMPUTER_LAB")]
                 if req:
                     for r_id in lab_candidates:
                         tags = getattr(inst.rooms[r_id], "specialization_tags", []) or []
-                        if req in tags and inst.rooms[r_id].capacity >= need:
+                        if req in tags and (
+                            not enforce_capacity or inst.rooms[r_id].capacity >= need
+                        ):
                             rooms.append(r_id)
                     if not rooms:
                         raise ValueError(f"Activity {a_id} requires specialized lab '{req}' but no matching room exists")
                 else:
-                    rooms = [r_id for r_id in lab_candidates if inst.rooms[r_id].capacity >= need]
+                    rooms = [
+                        r_id
+                        for r_id in lab_candidates
+                        if not enforce_capacity or inst.rooms[r_id].capacity >= need
+                    ]
             elif act.kind == "TUT":
-                rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type in ("TUTORIAL", "LECTURE") and r.capacity >= need]
+                rooms = [
+                    r_id
+                    for r_id, r in inst.rooms.items()
+                    if r.room_type in ("TUTORIAL", "LECTURE")
+                    and (not enforce_capacity or r.capacity >= need)
+                ]
             else:  # LEC
-                rooms = [r_id for r_id, r in inst.rooms.items() if r.room_type == "LECTURE" and r.capacity >= need]
+                rooms = [
+                    r_id
+                    for r_id, r in inst.rooms.items()
+                    if r.room_type == "LECTURE"
+                    and (not enforce_capacity or r.capacity >= need)
+                ]
 
             if not rooms:
                 raise ValueError(f"No eligible rooms for activity {a_id} ({act.kind})")
@@ -718,17 +1650,20 @@ class TimetableSolver:
         for a_id, act in inst.activities.items():
             allowed = self.allowed_starts[a_id]
 
-            s_var = m.NewIntVar(0, self.T_week - 1, f"start[{a_id}]")
+            s_var = m.NewIntVarFromDomain(
+                cp_model.Domain.FromValues([int(value) for value in allowed]),
+                f"start[{a_id}]",
+            )
             self.start[a_id] = s_var
             self._dec_start_ints.append(s_var)
-
-            picks: List[cp_model.BoolVar] = []
-            for t in allowed:
-                b = m.NewBoolVar(f"x[{a_id},{t}]")
-                self.x[(a_id, t)] = b
-                picks.append(b)
-            m.Add(sum(picks) == 1)
-            m.Add(s_var == sum(t * self.x[(a_id, t)] for t in allowed))
+            if self.use_objective:
+                picks: List[cp_model.BoolVar] = []
+                for t in allowed:
+                    literal = m.NewBoolVar(f"x[{a_id},{t}]")
+                    self.x[(int(a_id), int(t))] = literal
+                    picks.append(literal)
+                m.AddExactlyOne(picks)
+                m.Add(s_var == sum(int(t) * self.x[(int(a_id), int(t))] for t in allowed))
 
             e_var = m.NewIntVar(0, self.T_week, f"end[{a_id}]")
             m.Add(e_var == s_var + act.duration)
@@ -762,19 +1697,15 @@ class TimetableSolver:
             for res_id, resource in inst.generic_resources.items():
                 cap = max(1, int(getattr(resource, "capacity", 1) or 1))
                 for w in self.weeks:
-                    for tau in range(self.T_week):
-                        terms: List[cp_model.BoolVar] = []
-                        for a_id, act in inst.activities.items():
-                            if int(act.week) != int(w):
-                                continue
-                            if int(res_id) not in set(int(r) for r in (getattr(act, "resource_ids", []) or [])):
-                                continue
-                            dur = int(act.duration)
-                            for t in self.allowed_starts[a_id]:
-                                if int(t) <= int(tau) < int(t) + int(dur):
-                                    terms.append(self.x[(a_id, t)])
-                        if terms:
-                            m.Add(sum(terms) <= int(cap))
+                    intervals = [
+                        self.interval[int(a_id)]
+                        for a_id, act in inst.activities.items()
+                        if int(act.week) == int(w)
+                        and int(res_id)
+                        in {int(value) for value in (getattr(act, "resource_ids", []) or [])}
+                    ]
+                    if intervals:
+                        m.AddCumulative(intervals, [1] * len(intervals), int(cap))
 
         if self._hard_flag("enforce_block_professor_rules", True):
             # Block staff: at most two distinct days per week
@@ -789,7 +1720,7 @@ class TimetableSolver:
                             continue
                         for t in self.allowed_starts[a_id]:
                             d_idx = t // self.S
-                            m.Add(y_day[d_idx] >= self.x[(a_id, t)])
+                            m.Add(y_day[d_idx] >= self._start_literal(a_id, t))
                     m.Add(sum(y_day.values()) <= 2)
 
             # Block-only professor lecture blocks (per course/week): single 2–3-slot contiguous block on one day.
@@ -825,8 +1756,9 @@ class TimetableSolver:
                                     if d_idx != d:
                                         continue
                                     if s0 <= s < s0 + act.duration:
-                                        terms.append(self.x[(a_id, t)])
-                                        m.Add(b >= self.x[(a_id, t)])
+                                        literal = self._start_literal(a_id, t)
+                                        terms.append(literal)
+                                        m.Add(b >= literal)
                             if terms:
                                 m.Add(sum(terms) >= b)
                             else:
@@ -844,7 +1776,7 @@ class TimetableSolver:
                         for a_id in lec_ids:
                             act = inst.activities[a_id]
                             for t in self.allowed_starts[a_id]:
-                                total_slots_terms.append(act.duration * self.x[(a_id, t)])
+                                total_slots_terms.append(act.duration * self._start_literal(a_id, t))
                         total_slots = sum(total_slots_terms)
                         m.Add(total_slots >= 2)
                         m.Add(total_slots <= 3)
@@ -879,7 +1811,7 @@ class TimetableSolver:
                         if act.week != w or self.activity_staff[a_id] != s_id:
                             continue
                         for t in self.allowed_starts[a_id]:
-                            terms.append(act.duration * self.x[(a_id, t)])
+                            terms.append(act.duration * self._start_literal(a_id, t))
                     if terms:
                         m.Add(sum(terms) <= int(cap))
 
@@ -897,7 +1829,7 @@ class TimetableSolver:
                                 continue
                             for t in self.allowed_starts[a_id]:
                                 if (t // self.S) == d_idx:
-                                    terms.append(act.duration * self.x[(a_id, t)])
+                                    terms.append(act.duration * self._start_literal(a_id, t))
                         if terms:
                             m.Add(sum(terms) <= int(cap))
 
@@ -939,20 +1871,6 @@ class TimetableSolver:
             for leader, follower in repeat_pattern_pairs:
                 m.Add(self.start[int(follower)] == self.start[int(leader)])
 
-        # Symmetry breaking for interchangeable sessions.  Activities with the
-        # same course/kind/week/staff/group footprint can be permuted without
-        # changing the timetable, so force a deterministic start order.
-        by_symmetry_key: DefaultDict[Tuple[int, str, int, int, Tuple[int, ...], int], List[int]] = defaultdict(list)
-        for a_id, act in inst.activities.items():
-            key = (
-                int(act.course_id),
-                str(act.kind),
-                int(act.week),
-                int(self.activity_staff[a_id]),
-                tuple(sorted(int(g) for g in act.group_ids)),
-                int(act.duration),
-            )
-            by_symmetry_key[key].append(int(a_id))
         clustered_ids = {
             int(a_id)
             for week_clusters in self.clusters_by_week_kind.values()
@@ -960,10 +1878,62 @@ class TimetableSolver:
             for cluster in kind_clusters
             for a_id in cluster
         }
-        for act_ids in by_symmetry_key.values():
-            ordered = [a_id for a_id in sorted(act_ids) if a_id not in clustered_ids]
-            for prev_id, next_id in zip(ordered, ordered[1:]):
-                m.Add(self.start[prev_id] <= self.start[next_id])
+        itc2007 = self._itc2007_metadata()
+        if itc2007 is not None:
+            self._add_itc2007_course_symmetry(itc2007, clustered_ids=clustered_ids)
+        else:
+            # For general-purpose instances, activity labels are exchangeable
+            # only when their complete modeled domains match and no explicit
+            # relation gives an activity a distinct role. This avoids cutting
+            # valid schedules when two otherwise-similar sessions have different
+            # availability, locks, room eligibility, or cross-activity rules.
+            identity_sensitive_ids: Set[int] = set()
+            for raw_rule in getattr(inst, "precedence_rules", []) or []:
+                if not isinstance(raw_rule, dict):
+                    continue
+                for field in ("before_activity_id", "after_activity_id"):
+                    try:
+                        identity_sensitive_ids.add(int(raw_rule[field]))
+                    except (KeyError, TypeError, ValueError):
+                        continue
+            for constraint in getattr(inst, "distribution_constraints", []) or []:
+                identity_sensitive_ids.update(
+                    int(value) for value in constraint.activity_ids
+                )
+            if self._hard_flag("force_repeat_weekly_pattern", False):
+                for leader, follower in repeat_pattern_pairs:
+                    identity_sensitive_ids.update((int(leader), int(follower)))
+
+            locks = getattr(inst, "locked_activities", {}) or {}
+            by_symmetry_key: DefaultDict[Tuple[object, ...], List[int]] = defaultdict(list)
+            for a_id, act in inst.activities.items():
+                if int(a_id) in clustered_ids or int(a_id) in identity_sensitive_ids:
+                    continue
+                fixed = locks.get(int(a_id)) if isinstance(locks, dict) else None
+                key = (
+                    int(act.course_id),
+                    str(act.kind),
+                    int(act.week),
+                    int(self.activity_staff[a_id]),
+                    tuple(sorted(int(g) for g in act.group_ids)),
+                    int(act.duration),
+                    str(act.requires_specialization or ""),
+                    tuple(sorted(int(value) for value in (act.resource_ids or []))),
+                    str(act.cluster_key or ""),
+                    tuple(int(value) for value in self.allowed_starts[int(a_id)]),
+                    tuple(int(value) for value in self.allowed_rooms.get(int(a_id), [])),
+                    tuple(
+                        sorted(
+                            (str(field), repr(value))
+                            for field, value in dict(fixed or {}).items()
+                        )
+                    ),
+                )
+                by_symmetry_key[key].append(int(a_id))
+            for act_ids in by_symmetry_key.values():
+                ordered = sorted(act_ids)
+                for prev_id, next_id in zip(ordered, ordered[1:]):
+                    m.Add(self.start[prev_id] <= self.start[next_id])
 
         # Room-count guards per slot with tutorial support
         num_lec = len(self.lecture_room_ids)
@@ -979,52 +1949,36 @@ class TimetableSolver:
                     follower_ids_by_week_kind[w][kind].update(cluster[1:])
 
         for w in self.weeks:
-            for tau in range(self.T_week):
-                lec_terms: List[cp_model.BoolVar] = []
-                tut_terms: List[cp_model.BoolVar] = []
-                lab_terms: List[cp_model.BoolVar] = []
-                tag_terms: Dict[str, List[cp_model.BoolVar]] = {}
+            lecture_intervals: List[cp_model.IntervalVar] = []
+            tutorial_intervals: List[cp_model.IntervalVar] = []
+            lab_intervals: List[cp_model.IntervalVar] = []
+            tagged_lab_intervals: DefaultDict[str, List[cp_model.IntervalVar]] = defaultdict(list)
+            for a_id, act in inst.activities.items():
+                if int(act.week) != int(w):
+                    continue
+                if int(a_id) in follower_ids_by_week_kind[w][str(act.kind)]:
+                    continue
+                if str(act.kind) == "LEC":
+                    lecture_intervals.append(self.interval[int(a_id)])
+                elif str(act.kind) == "TUT":
+                    tutorial_intervals.append(self.interval[int(a_id)])
+                else:
+                    lab_intervals.append(self.interval[int(a_id)])
+                    tag = str(getattr(act, "requires_specialization", "") or "").strip()
+                    if tag:
+                        tagged_lab_intervals[tag].append(self.interval[int(a_id)])
 
-                for a_id, act in inst.activities.items():
-                    if act.week != w:
-                        continue
-                    dur = act.duration
-                    allowed = self.allowed_starts[a_id]
-
-                    if act.kind == "LEC":
-                        if a_id in follower_ids_by_week_kind[w]["LEC"]:
-                            continue
-                        for t in allowed:
-                            if t <= tau < t + dur:
-                                lec_terms.append(self.x[(a_id, t)])
-
-                    elif act.kind == "TUT":
-                        if a_id in follower_ids_by_week_kind[w]["TUT"]:
-                            continue
-                        for t in allowed:
-                            if t <= tau < t + dur:
-                                tut_terms.append(self.x[(a_id, t)])
-
-                    else:  # LAB
-                        if a_id in follower_ids_by_week_kind[w]["LAB"]:
-                            continue
-                        for t in allowed:
-                            if t <= tau < t + dur:
-                                lab_terms.append(self.x[(a_id, t)])
-                                req = getattr(act, "requires_specialization", None)
-                                if req:
-                                    tag_terms.setdefault(req, []).append(self.x[(a_id, t)])
-
-                if num_lec > 0 and lec_terms:
-                    m.Add(sum(lec_terms) <= num_lec)
-                if (num_lec + num_tut) > 0 and (lec_terms or tut_terms):
-                    m.Add(sum(lec_terms) + sum(tut_terms) <= (num_lec + num_tut))
-                if num_lab > 0 and lab_terms:
-                    m.Add(sum(lab_terms) <= num_lab)
-                for tag, terms in tag_terms.items():
-                    cap = len(self.spec_rooms_by_tag.get(tag, []))
-                    if cap > 0:
-                        m.Add(sum(terms) <= cap)
+            if num_lec > 0 and lecture_intervals:
+                m.AddCumulative(lecture_intervals, [1] * len(lecture_intervals), num_lec)
+            shared_teaching = [*lecture_intervals, *tutorial_intervals]
+            if num_lec + num_tut > 0 and shared_teaching:
+                m.AddCumulative(shared_teaching, [1] * len(shared_teaching), num_lec + num_tut)
+            if num_lab > 0 and lab_intervals:
+                m.AddCumulative(lab_intervals, [1] * len(lab_intervals), num_lab)
+            for tag, intervals in tagged_lab_intervals.items():
+                cap = len(self.spec_rooms_by_tag.get(tag, []))
+                if cap > 0 and intervals:
+                    m.AddCumulative(intervals, [1] * len(intervals), cap)
 
         # Optional CP rooming with cluster co-location
         if self.room_mode == "cp_rooms":
@@ -1068,16 +2022,30 @@ class TimetableSolver:
                         common = set(self.allowed_rooms[leader])
                         for a in cluster[1:]:
                             common &= set(self.allowed_rooms[a])
-                        if not common:
-                            common = set(self.allowed_rooms[leader])
+                        cluster_groups = {
+                            int(group_id)
+                            for activity_id in cluster
+                            for group_id in self.inst.activities[activity_id].group_ids
+                        }
+                        cluster_capacity = capacity_required(self.inst, cluster_groups)
+                        if self._hard_flag("enforce_room_capacity", True):
+                            common = {
+                                int(room_id)
+                                for room_id in common
+                                if int(self.inst.rooms[room_id].capacity) >= int(cluster_capacity)
+                            }
+                        cluster_duration = max(
+                            int(self.inst.activities[activity_id].duration)
+                            for activity_id in cluster
+                        )
 
                         self.m.Add(sum(self.room_sel[(leader, r)] for r in self.allowed_rooms[leader]) == 1)
                         for r in self.allowed_rooms[leader]:
                             if r in common:
                                 iv = self.m.NewOptionalIntervalVar(
                                     self.start[leader],
-                                    self.inst.activities[leader].duration,
-                                    self.start[leader] + self.inst.activities[leader].duration,
+                                    cluster_duration,
+                                    self.start[leader] + cluster_duration,
                                     self.room_sel[(leader, r)],
                                     f"Riv[{leader},{r}]"
                                 )
@@ -1124,7 +2092,11 @@ class TimetableSolver:
                             d_idx = t // self.S
                             s0 = t % self.S
                             if not _room_allows(r, int(w), self.days[d_idx], s0, dur):
-                                self.m.Add(self.room_sel[(a_id, r)] + self.x[(a_id, t)] <= 1)
+                                self.m.Add(
+                                    self.room_sel[(a_id, r)]
+                                    + self._start_literal(a_id, t)
+                                    <= 1
+                                )
                 # Travel buffers between rooms for shared group/staff resources.
                 if self._hard_flag("enforce_travel_time_buffers", True) and any(
                     int(v) > 0 for v in (getattr(inst, "travel_time_rules", {}) or {}).values()
@@ -1145,6 +2117,20 @@ class TimetableSolver:
                                 int(g) for g in act_b.group_ids
                             ):
                                 shared_pairs.add((int(a_id), int(b_id)))
+                    for constraint in getattr(inst, "distribution_constraints", []) or []:
+                        if not constraint.required:
+                            continue
+                        if normalize_distribution_type(constraint.constraint_type) != "same_attendees":
+                            continue
+                        ids = [
+                            int(value)
+                            for value in constraint.activity_ids
+                            if int(value) in week_activity_ids
+                        ]
+                        for left_id, right_id in combinations(ids, 2):
+                            shared_pairs.add(
+                                (min(left_id, right_id), max(left_id, right_id))
+                            )
 
                     for a_id, b_id in sorted(shared_pairs):
                         act_a = self.inst.activities[a_id]
@@ -1172,8 +2158,8 @@ class TimetableSolver:
                                             violated = int(end_b) + int(buffer_slots) > int(ta)
                                         if violated:
                                             self.m.Add(
-                                                self.x[(a_id, ta)]
-                                                + self.x[(b_id, tb)]
+                                                self._start_literal(a_id, ta)
+                                                + self._start_literal(b_id, tb)
                                                 + self.room_sel[(a_id, ra)]
                                                 + self.room_sel[(b_id, rb)]
                                                 <= 3
@@ -1205,6 +2191,476 @@ class TimetableSolver:
                             == self.room_sel[(int(follower), int(r))]
                         )
 
+        self._add_distribution_constraints()
+
+    def _distribution_info(self, activity_id: int, start: int) -> Dict[str, object]:
+        activity = self.inst.activities[int(activity_id)]
+        return {
+            "week": int(activity.week),
+            "day": str(self.days[int(start) // self.S]),
+            "slot": int(start) % self.S,
+            "duration": int(activity.duration),
+            "room_id": None,
+        }
+
+    def _add_distribution_constraints(self) -> None:
+        """Compile required portable distribution rules into the CP master.
+
+        Soft relations remain measurable by the shared evaluator and local
+        improvement layer. MaxBreaks and MaxBlock have exact evaluators but are
+        deliberately rejected as hard CP rules until an automaton formulation is
+        selected; silently weakening an imported institution rule is unsafe.
+        """
+        constraints = getattr(self.inst, "distribution_constraints", []) or []
+        for constraint in constraints:
+            kind = normalize_distribution_type(constraint.constraint_type)
+            activity_ids = [int(value) for value in constraint.activity_ids]
+            missing = [value for value in activity_ids if value not in self.inst.activities]
+            if missing:
+                raise ValueError(
+                    f"Distribution constraint {constraint.id} references unknown activities {missing}"
+                )
+            if not constraint.required:
+                continue
+            if len(activity_ids) < 2 and kind not in AGGREGATE_TYPES:
+                raise ValueError(
+                    f"Distribution constraint {constraint.id} requires at least two activities"
+                )
+
+            if kind in {"same_room", "different_room"}:
+                if self.room_mode == "greedy":
+                    raise ValueError(
+                        f"Required {kind} needs room_mode='cp_rooms' or 'decomposed'"
+                    )
+                if self.room_mode == "decomposed":
+                    continue
+                for left_id, right_id in combinations(activity_ids, 2):
+                    left_rooms = set(self.allowed_rooms.get(left_id, []))
+                    right_rooms = set(self.allowed_rooms.get(right_id, []))
+                    if kind == "same_room":
+                        common = left_rooms & right_rooms
+                        if not common:
+                            self.m.Add(0 == 1)
+                            continue
+                        for room_id in left_rooms - common:
+                            self.m.Add(self.room_sel[(left_id, room_id)] == 0)
+                        for room_id in right_rooms - common:
+                            self.m.Add(self.room_sel[(right_id, room_id)] == 0)
+                        for room_id in common:
+                            self.m.Add(
+                                self.room_sel[(left_id, room_id)]
+                                == self.room_sel[(right_id, room_id)]
+                            )
+                    else:
+                        for room_id in left_rooms & right_rooms:
+                            self.m.Add(
+                                self.room_sel[(left_id, room_id)]
+                                + self.room_sel[(right_id, room_id)]
+                                <= 1
+                            )
+                continue
+
+            if kind in PAIRWISE_TYPES:
+                for left_id, right_id in combinations(activity_ids, 2):
+                    allowed_pairs = [
+                        (int(left_start), int(right_start))
+                        for left_start in self.allowed_starts[left_id]
+                        for right_start in self.allowed_starts[right_id]
+                        if pair_satisfies_distribution(
+                            self.inst,
+                            constraint,
+                            self._distribution_info(left_id, left_start),
+                            self._distribution_info(right_id, right_start),
+                        )
+                    ]
+                    if allowed_pairs:
+                        self.m.AddAllowedAssignments(
+                            [self.start[left_id], self.start[right_id]],
+                            allowed_pairs,
+                        )
+                    else:
+                        self.m.Add(0 == 1)
+                continue
+
+            if kind in ORDERED_TYPES:
+                minimum_gap = distribution_parameter(
+                    constraint,
+                    "minimum_gap",
+                    "G",
+                    default=0,
+                )
+                week_index = {
+                    int(week): index for index, week in enumerate(self.weeks)
+                }
+                for left_id, right_id in zip(activity_ids, activity_ids[1:]):
+                    left_activity = self.inst.activities[left_id]
+                    right_activity = self.inst.activities[right_id]
+                    allowed_pairs: List[Tuple[int, int]] = []
+                    for left_start in self.allowed_starts[left_id]:
+                        for right_start in self.allowed_starts[right_id]:
+                            left_key = (
+                                week_index[int(left_activity.week)],
+                                int(left_start) // self.S,
+                            )
+                            right_key = (
+                                week_index[int(right_activity.week)],
+                                int(right_start) // self.S,
+                            )
+                            valid = left_key < right_key or (
+                                left_key == right_key
+                                and int(left_start) + int(left_activity.duration) + int(minimum_gap)
+                                <= int(right_start)
+                            )
+                            if valid:
+                                allowed_pairs.append((int(left_start), int(right_start)))
+                    if allowed_pairs:
+                        self.m.AddAllowedAssignments(
+                            [self.start[left_id], self.start[right_id]],
+                            allowed_pairs,
+                        )
+                    else:
+                        self.m.Add(0 == 1)
+                continue
+
+            if kind in {"max_breaks", "max_block"}:
+                raise ValueError(
+                    f"Required {kind} is evaluable but not yet CP-compilable; "
+                    "use it as a soft rule or provide an institution-specific compiler"
+                )
+
+            if kind in {"max_days", "max_day_load"}:
+                maximum = distribution_parameter(
+                    constraint,
+                    "days" if kind == "max_days" else "slots",
+                    "maximum",
+                    "D" if kind == "max_days" else "S",
+                    default=0,
+                )
+                by_week: DefaultDict[int, List[int]] = defaultdict(list)
+                for activity_id in activity_ids:
+                    by_week[int(self.inst.activities[activity_id].week)].append(activity_id)
+                for week, week_ids in by_week.items():
+                    used_days: List[cp_model.BoolVar] = []
+                    for day_index in range(self.D):
+                        day_terms: List[cp_model.BoolVar] = []
+                        load_terms: List[cp_model.LinearExpr] = []
+                        for activity_id in week_ids:
+                            starts = [
+                                self._start_literal(activity_id, start)
+                                for start in self.allowed_starts[activity_id]
+                                if int(start) // self.S == int(day_index)
+                            ]
+                            if not starts:
+                                continue
+                            activity_on_day = self.m.NewBoolVar(
+                                f"distribution_day[{constraint.id},{activity_id},{day_index}]"
+                            )
+                            self.m.Add(activity_on_day == sum(starts))
+                            day_terms.append(activity_on_day)
+                            load_terms.append(
+                                int(self.inst.activities[activity_id].duration) * activity_on_day
+                            )
+                        if not day_terms:
+                            continue
+                        if kind == "max_day_load":
+                            self.m.Add(sum(load_terms) <= int(maximum))
+                        day_used = self.m.NewBoolVar(
+                            f"distribution_used_day[{constraint.id},{week},{day_index}]"
+                        )
+                        self.m.AddMaxEquality(day_used, day_terms)
+                        used_days.append(day_used)
+                    if kind == "max_days" and used_days:
+                        self.m.Add(sum(used_days) <= int(maximum))
+                continue
+
+            raise ValueError(f"No CP compiler for distribution type {kind}")
+
+    def _itc2007_metadata(self) -> Dict[str, object] | None:
+        sla = getattr(self.inst, "sla_targets", {}) or {}
+        family = str(sla.get("benchmark_family", ""))
+        metadata = sla.get("itc2007")
+        if family.startswith("ITC-2007") and isinstance(metadata, dict):
+            return dict(metadata)
+        return None
+
+    def _add_itc2007_course_symmetry(
+        self,
+        metadata: Dict[str, object],
+        *,
+        clustered_ids: Set[int],
+    ) -> None:
+        """Order provably interchangeable synthetic lectures of each ITC course.
+
+        Official ITC-2007 solutions contain no lecture identifier.  For a
+        course with ``k`` lectures, all ``k!`` label permutations therefore
+        represent the same official schedule. Imported lectures also share a
+        unary resource, so their starts are distinct; strict ordering keeps one
+        representative and removes the other permutations.
+
+        The cut is metadata-gated and applied only when every activity-specific
+        domain and relation relevant to the CP model is identical. If an
+        imported instance is later enriched with a lock or relation, that
+        course orbit is skipped rather than relying on the original import
+        claim.
+        """
+
+        mode = str(metadata.get("course_lecture_symmetry", "")).strip()
+        enabled = self._hard_flag("enable_itc2007_course_symmetry", False)
+        report: Dict[str, object] = {
+            "family": "ITC-2007",
+            "mode": mode or "undeclared",
+            "enabled": bool(enabled and mode == "strict_start_order"),
+            "eligible_course_orbits": 0,
+            "ordered_activity_pairs": 0,
+            "skipped_course_ids": [],
+        }
+        if not enabled or mode != "strict_start_order":
+            self.symmetry_report = report
+            return
+
+        related_ids: Set[int] = set()
+        for raw_rule in getattr(self.inst, "precedence_rules", []) or []:
+            if not isinstance(raw_rule, dict):
+                continue
+            for key in ("before_activity_id", "after_activity_id"):
+                try:
+                    related_ids.add(int(raw_rule[key]))
+                except (KeyError, TypeError, ValueError):
+                    continue
+        for constraint in getattr(self.inst, "distribution_constraints", []) or []:
+            related_ids.update(int(value) for value in constraint.activity_ids)
+
+        locks = getattr(self.inst, "locked_activities", {}) or {}
+        activities_by_course: DefaultDict[int, List[int]] = defaultdict(list)
+        for activity_id, activity in self.inst.activities.items():
+            activities_by_course[int(activity.course_id)].append(int(activity_id))
+
+        declared_courses = {
+            str(value)
+            for value in dict(metadata.get("course_students") or {})
+        }
+        skipped: List[int] = []
+        ordered_pairs = 0
+        eligible_orbits = 0
+        for course_id, raw_activity_ids in sorted(activities_by_course.items()):
+            activity_ids = sorted(raw_activity_ids)
+            if len(activity_ids) <= 1:
+                continue
+            course = self.inst.courses[int(course_id)]
+            if str(course.code) not in declared_courses:
+                skipped.append(int(course_id))
+                continue
+            if any(
+                activity_id in clustered_ids or activity_id in related_ids
+                for activity_id in activity_ids
+            ):
+                skipped.append(int(course_id))
+                continue
+
+            signatures = set()
+            for activity_id in activity_ids:
+                activity = self.inst.activities[int(activity_id)]
+                fixed = locks.get(int(activity_id)) if isinstance(locks, dict) else None
+                lock_signature = tuple(
+                    sorted((str(key), repr(value)) for key, value in dict(fixed or {}).items())
+                )
+                signatures.add(
+                    (
+                        int(activity.week),
+                        str(activity.kind),
+                        int(activity.duration),
+                        int(self.activity_staff[int(activity_id)]),
+                        tuple(sorted(int(value) for value in activity.group_ids)),
+                        str(activity.requires_specialization or ""),
+                        tuple(sorted(int(value) for value in (activity.resource_ids or []))),
+                        str(activity.cluster_key or ""),
+                        tuple(int(value) for value in self.allowed_starts[int(activity_id)]),
+                        tuple(
+                            int(value)
+                            for value in self.allowed_rooms.get(int(activity_id), [])
+                        ),
+                        lock_signature,
+                    )
+                )
+            if len(signatures) != 1:
+                skipped.append(int(course_id))
+                continue
+
+            eligible_orbits += 1
+            for previous_id, next_id in zip(activity_ids, activity_ids[1:]):
+                self.m.Add(self.start[int(previous_id)] < self.start[int(next_id)])
+                ordered_pairs += 1
+
+        report.update(
+            {
+                "eligible_course_orbits": int(eligible_orbits),
+                "ordered_activity_pairs": int(ordered_pairs),
+                "skipped_course_ids": skipped,
+            }
+        )
+        self.symmetry_report = report
+
+    def _add_itc2007_objective(self, metadata: Dict[str, object]) -> None:
+        """Compile the official ITC-2007 curriculum objective exactly."""
+        if self.room_mode != "cp_rooms":
+            raise ValueError(
+                "The joint official ITC-2007 objective requires room_mode='cp_rooms'; "
+                "time-only, greedy, and decomposed runs may be scored post-hoc only."
+            )
+        m = self.m
+        code_to_course_id = {
+            str(course.code): int(course_id)
+            for course_id, course in self.inst.courses.items()
+        }
+        activities_by_course: DefaultDict[int, List[int]] = defaultdict(list)
+        for activity_id, activity in self.inst.activities.items():
+            activities_by_course[int(activity.course_id)].append(int(activity_id))
+
+        weights = dict(metadata.get("objective_weights") or {})
+        capacity_weight = int(weights.get("room_capacity", 1))
+        days_weight = int(weights.get("minimum_working_days", 5))
+        compactness_weight = int(weights.get("curriculum_compactness", 2))
+        stability_weight = int(weights.get("room_stability", 1))
+        students_by_code = {
+            str(key): int(value)
+            for key, value in dict(metadata.get("course_students") or {}).items()
+        }
+        minimum_days_by_code = {
+            str(key): int(value)
+            for key, value in dict(metadata.get("minimum_working_days") or {}).items()
+        }
+        penalties: List[cp_model.LinearExpr] = []
+
+        # Room overflow: every missing seat is one penalty point.
+        for activity_id, activity in self.inst.activities.items():
+            course_code = str(self.inst.courses[int(activity.course_id)].code)
+            students = int(students_by_code.get(course_code, 0))
+            for room_id in self.allowed_rooms.get(int(activity_id), []):
+                overflow = max(0, students - int(self.inst.rooms[int(room_id)].capacity))
+                if overflow:
+                    penalties.append(
+                        capacity_weight
+                        * int(overflow)
+                        * self.room_sel[(int(activity_id), int(room_id))]
+                    )
+
+        # Five points for every missing working day below each course minimum.
+        for course_code, minimum_days in minimum_days_by_code.items():
+            course_id = code_to_course_id.get(str(course_code))
+            if course_id is None:
+                raise ValueError(f"ITC-2007 objective references unknown course {course_code}")
+            day_used: List[cp_model.BoolVar] = []
+            for day_index in range(self.D):
+                activity_days: List[cp_model.BoolVar] = []
+                for activity_id in activities_by_course[int(course_id)]:
+                    starts = [
+                        self._start_literal(activity_id, start)
+                        for start in self.allowed_starts[activity_id]
+                        if int(start) // self.S == int(day_index)
+                    ]
+                    if not starts:
+                        continue
+                    on_day = m.NewBoolVar(
+                        f"itc2007_course_day_activity[{course_id},{activity_id},{day_index}]"
+                    )
+                    m.Add(on_day == sum(starts))
+                    activity_days.append(on_day)
+                used = m.NewBoolVar(f"itc2007_course_day[{course_id},{day_index}]")
+                if activity_days:
+                    m.AddMaxEquality(used, activity_days)
+                else:
+                    m.Add(used == 0)
+                day_used.append(used)
+            missing = m.NewIntVar(
+                0,
+                max(0, int(minimum_days)),
+                f"itc2007_missing_days[{course_id}]",
+            )
+            m.AddMaxEquality(
+                missing,
+                [0, int(minimum_days) - sum(day_used)],
+            )
+            penalties.append(days_weight * missing)
+
+        # Two points per isolated curriculum lecture.
+        for curriculum_name, raw_members in dict(metadata.get("curricula") or {}).items():
+            member_ids = {
+                code_to_course_id[str(code)]
+                for code in list(raw_members or [])
+                if str(code) in code_to_course_id
+            }
+            for day_index in range(self.D):
+                occupied: List[cp_model.BoolVar] = []
+                for slot in range(self.S):
+                    terms: List[cp_model.BoolVar] = []
+                    for course_id in member_ids:
+                        for activity_id in activities_by_course[int(course_id)]:
+                            start = day_index * self.S + slot
+                            if start in self.allowed_starts[activity_id]:
+                                terms.append(self._start_literal(activity_id, start))
+                    occ = m.NewBoolVar(
+                        f"itc2007_curr_occ[{curriculum_name},{day_index},{slot}]"
+                    )
+                    if terms:
+                        m.Add(occ == sum(terms))
+                    else:
+                        m.Add(occ == 0)
+                    occupied.append(occ)
+                for slot, occ in enumerate(occupied):
+                    previous = occupied[slot - 1] if slot > 0 else None
+                    following = occupied[slot + 1] if slot + 1 < self.S else None
+                    isolated = m.NewBoolVar(
+                        f"itc2007_isolated[{curriculum_name},{day_index},{slot}]"
+                    )
+                    m.Add(isolated <= occ)
+                    neighbors: List[cp_model.BoolVar] = []
+                    if previous is not None:
+                        m.Add(isolated + previous <= 1)
+                        neighbors.append(previous)
+                    if following is not None:
+                        m.Add(isolated + following <= 1)
+                        neighbors.append(following)
+                    m.Add(isolated >= occ - sum(neighbors))
+                    penalties.append(compactness_weight * isolated)
+
+        # One point for every additional room used by a course.
+        for course_id, activity_ids in activities_by_course.items():
+            room_ids = sorted(
+                {
+                    int(room_id)
+                    for activity_id in activity_ids
+                    for room_id in self.allowed_rooms.get(int(activity_id), [])
+                }
+            )
+            used_rooms: List[cp_model.BoolVar] = []
+            for room_id in room_ids:
+                terms = [
+                    self.room_sel[(activity_id, room_id)]
+                    for activity_id in activity_ids
+                    if (activity_id, room_id) in self.room_sel
+                ]
+                used = m.NewBoolVar(f"itc2007_room_used[{course_id},{room_id}]")
+                if terms:
+                    m.AddMaxEquality(used, terms)
+                else:
+                    m.Add(used == 0)
+                used_rooms.append(used)
+            if used_rooms:
+                additional = m.NewIntVar(
+                    0,
+                    max(0, len(used_rooms) - 1),
+                    f"itc2007_additional_rooms[{course_id}]",
+                )
+                # Every ITC course has at least one lecture and every lecture
+                # selects exactly one room, so at least one used-room literal
+                # is true. Keep the auxiliary variable functionally equal to
+                # the exported schedule's score even for a merely FEASIBLE
+                # incumbent whose objective has not been fully minimized.
+                m.Add(additional == sum(used_rooms) - 1)
+                penalties.append(stability_weight * additional)
+
+        m.Minimize(sum(penalties) if penalties else 0)
+
     def _add_objective(self) -> None:
         """
         Add a linear soft-constraint objective similar to the local-search scorer.
@@ -1215,6 +2671,11 @@ class TimetableSolver:
         """
         m = self.m
         inst = self.inst
+
+        itc2007 = self._itc2007_metadata()
+        if itc2007 is not None:
+            self._add_itc2007_objective(itc2007)
+            return
 
         weights = {
             "stud_free_days": 10,
@@ -1261,7 +2722,7 @@ class TimetableSolver:
             for t in self.allowed_starts[a_id]:
                 d_idx = t // S
                 s0 = t % S
-                xvar = self.x[(a_id, t)]
+                xvar = self._start_literal(a_id, t)
                 for off in range(dur):
                     slot = s0 + off
                     if 0 <= slot < S:
@@ -1336,6 +2797,22 @@ class TimetableSolver:
                 s_active_days[(sid, w)] = sum(day_bools)
 
         penalties: List[cp_model.LinearExpr] = []
+        group_penalties: DefaultDict[int, List[cp_model.LinearExpr]] = defaultdict(list)
+        group_penalty_bounds: DefaultDict[int, int] = defaultdict(int)
+        penalty_upper_bound = 0
+
+        def record_penalty(
+            expression: cp_model.LinearExpr | int,
+            upper_bound: int,
+            *,
+            group_id: int | None = None,
+        ) -> None:
+            nonlocal penalty_upper_bound
+            penalties.append(expression)
+            penalty_upper_bound += max(0, int(upper_bound))
+            if group_id is not None:
+                group_penalties[int(group_id)].append(expression)
+                group_penalty_bounds[int(group_id)] += max(0, int(upper_bound))
 
         # Student free days + Mon–Fri free days + active days.
         for g, group in inst.groups.items():
@@ -1345,17 +2822,29 @@ class TimetableSolver:
 
                 slack_free = m.NewIntVar(0, D, f"slack_free[{g},{w}]")
                 m.Add(slack_free >= want - D + active)
-                penalties.append(weights["stud_free_days"] * slack_free)
+                record_penalty(
+                    weights["stud_free_days"] * slack_free,
+                    abs(weights["stud_free_days"]) * D,
+                    group_id=int(g),
+                )
 
                 if mf_day_idx:
                     active_mf = sum(g_day[(g, w, d)] for d in mf_day_idx)
                     slack_mf = m.NewIntVar(0, len(mf_day_idx), f"slack_mf[{g},{w}]")
                     m.Add(slack_mf >= want - len(mf_day_idx) + active_mf)
-                    penalties.append(weights["stud_free_mf"] * slack_mf)
+                    record_penalty(
+                        weights["stud_free_mf"] * slack_mf,
+                        abs(weights["stud_free_mf"]) * len(mf_day_idx),
+                        group_id=int(g),
+                    )
 
                 slack_active = m.NewIntVar(0, D, f"slack_active[{g},{w}]")
                 m.Add(slack_active >= active - 3)
-                penalties.append(weights["active_days"] * slack_active)
+                record_penalty(
+                    weights["active_days"] * slack_active,
+                    abs(weights["active_days"]) * D,
+                    group_id=int(g),
+                )
 
         # Student gaps, day shape (per day).
         for g in group_ids:
@@ -1369,7 +2858,11 @@ class TimetableSolver:
                     thin = m.NewBoolVar(f"thin_day[{g},{w},{d_idx}]")
                     m.Add(load_var == 2).OnlyEnforceIf(thin)
                     m.Add(load_var != 2).OnlyEnforceIf(thin.Not())
-                    penalties.append(weights["thin_day"] * thin)
+                    record_penalty(
+                        weights["thin_day"] * thin,
+                        abs(weights["thin_day"]),
+                        group_id=int(g),
+                    )
 
                     # penalize single-slot presence days to avoid lonely days on campus
                     diff = m.NewIntVar(-S, S, f"single_diff[{g},{w},{d_idx}]")
@@ -1379,7 +2872,11 @@ class TimetableSolver:
                     is_single = m.NewBoolVar(f"single_day[{g},{w},{d_idx}]")
                     m.Add(abs_diff == 0).OnlyEnforceIf(is_single)
                     m.Add(abs_diff >= 1).OnlyEnforceIf(is_single.Not())
-                    penalties.append(weights["single_slot"] * is_single)
+                    record_penalty(
+                        weights["single_slot"] * is_single,
+                        abs(weights["single_slot"]),
+                        group_id=int(g),
+                    )
 
                     # blocks: count starts of occupied segments
                     starts = [m.NewBoolVar(f"g_block[{g},{w},{d_idx},0]")]
@@ -1395,7 +2892,11 @@ class TimetableSolver:
                     blocks = sum(starts)
                     slack_gaps = m.NewIntVar(0, S, f"slack_gaps[{g},{w},{d_idx}]")
                     m.Add(slack_gaps >= blocks - 1)
-                    penalties.append(weights["stud_gaps"] * slack_gaps)
+                    record_penalty(
+                        weights["stud_gaps"] * slack_gaps,
+                        abs(weights["stud_gaps"]) * S,
+                        group_id=int(g),
+                    )
 
                     # late start: day active but nothing in the first two slots
                     if S >= 2:
@@ -1409,7 +2910,11 @@ class TimetableSolver:
                         m.Add(late >= day_active - early_first2)
                         m.Add(late <= day_active)
                         m.Add(late <= 1 - early_first2)
-                        penalties.append(weights["late_start"] * late)
+                        record_penalty(
+                            weights["late_start"] * late,
+                            abs(weights["late_start"]),
+                            group_id=int(g),
+                        )
 
         # Staff: require at least one free day per week (soft penalty).
         for sid in staff_ids:
@@ -1417,7 +2922,10 @@ class TimetableSolver:
                 active = s_active_days[(sid, w)]
                 slack = m.NewIntVar(0, D, f"slack_staff_free[{sid},{w}]")
                 m.Add(slack >= 1 - D + active)
-                penalties.append(weights["staff_free_day"] * slack)
+                record_penalty(
+                    weights["staff_free_day"] * slack,
+                    abs(weights["staff_free_day"]) * D,
+                )
 
         # Stability: day-active pattern changes between consecutive weeks.
         for g in group_ids:
@@ -1432,7 +2940,34 @@ class TimetableSolver:
                     m.Add(diff >= b - a)
                     m.Add(diff <= a + b)
                     m.Add(diff <= 2 - a - b)
-                    penalties.append(weights["stability"] * diff)
+                    record_penalty(
+                        weights["stability"] * diff,
+                        abs(weights["stability"]),
+                        group_id=int(g),
+                    )
+
+        # This term is constant in the current model because activity weeks are
+        # input data rather than decision variables. Recording it keeps CP and
+        # local-search objective values on the same documented scale.
+        for g in group_ids:
+            for w in weeks:
+                counts: DefaultDict[Tuple[int, str], int] = defaultdict(int)
+                for activity in inst.activities.values():
+                    if int(activity.week) != int(w) or str(activity.kind) not in ("LEC", "TUT"):
+                        continue
+                    if int(g) not in {int(value) for value in activity.group_ids}:
+                        continue
+                    counts[(int(activity.course_id), str(activity.kind))] += 1
+                same_kind_penalty = sum(
+                    max(0, int(count) - 1) * int(weights["same_kind_week"])
+                    for count in counts.values()
+                )
+                if same_kind_penalty:
+                    record_penalty(
+                        int(same_kind_penalty),
+                        int(same_kind_penalty),
+                        group_id=int(g),
+                    )
 
         # Room consistency per (course, group, kind) across weeks (CP-rooming only).
         if self.room_mode == "cp_rooms":
@@ -1465,10 +3000,33 @@ class TimetableSolver:
 
                 slack = m.NewIntVar(0, len(room_ids), f"slack_room_cons[{c_id},{g_id},{kind}]")
                 m.Add(slack >= sum(used.values()) - 1)
-                penalties.append(weights["room_consistency"] * slack)
+                record_penalty(
+                    weights["room_consistency"] * slack,
+                    abs(weights["room_consistency"]) * len(room_ids),
+                    group_id=int(g_id),
+                )
 
         if penalties:
-            m.Minimize(sum(penalties))
+            if str(getattr(inst, "objective_profile", "")).strip().lower() == "fairness_first":
+                burden_vars: List[cp_model.IntVar] = []
+                for group_id in group_ids:
+                    upper = max(0, int(group_penalty_bounds.get(int(group_id), 0)))
+                    burden = m.NewIntVar(0, upper, f"group_burden[{group_id}]")
+                    terms = group_penalties.get(int(group_id), [])
+                    m.Add(burden == (sum(terms) if terms else 0))
+                    burden_vars.append(burden)
+                if burden_vars:
+                    max_burden_bound = max(group_penalty_bounds.values(), default=0)
+                    max_burden = m.NewIntVar(0, int(max_burden_bound), "max_group_burden")
+                    m.AddMaxEquality(max_burden, burden_vars)
+                    # The multiplier is one greater than a proven upper bound on
+                    # every secondary penalty, yielding an exact lexicographic order.
+                    lexicographic_scale = int(penalty_upper_bound) + 1
+                    m.Minimize(max_burden * lexicographic_scale + sum(penalties))
+                else:
+                    m.Minimize(sum(penalties))
+            else:
+                m.Minimize(sum(penalties))
 
     def _add_decision_strategy(self) -> None:
         if self._dec_free_bools:
@@ -1549,6 +3107,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
     S = inst.slots_per_day
     hard_flags = getattr(inst, "hard_constraints", {}) or {}
     enforce_room_availability = bool(hard_flags.get("enforce_room_availability", True))
+    enforce_room_capacity = hard_flag(inst, "enforce_room_capacity", True)
     force_repeat_weekly_pattern = bool(hard_flags.get("force_repeat_weekly_pattern", False))
     enforce_travel_time_buffers = bool(
         hard_flags.get("enforce_travel_time_buffers", True)
@@ -1607,14 +3166,14 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
     def _required_capacity_for_activity(a_id: int) -> int:
         gids = schedule[a_id].get("group_ids", []) or []
         gids_int = [int(g) for g in gids]
-        return sum(inst.groups[g].size for g in gids_int if g in inst.groups)
+        return capacity_required(inst, gids_int)
 
     def _required_capacity_for_members(members: List[int]) -> int:
         gids: set[int] = set()
         for a_id in members:
             for g in schedule[a_id].get("group_ids", []) or []:
                 gids.add(int(g))
-        return sum(inst.groups[g].size for g in gids if g in inst.groups)
+        return capacity_required(inst, gids)
 
     def _travel_buffer_ok(member_ids: List[int], candidate_room_id: int) -> bool:
         if (not enforce_travel_time_buffers) or not getattr(inst, "travel_time_rules", None):
@@ -1763,7 +3322,11 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
                     )
                 repeat_room_usage[repeat_key] = int(existing_room)
 
-    def _room_cost(room_id: int, required_capacity: int, member_ids: List[int]) -> Tuple[int, int, int]:
+    def _room_cost(
+        room_id: int,
+        required_capacity: int,
+        member_ids: List[int],
+    ) -> Tuple[int, int, int, int]:
         stability_penalty = 0
         stability_bonus = 0
         for key in _room_consistency_keys(member_ids):
@@ -1776,8 +3339,10 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
             else:
                 stability_penalty += sum(int(v) for v in prior.values())
         room = inst.rooms[int(room_id)]
+        capacity_overflow = max(0, int(required_capacity) - int(room.capacity))
         capacity_waste = max(0, int(room.capacity) - int(required_capacity))
         return (
+            int(capacity_overflow),
             int(stability_penalty) * 1000 - int(stability_bonus) * 100,
             int(capacity_waste),
             int(room_id),
@@ -1797,7 +3362,10 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
         candidates = [
             r_id for r_id in room_ids
             if r_id not in occupied
-            and inst.rooms[r_id].capacity >= required_capacity
+            and (
+                not enforce_room_capacity
+                or inst.rooms[r_id].capacity >= required_capacity
+            )
             and _room_available(r_id, week, day, slot, dur)
             and _travel_buffer_ok(member_ids or [], int(r_id))
             and _repeat_room_ok(member_ids or [], int(r_id))
@@ -1824,7 +3392,14 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
     ) -> str:
         if not room_ids:
             return "room_type_missing"
-        cap_ok = [r_id for r_id in room_ids if inst.rooms[r_id].capacity >= required_capacity]
+        cap_ok = [
+            r_id
+            for r_id in room_ids
+            if (
+                not enforce_room_capacity
+                or inst.rooms[r_id].capacity >= required_capacity
+            )
+        ]
         if not cap_ok:
             return "capacity"
         avail_ok = [r_id for r_id in cap_ok if _room_available(r_id, week, day, slot, dur)]
@@ -1918,8 +3493,18 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
         *,
         type_rank: int = 0,
     ) -> int:
-        stability, waste, rid = _room_cost(int(room_id), int(required_capacity), member_ids)
-        return int(type_rank) * 1_000_000 + int(stability) * 1_000 + int(waste) * 10 + int(rid)
+        overflow, stability, waste, rid = _room_cost(
+            int(room_id),
+            int(required_capacity),
+            member_ids,
+        )
+        return (
+            int(type_rank) * 1_000_000
+            + int(overflow) * 100_000
+            + int(stability) * 1_000
+            + int(waste) * 10
+            + int(rid)
+        )
 
     def _candidate_edges_for_activity(
         a_id: int,
@@ -1940,7 +3525,7 @@ def assign_rooms_greedily(inst: Instance, schedule: Dict[int, Dict[str, object]]
             seen_rooms.add(room_id)
             if room_id in occupied:
                 continue
-            if inst.rooms[room_id].capacity < req:
+            if enforce_room_capacity and inst.rooms[room_id].capacity < req:
                 continue
             if not _room_available(room_id, week, day, slot, dur):
                 continue

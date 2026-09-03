@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Dict, List, Tuple
 
 from utils.domain import Instance
+from utils.demand import required_capacity
 
 
 def _is_block_staff(staff) -> bool:
@@ -124,7 +125,7 @@ def explain_infeasibility(inst: Instance, *, max_per_category: int = 6) -> List[
     # 5) Room eligibility per activity
     room_issues = []
     for a in inst.activities.values():
-        need = sum(inst.groups[g].size for g in a.group_ids if g in inst.groups)
+        need = required_capacity(inst, a.group_ids)
         if a.kind == "LAB":
             req = getattr(a, "requires_specialization", None)
             lab_candidates = [r for r in inst.rooms.values() if r.room_type in ("SPECIALIZED_LAB", "COMPUTER_LAB")]

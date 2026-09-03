@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from utils.conflict_explainer import build_move_explanation_text
+from utils.conflict_explainer import (
+    build_move_explanation_text,
+    build_room_certificate_explanation,
+)
 
 
 def test_conflict_explainer_includes_suggestions_for_common_blockers():
@@ -31,3 +34,17 @@ def test_conflict_explainer_valid_message_is_short():
         conflicts=[],
     )
     assert "valid" in text.lower()
+
+
+def test_room_certificate_explains_the_counting_proof_and_repair() -> None:
+    text = build_room_certificate_explanation(
+        {
+            "certificate_type": "hall_deficiency",
+            "activity_ids": [1, 2, 3],
+            "candidate_room_ids": [7, 8],
+            "message": "Three room jobs can use only two rooms.",
+        }
+    )
+    assert "A1" in text and "R7" in text
+    assert "more simultaneous room jobs" in text
+    assert "move at least one" in text.lower()

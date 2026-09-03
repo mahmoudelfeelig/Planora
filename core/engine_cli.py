@@ -9,9 +9,18 @@ import json
 import traceback
 from typing import Dict, Any
 
-from core.solver_cp_sat import TimetableSolver, GreedyRoomingError
+from core.partitioned_solver import PartitionedTimetableSolver, week_partitioning_blockers
+from core.solver_cp_sat import GreedyRoomingError, TimetableSolver
 from core.metaheuristics import LocalSearchImprover
 from services.quality_service import compute_penalty_breakdown, evaluate_schedule_sla
+from services.contracts import SolveOptions
+from services.engine_backend import (
+    ENGINE_BACKEND_ID,
+    INTERACTIVE_OBJECTIVE_PROFILE,
+    INTERACTIVE_ROOM_MODE,
+    INTERACTIVE_SOLVE_SECONDS,
+    solve_with_engine,
+)
 from utils.specs import validate_schedule_against_instance
 
 
@@ -90,6 +99,9 @@ def _normalize_objective_profile(raw: str | None) -> str:
         "balanced": "balanced",
         "quality": "quality_first",
         "quality_first": "quality_first",
+        "fair": "fairness_first",
+        "fairness": "fairness_first",
+        "fairness_first": "fairness_first",
     }
     return aliases.get(text, "balanced")
 
@@ -127,7 +139,7 @@ def _profile_budget_split(
     return float(feasibility), float(improve)
 
 
-def main() -> int:
+def _legacy_main() -> int:
     if len(sys.argv) != 3:
         print(
             "Usage: engine_cli.py <instance_pickle_path> <result_pickle_path>",
@@ -217,7 +229,12 @@ def main() -> int:
                 objective=bool(objective),
                 limit_seconds=(float(limit) if limit is not None else None),
             )
-            model = TimetableSolver(inst, room_mode=mode, use_objective=objective)
+            model = (
+                PartitionedTimetableSolver(inst, use_objective=objective)
+                if str(mode) == "partitioned"
+                else TimetableSolver(inst, room_mode=mode, use_objective=objective)
+            )
+            effective_mode = str(getattr(model, "room_mode", mode))
             t0 = time.perf_counter()
             sat_solver, sat_status = model.solve(
                 time_limit_seconds=limit,
@@ -233,7 +250,11 @@ def main() -> int:
             )
             attempts.append(
                 {
-                    "room_mode": mode,
+                    "requested_room_mode": str(mode),
+                    "room_mode": effective_mode,
+                    "room_mode_resolution": dict(
+                        getattr(model, "room_mode_resolution", {}) or {}
+                    ),
                     "use_objective": objective,
                     "time_limit_seconds": limit,
                     "status": int(sat_status),
@@ -249,7 +270,8 @@ def main() -> int:
             _emit_progress(
                 "solve_attempt_done",
                 attempt=attempt_idx,
-                mode=str(mode),
+                mode=effective_mode,
+                requested_mode=str(mode),
                 objective=bool(objective),
                 status=int(sat_status),
                 elapsed_seconds=float(elapsed),
@@ -279,7 +301,7 @@ def main() -> int:
         if improve_max_rounds is None:
             improve_max_rounds = 12
         if objective_profile == "university_fast":
-            room_mode = "greedy"
+            room_mode = "decomposed" if week_partitioning_blockers(inst) else "partitioned"
             use_objective = False
             retry_without_objective = False
             phased_solve = False
@@ -319,6 +341,12 @@ def main() -> int:
             improve_slice_seconds = max(float(improve_slice_seconds), 6.0)
             improve_iters_per_slice = max(int(improve_iters_per_slice), 1500)
             improve_max_rounds = max(int(improve_max_rounds), 16)
+        elif objective_profile == "fairness_first":
+            room_mode = "decomposed"
+            use_objective = True
+            retry_without_objective = False
+            phased_solve = False
+            improve_total_seconds = 0.0
         elif objective_profile == "balanced" and phased_solve:
             feasibility_seconds, improve_total_seconds = _profile_budget_split(
                 profile=objective_profile,
@@ -423,6 +451,9 @@ def main() -> int:
     ui_status = _map_status_to_ui(status)
     meta["final_raw_status"] = int(status)
     meta["final_ui_status"] = int(ui_status)
+    meta["decomposition"] = dict(
+        getattr(solver_model, "decomposition_report", {}) or {}
+    )
 
     # Only write a schedule if we are FEASIBLE or OPTIMAL by the UI's convention
     if ui_status not in (0, 4):
@@ -492,9 +523,14 @@ def main() -> int:
                 max_rounds=int(improve_max_rounds),
                 iters_per_slice=int(improve_iters_per_slice),
             )
-            improver = LocalSearchImprover(inst)
-            if random_seed is not None:
-                random.seed(int(random_seed))
+            try:
+                improver = LocalSearchImprover(inst, random_seed=random_seed)
+            except TypeError:
+                # Compatibility for injected/test improvers that implement the
+                # historical one-argument constructor.
+                if random_seed is not None:
+                    random.seed(int(random_seed))
+                improver = LocalSearchImprover(inst)
             best_schedule = {a_id: info.copy() for a_id, info in schedule.items()}
             best_penalty = int(improver.compute_soft_penalty(best_schedule))
             base_penalty = best_penalty
@@ -618,6 +654,125 @@ def main() -> int:
     except Exception:
         pass
     print(f"[ok] solved. activities={len(inst.activities)} status={ui_status} (raw={status}) attempts={len(attempts)}")
+    return 0
+
+
+def _shared_solve_options_from_env() -> SolveOptions:
+    time_limit = _read_float_env("TT_TIME_LIMIT")
+    if time_limit is None:
+        time_limit = INTERACTIVE_SOLVE_SECONDS
+    strict_limit = _read_float_env("TT_STRICT_TIME_LIMIT")
+    if strict_limit is None:
+        strict_limit = min(float(time_limit), 30.0) if time_limit is not None else 30.0
+    return SolveOptions(
+        room_mode=str(
+            os.getenv("TT_ROOM_MODE", INTERACTIVE_ROOM_MODE)
+            or INTERACTIVE_ROOM_MODE
+        ),
+        use_objective=_read_bool_env("TT_USE_OBJECTIVE", False),
+        retry_without_objective=_read_bool_env("TT_RETRY_NO_OBJECTIVE", True),
+        objective_profile=_normalize_objective_profile(
+            os.getenv("TT_OBJECTIVE_PROFILE", INTERACTIVE_OBJECTIVE_PROFILE)
+        ),
+        time_limit_seconds=time_limit,
+        strict_limit_seconds=strict_limit,
+        workers=_read_int_env("TT_CP_WORKERS"),
+        random_seed=_read_int_env("TT_RANDOM_SEED"),
+        phased_solve=_read_bool_env("TT_PHASED_SOLVE", False),
+        feasibility_seconds=_read_float_env("TT_FEASIBILITY_SECONDS"),
+        improve_total_seconds=_read_float_env("TT_IMPROVE_TOTAL_SECONDS") or 0.0,
+        improve_slice_seconds=_read_float_env("TT_IMPROVE_SLICE_SECONDS") or 5.0,
+        improve_iters_per_slice=_read_int_env("TT_IMPROVE_ITERS_PER_SLICE") or 1200,
+        improve_max_rounds=_read_int_env("TT_IMPROVE_MAX_ROUNDS") or 12,
+        log_progress=_read_bool_env("TT_CP_LOG", False),
+        enforce_hard_conflict_free=_read_bool_env(
+            "TT_ENFORCE_HARD_CONFLICT_FREE", True
+        ),
+    )
+
+
+def _attempt_payload(attempt) -> dict[str, object]:
+    return {
+        "room_mode": str(attempt.room_mode),
+        "use_objective": bool(attempt.use_objective),
+        "time_limit_seconds": attempt.time_limit_seconds,
+        "raw_status": int(attempt.raw_status),
+        "objective_value": attempt.objective_value,
+        "best_objective_bound": attempt.best_objective_bound,
+        "relative_gap": attempt.relative_gap,
+        "status_name": attempt.status_name,
+        "proof_status": attempt.proof_status,
+        "budget_seconds": attempt.budget_seconds,
+        "elapsed_seconds": float(attempt.elapsed_seconds),
+        "model_build_seconds": float(attempt.model_build_seconds),
+        "setup_seconds": float(attempt.setup_seconds),
+        "deadline_safety_margin_seconds": float(
+            attempt.deadline_safety_margin_seconds
+        ),
+        "search_budget_seconds": attempt.search_budget_seconds,
+        "search_seconds": float(attempt.search_seconds),
+        "deadline_overrun_seconds": float(attempt.deadline_overrun_seconds),
+        "budget_exhausted": bool(attempt.budget_exhausted),
+    }
+
+
+def main() -> int:
+    if len(sys.argv) != 3:
+        print(
+            "Usage: engine_cli.py <instance_pickle_path> <result_pickle_path>",
+            file=sys.stderr,
+        )
+        return 2
+
+    in_path, out_path = sys.argv[1], sys.argv[2]
+    try:
+        with open(in_path, "rb") as fh:
+            inst = pickle.load(fh)
+    except Exception as exc:
+        print(f"[error] failed to read instance pickle: {exc}", file=sys.stderr)
+        return 2
+
+    def _progress(event: str, payload: Dict[str, Any]) -> None:
+        message = {"event": str(event), **dict(payload or {})}
+        print(
+            f"[progress] {json.dumps(message, separators=(',', ':'))}",
+            flush=True,
+        )
+
+    try:
+        result = solve_with_engine(
+            inst,
+            _shared_solve_options_from_env(),
+            progress_hook=_progress,
+        )
+        meta = dict(result.meta or {})
+        meta["attempts"] = [_attempt_payload(row) for row in result.attempts]
+        meta["engine_backend"] = {
+            **dict(meta.get("engine_backend") or {}),
+            "backend_id": ENGINE_BACKEND_ID,
+            "transport": "desktop_qprocess_pickle_v1",
+        }
+        payload: dict[str, object] = {
+            "status": int(result.status),
+            "raw_status": int(result.raw_status),
+            "schedule": result.schedule,
+            "hard_conflicts": list(result.hard_conflicts),
+            "meta": meta,
+        }
+        if not result.is_feasible or not result.schedule:
+            payload["schedule"] = {}
+            payload["error"] = "No feasible schedule was produced."
+        with open(out_path, "wb") as fh:
+            pickle.dump(payload, fh)
+    except Exception as exc:
+        print(f"[error] shared engine failed: {exc}", file=sys.stderr)
+        traceback.print_exc()
+        return 3
+
+    print(
+        f"[ok] shared engine solved. activities={len(getattr(inst, 'activities', {}))} "
+        f"status={result.status} raw={result.raw_status} attempts={len(result.attempts)}"
+    )
     return 0
 
 

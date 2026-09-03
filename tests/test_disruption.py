@@ -3,6 +3,7 @@ from __future__ import annotations
 from utils.disruption import (
     apply_staff_outage_week,
     apply_room_outage_week,
+    build_certificate_guided_locks,
     build_freeze_locks,
 )
 from utils.domain import Activity, Course, Group, Instance, Program, Room, StaffMember
@@ -164,3 +165,38 @@ def test_build_freeze_locks_excludes_unlocked_ids():
     assert locks[1]["day"] == "MON"
     assert int(locks[1]["slot"]) == 0
     assert int(locks[1]["room_id"]) == 10
+
+
+def test_certificate_guided_locks_expand_to_resource_neighbors() -> None:
+    inst = _mini_instance()
+    schedule = {
+        1: {
+            "week": 1,
+            "day": "MON",
+            "slot": 0,
+            "duration": 1,
+            "room_id": 1,
+            "staff_id": 1,
+            "course_id": 1,
+            "group_ids": [1],
+            "kind": "LEC",
+        },
+        2: {
+            "week": 1,
+            "day": "TUE",
+            "slot": 0,
+            "duration": 1,
+            "room_id": 2,
+            "staff_id": 2,
+            "course_id": 1,
+            "group_ids": [1],
+            "kind": "LEC",
+        },
+    }
+    locks, scope = build_certificate_guided_locks(
+        inst,
+        schedule,
+        {"activity_ids": [1]},
+    )
+    assert scope == {1, 2}
+    assert locks == {}

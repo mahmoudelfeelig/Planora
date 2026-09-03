@@ -3,6 +3,30 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List
 
 
+def build_room_certificate_explanation(certificate: Any) -> str:
+    data = certificate.to_dict() if hasattr(certificate, "to_dict") else dict(certificate or {})
+    activity_ids = [int(value) for value in data.get("activity_ids", [])]
+    room_ids = [int(value) for value in data.get("candidate_room_ids", [])]
+    certificate_type = str(data.get("certificate_type", "room_model_nogood"))
+    message = str(data.get("message", "The fixed-time room assignment is infeasible."))
+    lines = ["Exact room-assignment certificate", message]
+    if activity_ids:
+        lines.append("Affected activities: " + ", ".join(f"A{value}" for value in activity_ids))
+    if room_ids:
+        lines.append("Eligible room neighborhood: " + ", ".join(f"R{value}" for value in room_ids))
+    if certificate_type == "hall_deficiency":
+        lines.append(
+            "Why it is impossible: more simultaneous room jobs require this room neighborhood "
+            "than the neighborhood can hold."
+        )
+        lines.append("Repair: move at least one affected activity outside the certified slot.")
+    elif certificate_type == "empty_domain":
+        lines.append("Repair: change the time, capacity requirement, room availability, or room lock.")
+    else:
+        lines.append("Repair: reopen the affected time assignments and any linked travel, repeat, or room locks.")
+    return "\n".join(lines)
+
+
 def _base_suggestions_for_reason(reason: str) -> List[str]:
     text = str(reason or "").lower()
     suggestions: List[str] = []
